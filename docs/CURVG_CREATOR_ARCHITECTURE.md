@@ -136,6 +136,27 @@ pnpm renderer:deploy
 
 Docker must be running because Wrangler builds and pushes `renderer/Dockerfile`. Confirm that `renderer/wrangler.jsonc` `CALLBACK_ORIGIN` matches the deployed CurvG origin before deployment.
 
+## Local renderer verification
+
+The renderer can be tested without creating or deploying remote Cloudflare resources. `wrangler dev` starts a local Queue, Sandbox Durable Object and Miniflare-backed R2 bucket while the Sandbox container runs through Docker.
+
+On this Apple Silicon development machine, Docker CLI and Colima are installed through Homebrew. The Sandbox base image is currently `linux/amd64`, so Docker reports a platform warning and runs it through Rosetta. The warning did not prevent the verified render.
+
+```bash
+colima start --cpu 4 --memory 6 --disk 20 --vm-type vz --vz-rosetta
+docker build --progress=plain -t curvg-renderer-local:dev renderer
+pnpm renderer:typecheck
+
+pnpm exec wrangler dev --config renderer/wrangler.jsonc --port 8787 \
+  --var CALLBACK_ORIGIN:http://localhost:8788 \
+  --var SANDBOX_TRANSPORT:rpc \
+  --var RENDERER_TOKEN:<local-test-token>
+```
+
+The local callback receiver must listen on port `8788`, return `{ "code": 0 }`, and accept the same bearer token. A render request is then sent to `POST http://localhost:8787/render` with `animationId`, `callbackUrl` and valid `CurvGScene` source.
+
+The renderer actively consumes the Sandbox RPC file stream and uploads artifacts with R2 multipart upload in 5 MiB parts. Passing the RPC stream directly to local R2 caused `WritableStream RPC stub was disposed without calling close()` with Sandbox SDK 0.12.4; multipart upload avoids that transport failure without buffering an entire video in Worker memory.
+
 ## Cloudflare fit
 
 Cloudflare is a suitable single-platform choice for this architecture:
@@ -154,18 +175,24 @@ Verified on 2026-07-22:
 
 - `pnpm build` passes.
 - `pnpm cf:build` passes with the Cloudflare module preset.
-- `pnpm renderer:typecheck` passes.
+- The renderer Docker image builds with Manim 0.20.1, FFmpeg and LaTeX.
+- The Python AST validator accepts a safe scene and rejects OS command execution.
+- A real Manim container rendered `MathTex(r"y=x^2")`, axes and a curve to H.264 MP4.
+- Local Wrangler processed Queue → Sandbox → Manim → FFmpeg thumbnail → R2 multipart upload → authenticated `completed` callback.
+- The MP4 and JPEG were read back from local R2 rather than trusted from callback state alone.
+- The verified MP4 is H.264, 1280×720, 2.5 seconds and 28,727 bytes; the JPEG is 1280×720 and 10,852 bytes.
+- `pnpm renderer:typecheck` passes after the renderer fixes.
 - Wrangler dry-run packages the renderer Worker and resolves Sandbox, Queue and R2 bindings when run with `--containers-rollout=none`.
 - Structured-spec parsing accepts a valid fixture.
-- TypeScript and Python validators reject a generated scene containing OS command execution.
 - `/creator` returns HTTP 200 and was visually checked at 1440×1000 and 390×844.
 - The unauthenticated submit flow redirects to `/sign-in?callbackUrl=/creator`.
 
 Not yet verified:
 
-- The renderer Docker image was not built because Docker was unavailable in the current environment.
-- No live model request was sent because no provider credential was used during verification.
-- No production Sandbox render or R2 playback was run, so the system is implemented and build-validated but not yet proven end to end in Cloudflare production.
+- No live model request was sent. The local config database contains no OpenAI or Anthropic API key/model, and no supported provider credential exists in the process environment.
+- The complete model → specification → approval → code → renderer path therefore remains blocked on a real provider credential. Configure it in `/admin/settings`; do not paste the secret into project files or chat.
+- No production Sandbox, Queue or R2 resource was created or tested because deployment was intentionally deferred.
+- Local Miniflare R2 success proves the application flow and binding API, but it is not evidence that remote Cloudflare account resources, permissions, limits or billing are correctly configured.
 
 ## Reference captures
 
