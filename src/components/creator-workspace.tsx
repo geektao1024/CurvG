@@ -636,6 +636,7 @@ export function CreatorWorkspace({
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (sessionPending) return;
     if (!user) {
       router.push('/sign-in?callbackUrl=/creator');
       return;
@@ -786,7 +787,7 @@ export function CreatorWorkspace({
                   }
                 }}
                 placeholder={copy.promptPlaceholder}
-                disabled={processing || sessionPending}
+                disabled={processing}
                 className="max-h-44 min-h-20 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent"
               />
               <div className="flex flex-wrap items-center gap-2 px-1 pb-1">
@@ -834,7 +835,7 @@ export function CreatorWorkspace({
                 <Button
                   type="submit"
                   size="icon"
-                  disabled={!prompt.trim() || processing || sessionPending}
+                  disabled={!prompt.trim() || processing}
                   aria-label={
                     !user
                       ? copy.signInToCreate
