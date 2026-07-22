@@ -1,8 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
-  <!-- CurvG logo：黑板上的粉笔曲线 C -->
-  <rect width="512" height="512" rx="112" fill="#101815"/>
-  <!-- 粉笔曲线 C：薄荷色，笔画由细到粗，像一笔画出的函数弧 -->
-  <path d="M356 156c-26-28-62-44-100-44-77 0-140 64-140 144s63 144 140 144c38 0 74-16 100-44" fill="none" stroke="#7dd8c0" stroke-width="44" stroke-linecap="round"/>
-  <!-- 琥珀追踪点：停在笔尖，正在被绘制的感觉 -->
-  <circle cx="356" cy="356" r="30" fill="#e8c477"/>
+  <!-- 精密画布主题 logo：藏青画布上一条靛蓝曲线 C，笔尖光点 -->
+  <rect width="512" height="512" rx="112" fill="#191b3a"/>
+  <path d="M356 148 C 300 96, 196 100, 152 176 C 112 246, 128 340, 200 380 C 258 412, 322 396, 352 356"
+    fill="none" stroke="#7a79f0" stroke-width="44" stroke-linecap="round"/>
+  <circle cx="352" cy="356" r="26" fill="#ffffff"/>
 </svg>

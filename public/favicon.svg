@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="CurvG favicon">
-  <!-- 小尺寸版本：去掉坐标刻痕，加粗曲线与追踪点以保证 16px 可辨识 -->
-  <rect width="512" height="512" rx="104" fill="#101815"/>
-  <path d="M368 150c-34-36-84-52-133-40-72 18-116 91-98 163 18 72 91 116 163 98 31-8 57-26 75-50" fill="none" stroke="#7dd8c0" stroke-width="60" stroke-linecap="round"/>
-  <circle cx="381" cy="314" r="36" fill="#e8c477"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="112" fill="#191b3a"/>
+  <path d="M356 148 C 300 96, 196 100, 152 176 C 112 246, 128 340, 200 380 C 258 412, 322 396, 352 356"
+    fill="none" stroke="#7a79f0" stroke-width="52" stroke-linecap="round"/>
+  <circle cx="352" cy="356" r="32" fill="#ffffff"/>
 </svg>
