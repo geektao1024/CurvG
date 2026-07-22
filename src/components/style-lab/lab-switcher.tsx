@@ -4,6 +4,7 @@ const directions = [
   { to: '/style-lab/planetarium', label: 'A · 天文馆' },
   { to: '/style-lab/chalkboard', label: 'B · 黑板宇宙' },
   { to: '/style-lab/instrument', label: 'C · 精密仪器' },
+  { to: '/style-lab/warm', label: 'D · 温暖天文馆' },
 ] as const;
 
 export function LabSwitcher({ current }: { current: string }) {
