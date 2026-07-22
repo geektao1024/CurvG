@@ -129,7 +129,7 @@ export function LivingCurve({
     };
 
     const toScreen = (p: [number, number]): [number, number] => {
-      const scale = Math.min(width, height) * 0.36;
+      const scale = Math.min(width, height) * 0.42;
       return [width / 2 + p[0] * scale, height / 2 - p[1] * scale];
     };
 

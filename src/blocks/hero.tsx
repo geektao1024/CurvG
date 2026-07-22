@@ -3,10 +3,11 @@ import { ArrowRight } from 'lucide-react';
 import { Link } from '@/core/i18n/navigation';
 import { m } from '@/paraglide/messages.js';
 import { LivingCurve } from '@/components/living-curve';
+import { ScrollCue } from '@/components/scroll-cue';
 
 export function Hero() {
   return (
-    <section className="relative isolate overflow-hidden">
+    <section className="relative isolate flex min-h-[calc(100dvh-4rem)] items-center overflow-hidden">
       {/* 黑板质感：板擦痕般的极淡光晕（薄荷 + 琥珀） */}
       <div
         aria-hidden
@@ -34,14 +35,24 @@ export function Hero() {
         <span className="absolute right-[28%] bottom-[12%] -rotate-6 text-lg opacity-[0.04]">
           Σ
         </span>
-        <span className="absolute top-[48%] left-[42%] rotate-3 text-sm opacity-[0.04]">
-          dx
-        </span>
       </div>
 
-      {/* 左文右曲线：曲线无框，直接画在黑板上 */}
-      <div className="mx-auto grid min-h-[82vh] max-w-6xl items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:gap-6 lg:py-20">
-        <div className="relative z-10 max-w-xl">
+      {/* 活的粉笔曲线：铺满右侧大半黑板，延伸到标题后方 */}
+      <div className="absolute inset-y-0 right-0 left-0 hidden lg:left-[26%] lg:block">
+        <LivingCurve
+          color="#f2f0e6"
+          secondaryColor="#e8c477"
+          renderStyle="chalk"
+          className="h-full w-full opacity-90"
+        />
+        {/* 手写风公式标注 */}
+        <p className="text-accent/80 pointer-events-none absolute right-8 bottom-16 rotate-1 font-mono text-xs">
+          x(t) = sin(3t + π/2) · y(t) = sin(2t)
+        </p>
+      </div>
+
+      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
+        <div className="relative z-10 max-w-xl py-12 lg:py-0">
           <p className="bg-accent/15 text-accent inline-block -rotate-1 rounded px-3 py-1 font-mono text-xs">
             {m['landing.hero.eyebrow']()}
           </p>
@@ -72,22 +83,23 @@ export function Hero() {
               {m['landing.hero.secondary']()}
             </a>
           </div>
-        </div>
 
-        {/* 活的粉笔曲线：无框、无卡片，偏右直接书写 */}
-        <div className="relative h-[320px] sm:h-[420px] lg:h-[560px]">
-          <LivingCurve
-            color="#f2f0e6"
-            secondaryColor="#e8c477"
-            renderStyle="chalk"
-            className="absolute inset-0 h-full w-full opacity-90"
-          />
-          {/* 手写风公式标注 */}
-          <p className="text-accent/80 pointer-events-none absolute right-4 bottom-2 rotate-1 font-mono text-xs">
-            x(t) = sin(3t + π/2) · y(t) = sin(2t)
-          </p>
+          {/* 移动端：曲线在文字下方以块级呈现 */}
+          <div className="relative mt-10 h-[300px] sm:h-[360px] lg:hidden">
+            <LivingCurve
+              color="#f2f0e6"
+              secondaryColor="#e8c477"
+              renderStyle="chalk"
+              className="absolute inset-0 h-full w-full opacity-90"
+            />
+            <p className="text-accent/80 pointer-events-none absolute right-2 bottom-0 rotate-1 font-mono text-[10px]">
+              x(t) = sin(3t + π/2) · y(t) = sin(2t)
+            </p>
+          </div>
         </div>
       </div>
+
+      <ScrollCue />
     </section>
   );
 }
