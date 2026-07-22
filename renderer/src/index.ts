@@ -111,6 +111,76 @@ function artifactUrls(job: RenderJob) {
   };
 }
 
+const multipartPartSize = 5 * 1024 * 1024;
+
+function combineChunks(chunks: Uint8Array[], size: number) {
+  if (chunks.length === 1) return chunks[0];
+  const combined = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return combined;
+}
+
+async function uploadBinaryFile(
+  sandbox: Sandbox,
+  bucket: R2Bucket,
+  key: string,
+  path: string,
+  options: R2MultipartOptions
+) {
+  const file = await sandbox.readFile(path, { encoding: 'none' });
+  const reader = file.content.getReader();
+  const upload = await bucket.createMultipartUpload(key, options);
+  const parts: R2UploadedPart[] = [];
+  let chunks: Uint8Array[] = [];
+  let bufferedSize = 0;
+  let released = false;
+
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) {
+        reader.releaseLock();
+        released = true;
+        break;
+      }
+      chunks.push(result.value);
+      bufferedSize += result.value.byteLength;
+      if (bufferedSize >= multipartPartSize) {
+        parts.push(
+          await upload.uploadPart(
+            parts.length + 1,
+            combineChunks(chunks, bufferedSize)
+          )
+        );
+        chunks = [];
+        bufferedSize = 0;
+      }
+    }
+    if (bufferedSize > 0) {
+      parts.push(
+        await upload.uploadPart(
+          parts.length + 1,
+          combineChunks(chunks, bufferedSize)
+        )
+      );
+    }
+    if (parts.length === 0) throw new Error('Rendered artifact is empty');
+    await upload.complete(parts);
+  } catch (error) {
+    await upload.abort().catch(() => undefined);
+    throw error;
+  } finally {
+    if (!released) {
+      await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
+    }
+  }
+}
+
 async function processJob(job: RenderJob, env: Env) {
   const artifactPrefix = `animations/${job.animationId}/${job.jobId}`;
   const videoKey = `${artifactPrefix}/video.mp4`;
@@ -161,16 +231,20 @@ async function processJob(job: RenderJob, env: Env) {
     if (!thumbnail.success) {
       throw new Error(thumbnail.stderr || 'Thumbnail generation failed');
     }
-    const video = await sandbox.readFile(videoPath, { encoding: 'none' });
-    await env.ARTIFACTS.put(videoKey, video.content, {
+    await uploadBinaryFile(sandbox, env.ARTIFACTS, videoKey, videoPath, {
       httpMetadata: { contentType: 'video/mp4' },
       customMetadata: { animationId: job.animationId, jobId: job.jobId },
     });
-    const image = await sandbox.readFile(thumbnailPath, { encoding: 'none' });
-    await env.ARTIFACTS.put(thumbnailKey, image.content, {
-      httpMetadata: { contentType: 'image/jpeg' },
-      customMetadata: { animationId: job.animationId, jobId: job.jobId },
-    });
+    await uploadBinaryFile(
+      sandbox,
+      env.ARTIFACTS,
+      thumbnailKey,
+      thumbnailPath,
+      {
+        httpMetadata: { contentType: 'image/jpeg' },
+        customMetadata: { animationId: job.animationId, jobId: job.jobId },
+      }
+    );
     await notify(job, env, { status: 'completed', ...artifactUrls(job) });
   } finally {
     await sandbox.destroy().catch(() => undefined);

@@ -7,7 +7,7 @@ export type AnimationSubject =
   | 'chemistry'
   | 'economics';
 
-export type AnimationModelChoice = 'auto' | 'openai' | 'anthropic';
+export type AnimationModelChoice = 'auto' | 'openai' | 'yunwu' | 'anthropic';
 
 export type AnimationStatus =
   | 'draft'

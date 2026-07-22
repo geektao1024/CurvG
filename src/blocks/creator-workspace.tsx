@@ -92,6 +92,7 @@ export function CreatorWorkspace({
     models: [
       { value: 'auto', label: m['creator.model.auto']() },
       { value: 'openai', label: m['creator.model.openai']() },
+      { value: 'yunwu', label: m['creator.model.yunwu']() },
       { value: 'anthropic', label: m['creator.model.anthropic']() },
     ],
     statuses,

@@ -159,6 +159,12 @@ export function getSettingGroups(): SettingGroup[] {
       tab: 'ai',
     },
     {
+      name: 'yunwu',
+      title: 'Yunwu',
+      description: 'Yunwu OpenAI-compatible API gateway',
+      tab: 'ai',
+    },
+    {
       name: 'anthropic',
       title: 'Anthropic',
       description: 'Anthropic Claude API',
@@ -780,6 +786,33 @@ export function getSettings(): Setting[] {
       type: 'text',
       placeholder: 'gpt-4.1-mini',
       group: 'openai',
+      tab: 'ai',
+    },
+
+    // ─── AI / Yunwu ─────────────────────────────────────────────────
+    {
+      name: 'yunwu_base_url',
+      title: 'Base URL',
+      type: 'text',
+      placeholder: 'https://yunwu.ai/v1',
+      group: 'yunwu',
+      tab: 'ai',
+      defaultValue: 'https://yunwu.ai/v1',
+    },
+    {
+      name: 'yunwu_api_key',
+      title: 'API Key',
+      type: 'password',
+      placeholder: 'sk-xxx',
+      group: 'yunwu',
+      tab: 'ai',
+    },
+    {
+      name: 'yunwu_model',
+      title: 'Animation Model',
+      type: 'text',
+      placeholder: 'gpt-4.1-mini',
+      group: 'yunwu',
       tab: 'ai',
     },
 
