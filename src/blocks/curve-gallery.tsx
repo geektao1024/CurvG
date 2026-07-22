@@ -29,7 +29,7 @@ const CURVES = [
       0,
       Math.PI * 2
     ),
-    color: '#4f4ee6',
+    color: '#262ef2',
   },
   {
     key: 'rose',
@@ -45,7 +45,7 @@ const CURVES = [
       0,
       Math.PI * 2
     ),
-    color: '#191b3a',
+    color: '#201f32',
   },
   {
     key: 'spirograph',
@@ -58,7 +58,7 @@ const CURVES = [
       0,
       Math.PI * 6
     ),
-    color: '#7a79f0',
+    color: '#6e73fa',
   },
   {
     key: 'fourier',
@@ -99,7 +99,7 @@ export function CurveGallery() {
           </p>
         </div>
 
-        <h2 className="mx-auto mt-5 max-w-2xl text-center text-4xl leading-[1.1] font-semibold tracking-[-0.03em] text-balance sm:text-5xl">
+        <h2 className="curvg-heading mx-auto mt-5 max-w-2xl text-center text-4xl text-balance sm:text-5xl">
           {m['landing.gallery.title']()}
         </h2>
         <p className="text-muted-foreground mx-auto mt-5 max-w-xl text-center text-base leading-relaxed sm:text-lg">
@@ -110,7 +110,7 @@ export function CurveGallery() {
           {CURVES.map((curve) => (
             <article
               key={curve.key}
-              className="border-border bg-card group overflow-hidden rounded-xl border transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_60px_-36px_rgba(25,27,58,0.4)]"
+              className="border-border bg-card group overflow-hidden rounded-xl border transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_60px_-36px_rgba(32,31,50,0.4)]"
             >
               <div className="bg-secondary relative h-64 overflow-hidden">
                 <svg
@@ -129,7 +129,7 @@ export function CurveGallery() {
                       <path
                         d="M24 0H0V24"
                         fill="none"
-                        stroke="rgba(25,27,58,0.07)"
+                        stroke="rgba(32,31,50,0.07)"
                         strokeWidth="1"
                       />
                     </pattern>
@@ -143,7 +143,7 @@ export function CurveGallery() {
                   <path
                     d="M14 20h12M20 14v12 M306 20h-12M300 14v12 M14 196h12M20 202v-12 M306 196h-12M300 202v-12"
                     fill="none"
-                    stroke="rgba(25,27,58,0.16)"
+                    stroke="rgba(32,31,50,0.16)"
                     strokeWidth="1"
                     strokeLinecap="round"
                   />

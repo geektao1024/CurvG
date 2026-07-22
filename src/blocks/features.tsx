@@ -39,7 +39,7 @@ export function Features() {
           </p>
         </div>
 
-        <h2 className="mx-auto mt-5 max-w-2xl text-center text-4xl leading-[1.1] font-semibold tracking-[-0.03em] text-balance sm:text-5xl">
+        <h2 className="curvg-heading mx-auto mt-5 max-w-2xl text-center text-4xl text-balance sm:text-5xl">
           {m['landing.workflow.title']()}
         </h2>
         <p className="text-muted-foreground mx-auto mt-5 max-w-xl text-center text-base leading-relaxed sm:text-lg">
@@ -50,15 +50,13 @@ export function Features() {
           {STEPS.map(({ key, icon: Icon, number }) => (
             <article
               key={key}
-              className="group border-border bg-card relative overflow-hidden rounded-xl border p-7 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-24px_rgba(25,27,58,0.25)] sm:p-8"
+              className="group border-border bg-card relative overflow-hidden rounded-xl border p-7 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-24px_rgba(32,31,50,0.25)] sm:p-8"
             >
               <div className="flex items-center justify-between">
                 <div className="bg-accent text-accent-foreground flex size-11 items-center justify-center rounded-lg">
                   <Icon className="size-5" strokeWidth={2} />
                 </div>
-                <span className="text-muted-foreground/60 font-mono text-xs tracking-[0.16em]">
-                  {number}
-                </span>
+                <span className="curvg-meta">step {number} / 03</span>
               </div>
               <h3 className="mt-6 text-xl font-semibold tracking-tight">
                 {tDynamic(`landing.workflow.${key}.title`)}

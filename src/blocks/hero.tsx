@@ -4,6 +4,7 @@ import { Link } from '@/core/i18n/navigation';
 import { m } from '@/paraglide/messages.js';
 import { LivingCurve } from '@/components/living-curve';
 import { ScrollCue } from '@/components/scroll-cue';
+import { Typewriter } from '@/components/typewriter';
 
 export function Hero() {
   return (
@@ -17,11 +18,17 @@ export function Hero() {
         <div className="absolute inset-y-0 right-0 left-[46%] hidden lg:block">
           <div className="curvg-dotmatrix absolute inset-8 opacity-50" />
           <LivingCurve
-            color="#4f4ee6"
-            secondaryColor="#191b3a"
+            color="#262ef2"
+            secondaryColor="#201f32"
             renderStyle="hairline"
             className="absolute inset-0 h-full w-full"
           />
+          <p className="curvg-meta pointer-events-none absolute top-8 right-8">
+            fig. 01 — lissajous
+          </p>
+          <p className="curvg-success pointer-events-none absolute top-14 right-8 font-mono text-[11px]">
+            ● render precision: 99.9%
+          </p>
           <p className="text-primary pointer-events-none absolute right-8 bottom-14 font-mono text-xs">
             x(t) = sin(3t + π/2) · y(t) = sin(2t)
           </p>
@@ -34,15 +41,15 @@ export function Hero() {
         />
 
         <div className="relative z-10 w-full px-6 py-14 sm:px-10 lg:w-[46%] lg:py-0">
-          <p className="border-border bg-card text-muted-foreground inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 font-mono text-xs">
+          <p className="curvg-pill text-muted-foreground inline-flex items-center gap-2 px-3.5 py-1.5 font-mono text-xs">
             <span className="bg-primary size-1.5 rounded-full" aria-hidden />
             {m['landing.hero.eyebrow']()}
           </p>
 
-          <h1 className="mt-7 text-5xl leading-[1.06] font-semibold tracking-[-0.035em] text-balance sm:text-6xl">
+          <h1 className="curvg-heading mt-7 text-5xl text-balance sm:text-6xl">
             {m['landing.hero.headline_prefix']()}{' '}
-            <span className="text-primary">
-              {m['landing.hero.headline_accent']()}
+            <span className="text-primary block min-h-[1.05em]">
+              <Typewriter words={[m['landing.hero.headline_accent']()]} />
             </span>
           </h1>
 
@@ -53,7 +60,7 @@ export function Hero() {
           <div className="mt-10 flex flex-wrap items-center gap-5">
             <Link
               href="/sign-up"
-              className="bg-foreground text-background inline-flex h-12 items-center gap-2 rounded-lg px-7 text-sm font-semibold shadow-[0_10px_28px_-14px_rgba(25,27,58,0.55)] transition-all hover:-translate-y-0.5 hover:shadow-[0_14px_32px_-14px_rgba(25,27,58,0.65)]"
+              className="curvg-btn-sharp inline-flex h-12 items-center gap-2 px-7 text-sm font-semibold"
             >
               {m['landing.hero.cta']()}
               <ArrowRight className="size-4" />
@@ -70,8 +77,8 @@ export function Hero() {
           <div className="relative mt-10 h-[300px] sm:h-[360px] lg:hidden">
             <div className="curvg-dotmatrix absolute inset-4 opacity-50" />
             <LivingCurve
-              color="#4f4ee6"
-              secondaryColor="#191b3a"
+              color="#262ef2"
+              secondaryColor="#201f32"
               renderStyle="hairline"
               className="absolute inset-0 h-full w-full"
             />
