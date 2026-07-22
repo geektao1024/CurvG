@@ -172,6 +172,25 @@ export const testSpecs: Record<string, TestSpec> = {
       },
     ],
   },
+  yunwu: {
+    group: 'yunwu',
+    fields: [
+      {
+        name: 'model',
+        label: 'Model',
+        type: 'text',
+        defaultValue: 'gpt-4o-mini',
+        required: true,
+      },
+      {
+        name: 'prompt',
+        label: 'Prompt',
+        type: 'textarea',
+        defaultValue: 'Reply with a short greeting.',
+        required: true,
+      },
+    ],
+  },
   anthropic: {
     group: 'anthropic',
     fields: [

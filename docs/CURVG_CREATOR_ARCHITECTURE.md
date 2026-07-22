@@ -44,6 +44,7 @@ stateDiagram-v2
 CurvG exposes a provider-neutral chat completion interface. The first adapters are:
 
 - OpenAI-compatible `/chat/completions`, which also supports gateways such as OpenRouter when configured by the administrator.
+- Yunwu through its OpenAI-compatible `/v1/chat/completions` endpoint, with credentials stored separately from OpenAI.
 - Anthropic `/v1/messages`.
 
 Model IDs are configuration, not source-code constants. This prevents the application from depending on names that change over time.
@@ -116,6 +117,7 @@ The AST gate is defense in depth, not the primary security boundary. Generated c
 In `/admin/settings`, configure at least one model provider:
 
 - OpenAI-compatible: `openai_base_url`, `openai_api_key`, `openai_model`.
+- Yunwu: `yunwu_base_url`, `yunwu_api_key`, `yunwu_model` (default base URL: `https://yunwu.ai/v1`).
 - Anthropic: `anthropic_base_url`, `anthropic_api_key`, `anthropic_model`.
 
 After deploying the renderer, configure:

@@ -52,6 +52,8 @@ export async function runTest(
         return await testR2(inputs, configs);
       case 'openai':
         return await testOpenAI(inputs, configs);
+      case 'yunwu':
+        return await testYunwu(inputs, configs);
       case 'anthropic':
         return await testAnthropic(inputs, configs);
       case 'replicate':
@@ -400,6 +402,49 @@ async function testOpenAI(
   return {
     success: true,
     message: 'OpenAI accepted the request',
+    details: {
+      Model: data?.model || inputs.model,
+      Reply: reply.slice(0, 200) || '(empty)',
+    },
+  };
+}
+
+async function testYunwu(
+  inputs: Record<string, string>,
+  configs: Record<string, string>
+): Promise<TestResult> {
+  const missing = need(configs, ['yunwu_api_key']);
+  if (missing) return { success: false, message: missing };
+
+  const baseUrl = (configs.yunwu_base_url || 'https://yunwu.ai/v1').replace(
+    /\/+$/,
+    ''
+  );
+  const resp = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${configs.yunwu_api_key}`,
+    },
+    body: JSON.stringify({
+      model: inputs.model,
+      messages: [{ role: 'user', content: inputs.prompt }],
+      max_tokens: 64,
+    }),
+  });
+
+  const data: any = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    return {
+      success: false,
+      message: data?.error?.message || `Request failed (${resp.status})`,
+    };
+  }
+
+  const reply = String(data?.choices?.[0]?.message?.content ?? '').trim();
+  return {
+    success: true,
+    message: 'Yunwu accepted the request',
     details: {
       Model: data?.model || inputs.model,
       Reply: reply.slice(0, 200) || '(empty)',

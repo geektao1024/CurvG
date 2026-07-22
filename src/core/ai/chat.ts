@@ -43,12 +43,13 @@ function errorMessage(data: unknown, fallback: string): string {
 }
 
 export class OpenAICompatibleChatProvider implements ChatProvider {
-  readonly name = 'openai';
+  readonly name: string;
   private readonly apiKey: string;
   private readonly baseUrl: string;
 
-  constructor(config: { apiKey: string; baseUrl?: string }) {
+  constructor(config: { apiKey: string; baseUrl?: string; name?: string }) {
     if (!config.apiKey.trim()) throw new Error('OpenAI API key is required');
+    this.name = config.name?.trim() || 'openai';
     this.apiKey = config.apiKey.trim();
     this.baseUrl = normalizeBaseUrl(
       config.baseUrl || '',

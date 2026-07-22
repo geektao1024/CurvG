@@ -20,6 +20,7 @@ const subjects = new Set<AnimationSubject>([
 const modelChoices = new Set<AnimationModelChoice>([
   'auto',
   'openai',
+  'yunwu',
   'anthropic',
 ]);
 
@@ -62,11 +63,24 @@ function anthropicProvider(configs: ConfigMap) {
   };
 }
 
+function yunwuProvider(configs: ConfigMap) {
+  if (!configs.yunwu_api_key || !configs.yunwu_model) return null;
+  return {
+    provider: new OpenAICompatibleChatProvider({
+      apiKey: configs.yunwu_api_key,
+      baseUrl: configs.yunwu_base_url || 'https://yunwu.ai/v1',
+      name: 'yunwu',
+    }),
+    model: configs.yunwu_model,
+  };
+}
+
 export function resolveChatProvider(
   configs: ConfigMap,
   choice: AnimationModelChoice
 ): { provider: ChatProvider; model: string } {
   const openai = openAIProvider(configs);
+  const yunwu = yunwuProvider(configs);
   const anthropic = anthropicProvider(configs);
   if (choice === 'openai') {
     if (!openai) throw new Error('OpenAI provider or model is not configured');
@@ -78,8 +92,13 @@ export function resolveChatProvider(
     }
     return anthropic;
   }
+  if (choice === 'yunwu') {
+    if (!yunwu) throw new Error('Yunwu provider or model is not configured');
+    return yunwu;
+  }
   if (openai) return openai;
   if (anthropic) return anthropic;
+  if (yunwu) return yunwu;
   throw new Error('No animation chat model is configured');
 }
 
