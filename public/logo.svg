@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="CurvG logo">
+  <rect width="512" height="512" rx="112" fill="#001e2b"/>
+  <path d="M365 142c-31-38-77-59-126-54-83 8-145 82-137 165 8 83 82 145 165 137 40-4 76-23 102-51" fill="none" stroke="#00ed64" stroke-width="58" stroke-linecap="round"/>
+  <path d="M269 260h100v79" fill="none" stroke="#b7ffcb" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="369" cy="339" r="20" fill="#00ed64"/>
+</svg>
