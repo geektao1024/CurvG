@@ -146,6 +146,27 @@
     color: var(--primary-foreground);
   }
 
+  /* 全站黑板颗粒：极淡的粉笔尘噪点覆盖层（不拦截交互） */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    pointer-events: none;
+    opacity: 0.045;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    background-size: 180px 180px;
+  }
+
+  /* 粉笔手绘下划线：标题重点词专用 */
+  .curvg-chalk-underline {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 8' preserveAspectRatio='none'><path d='M2 5.5 C 24 2.5, 46 6.5, 68 4 S 108 3, 118 5' fill='none' stroke='%237dd8c0' stroke-width='2.2' stroke-linecap='round' opacity='0.75'/></svg>");
+    background-repeat: no-repeat;
+    background-position: 0 96%;
+    background-size: 100% 0.32em;
+    padding-bottom: 0.12em;
+  }
+
   /* 黑板上的柔和板擦痕：薄荷与琥珀的极低透明度光晕 */
   .curvg-hero-glow {
     background:

@@ -11,7 +11,8 @@ export function CTA() {
       <div className="mx-auto max-w-6xl">
         <div className="bg-primary text-primary-foreground relative overflow-hidden rounded-2xl px-6 py-14 text-center sm:px-10 sm:py-20">
           <div className="curvg-cta-grid pointer-events-none absolute inset-0 opacity-35" />
-          <p className="relative text-xs font-semibold tracking-[0.18em] uppercase">
+          <p className="relative font-mono text-xs font-semibold tracking-[0.18em] uppercase">
+            <span className="opacity-60">§ 03 ·</span>{' '}
             {m['landing.cta.eyebrow']()}
           </p>
           <h2 className="relative mx-auto mt-4 max-w-3xl font-serif text-4xl leading-[1.1] text-balance italic sm:text-5xl lg:text-6xl">

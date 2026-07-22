@@ -17,6 +17,28 @@ export function Hero() {
         }}
       />
 
+      {/* 粉笔残迹：上一堂课没擦干净的数学符号，极淡 */}
+      <div
+        aria-hidden
+        className="text-foreground pointer-events-none absolute inset-0 -z-10 font-serif italic select-none"
+      >
+        <span className="absolute top-[14%] left-[6%] -rotate-12 text-2xl opacity-[0.05]">
+          ∫
+        </span>
+        <span className="absolute top-[68%] left-[3%] rotate-6 text-lg opacity-[0.045]">
+          π
+        </span>
+        <span className="absolute top-[24%] right-[8%] rotate-12 text-xl opacity-[0.05]">
+          ∂
+        </span>
+        <span className="absolute right-[28%] bottom-[12%] -rotate-6 text-lg opacity-[0.04]">
+          Σ
+        </span>
+        <span className="absolute top-[48%] left-[42%] rotate-3 text-sm opacity-[0.04]">
+          dx
+        </span>
+      </div>
+
       {/* 左文右曲线：曲线无框，直接画在黑板上 */}
       <div className="mx-auto grid min-h-[82vh] max-w-6xl items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:gap-6 lg:py-20">
         <div className="relative z-10 max-w-xl">
@@ -26,7 +48,7 @@ export function Hero() {
 
           <h1 className="mt-6 font-serif text-5xl leading-[1.12] text-balance italic sm:text-6xl">
             {m['landing.hero.headline_prefix']()}{' '}
-            <span className="text-primary">
+            <span className="text-primary curvg-chalk-underline">
               {m['landing.hero.headline_accent']()}
             </span>
           </h1>

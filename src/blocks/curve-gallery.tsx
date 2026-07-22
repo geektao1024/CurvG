@@ -81,10 +81,12 @@ export function CurveGallery() {
       <div className="mx-auto max-w-6xl">
         <div className="grid gap-8 lg:grid-cols-[0.72fr_1.28fr] lg:items-end">
           <div>
-            <p className="text-primary text-xs font-semibold tracking-[0.18em] uppercase">
+            <p className="text-primary font-mono text-xs font-semibold tracking-[0.18em] uppercase">
+              <span className="text-accent">§ 02</span>
+              <span className="text-muted-foreground mx-2">·</span>
               {m['landing.gallery.eyebrow']()}
             </p>
-            <h2 className="mt-4 text-4xl leading-tight font-semibold tracking-[-0.04em] sm:text-5xl">
+            <h2 className="mt-4 font-serif text-4xl leading-tight text-balance italic sm:text-5xl">
               {m['landing.gallery.title']()}
             </h2>
           </div>
@@ -126,6 +128,14 @@ export function CurveGallery() {
                     height="216"
                     fill={`url(#grid-${curve.key})`}
                   />
+                  {/* 坐标纸四角注册标记 */}
+                  <path
+                    d="M14 20h12M20 14v12 M306 20h-12M300 14v12 M14 196h12M20 202v-12 M306 196h-12M300 202v-12"
+                    fill="none"
+                    stroke="rgba(242,240,230,0.14)"
+                    strokeWidth="1"
+                    strokeLinecap="round"
+                  />
                   <path
                     d={curve.path}
                     fill="none"
@@ -151,9 +161,9 @@ export function CurveGallery() {
                       {tDynamic(`landing.gallery.${curve.key}.description`)}
                     </p>
                   </div>
-                  <ArrowUpRight className="text-muted-foreground mt-1 size-5 shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                  <ArrowUpRight className="text-muted-foreground group-hover:text-primary mt-1 size-5 shrink-0 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                 </div>
-                <code className="bg-muted text-foreground/75 mt-5 block overflow-x-auto rounded-xl px-4 py-3 text-xs">
+                <code className="bg-muted text-accent/85 border-border mt-5 block overflow-x-auto rounded-xl border border-dashed px-4 py-3 font-mono text-xs">
                   {curve.formula}
                 </code>
               </div>

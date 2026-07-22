@@ -17,7 +17,9 @@ export function Features() {
     >
       <div className="mx-auto max-w-6xl">
         <div className="max-w-3xl">
-          <p className="text-primary text-xs font-semibold tracking-[0.18em] uppercase">
+          <p className="text-primary font-mono text-xs font-semibold tracking-[0.18em] uppercase">
+            <span className="text-accent">§ 01</span>
+            <span className="text-muted-foreground mx-2">·</span>
             {m['landing.workflow.eyebrow']()}
           </p>
           <h2 className="mt-4 font-serif text-4xl leading-tight text-balance italic sm:text-5xl">
@@ -32,12 +34,13 @@ export function Features() {
           {STEPS.map(({ key, icon: Icon, number }) => (
             <article
               key={key}
-              className="group border-border bg-card hover:bg-secondary relative overflow-hidden rounded-2xl border-2 border-dashed p-7 transition-colors sm:p-8"
+              className="group border-border bg-card hover:bg-secondary hover:border-accent/30 relative overflow-hidden rounded-2xl border-2 border-dashed p-7 transition-colors sm:p-8"
             >
-              <span className="text-muted-foreground font-mono text-xs tracking-[0.16em]">
+              <span className="text-accent/70 font-mono text-xs tracking-[0.16em]">
                 {number}
+                <span className="bg-border ml-3 inline-block h-px w-8 align-middle" />
               </span>
-              <div className="bg-primary text-primary-foreground mt-10 flex size-11 items-center justify-center rounded-xl">
+              <div className="bg-primary text-primary-foreground mt-10 flex size-11 -rotate-2 items-center justify-center rounded-xl transition-transform group-hover:rotate-0">
                 <Icon className="size-5" strokeWidth={2} />
               </div>
               <h3 className="mt-6 text-xl font-semibold tracking-tight">
