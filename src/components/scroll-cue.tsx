@@ -27,7 +27,7 @@ export function ScrollCue() {
         <span className="font-mono text-[10px] tracking-[0.2em] uppercase opacity-70">
           scroll
         </span>
-        <span className="border-border flex size-8 animate-bounce items-center justify-center rounded-full border border-dashed [animation-duration:2s]">
+        <span className="border-border bg-card flex size-8 animate-bounce items-center justify-center rounded-full border [animation-duration:2s]">
           <ChevronDown className="size-4" />
         </span>
       </div>

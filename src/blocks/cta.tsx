@@ -7,18 +7,23 @@ import { buttonVariants } from '@/components/ui/button';
 
 export function CTA() {
   return (
-    <section className="px-4 pb-20 sm:px-6 sm:pb-28">
-      <div className="mx-auto max-w-6xl">
-        <div className="bg-primary text-primary-foreground relative overflow-hidden rounded-2xl px-6 py-14 text-center sm:px-10 sm:py-20">
-          <div className="curvg-cta-grid pointer-events-none absolute inset-0 opacity-35" />
-          <p className="relative font-mono text-xs font-semibold tracking-[0.18em] uppercase">
-            <span className="opacity-60">§ 03 ·</span>{' '}
+    <section className="px-4 sm:px-6">
+      <div className="curvg-frame relative mx-auto max-w-6xl px-6 py-20 sm:px-10 sm:py-24">
+        <span className="curvg-corner top-5 left-5" aria-hidden />
+        <span className="curvg-corner top-5 right-5" aria-hidden />
+        <span className="curvg-corner bottom-5 left-5" aria-hidden />
+        <span className="curvg-corner right-5 bottom-5" aria-hidden />
+        <div className="curvg-dotted-divider absolute inset-x-0 top-0" />
+
+        <div className="relative overflow-hidden rounded-2xl bg-[#191b3a] px-6 py-14 text-center text-[#f4f4f8] sm:px-10 sm:py-20">
+          <div className="curvg-cta-grid pointer-events-none absolute inset-0" />
+          <p className="relative font-mono text-xs font-semibold tracking-[0.18em] text-[#f4f4f8]/60 uppercase">
             {m['landing.cta.eyebrow']()}
           </p>
-          <h2 className="relative mx-auto mt-4 max-w-3xl font-serif text-4xl leading-[1.1] text-balance italic sm:text-5xl lg:text-6xl">
+          <h2 className="relative mx-auto mt-4 max-w-3xl text-4xl leading-[1.08] font-semibold tracking-[-0.03em] text-balance sm:text-5xl lg:text-6xl">
             {m['landing.cta.headline']()}
           </h2>
-          <p className="text-primary-foreground/70 relative mx-auto mt-6 max-w-2xl text-base leading-relaxed sm:text-lg">
+          <p className="relative mx-auto mt-6 max-w-2xl text-base leading-relaxed text-[#f4f4f8]/65 sm:text-lg">
             {m['landing.cta.subheadline']()}
           </p>
           <div className="relative mt-9 flex justify-center">
@@ -26,7 +31,7 @@ export function CTA() {
               href="/sign-up"
               className={cn(
                 buttonVariants({ size: 'lg' }),
-                'h-12 gap-2 rounded-lg bg-[#101815] px-8 text-[#f2f0e6] hover:bg-[#101815]/85'
+                'h-12 gap-2 rounded-lg bg-[#f4f4f8] px-8 text-[#191b3a] transition-transform hover:-translate-y-0.5 hover:bg-white'
               )}
             >
               {m['landing.cta.button']()}

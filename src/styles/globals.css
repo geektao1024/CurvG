@@ -58,78 +58,77 @@
 }
 
 @layer base {
-  /* 黑板宇宙（定案主题）：深色即正典，不是暗色变体。
-     色板见 docs/DESIGN_SYSTEM.md 第二节。 */
+  /* 精密画布主题（Ragnarok 式设计语言适配 CurvG）：
+     冰白画布 + 藏青文字 + 靛蓝主色，画框式侧轨布局。 */
   :root {
-    --background: #101815;
-    --foreground: #f2f0e6;
-    --card: #16211d;
-    --card-foreground: #f2f0e6;
-    --popover: #16211d;
-    --popover-foreground: #f2f0e6;
-    --primary: #7dd8c0;
-    --primary-foreground: #0c1512;
-    --secondary: #1b2721;
-    --secondary-foreground: #f2f0e6;
-    --muted: #16211d;
-    --muted-foreground: #8a9589;
-    --accent: #e8c477;
-    --accent-foreground: #101815;
-    --destructive: #e07a6a;
-    --destructive-foreground: #101815;
-    --border: rgba(242, 240, 230, 0.14);
-    --input: rgba(242, 240, 230, 0.14);
-    --ring: #7dd8c0;
-    --chart-1: #7dd8c0;
-    --chart-2: #e8c477;
-    --chart-3: #f2f0e6;
-    --chart-4: #8a9589;
-    --chart-5: #e07a6a;
-    --radius: 0.75rem;
-    --sidebar: #0c1310;
-    --sidebar-foreground: #f2f0e6;
-    --sidebar-primary: #7dd8c0;
-    --sidebar-primary-foreground: #0c1512;
-    --sidebar-accent: #1b2721;
-    --sidebar-accent-foreground: #f2f0e6;
-    --sidebar-border: rgba(242, 240, 230, 0.14);
-    --sidebar-ring: #7dd8c0;
+    --background: #f4f4f8;
+    --foreground: #191b3a;
+    --card: #ffffff;
+    --card-foreground: #191b3a;
+    --popover: #ffffff;
+    --popover-foreground: #191b3a;
+    --primary: #4f4ee6;
+    --primary-foreground: #ffffff;
+    --secondary: #ececf3;
+    --secondary-foreground: #191b3a;
+    --muted: #eeeef4;
+    --muted-foreground: #5f6280;
+    --accent: #e9e9fc;
+    --accent-foreground: #4f4ee6;
+    --destructive: #d8452e;
+    --destructive-foreground: #ffffff;
+    --border: #e1e2ec;
+    --input: #e1e2ec;
+    --ring: #4f4ee6;
+    --chart-1: #4f4ee6;
+    --chart-2: #191b3a;
+    --chart-3: #7a79f0;
+    --chart-4: #9ba0c0;
+    --chart-5: #d8452e;
+    --radius: 0.625rem;
+    --sidebar: #efeff4;
+    --sidebar-foreground: #191b3a;
+    --sidebar-primary: #4f4ee6;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #e9e9fc;
+    --sidebar-accent-foreground: #4f4ee6;
+    --sidebar-border: #e1e2ec;
+    --sidebar-ring: #4f4ee6;
   }
 
-  /* 黑板宇宙深色即默认，.dark 与 :root 保持一致以兼容主题切换逻辑 */
   .dark {
-    --background: #101815;
-    --foreground: #f2f0e6;
-    --card: #16211d;
-    --card-foreground: #f2f0e6;
-    --popover: #16211d;
-    --popover-foreground: #f2f0e6;
-    --primary: #7dd8c0;
-    --primary-foreground: #0c1512;
-    --secondary: #1b2721;
-    --secondary-foreground: #f2f0e6;
-    --muted: #16211d;
-    --muted-foreground: #8a9589;
-    --accent: #e8c477;
-    --accent-foreground: #101815;
-    --destructive: #e07a6a;
-    --destructive-foreground: #101815;
-    --border: rgba(242, 240, 230, 0.14);
-    --input: rgba(242, 240, 230, 0.14);
-    --ring: #7dd8c0;
-    --chart-1: #7dd8c0;
-    --chart-2: #e8c477;
-    --chart-3: #f2f0e6;
-    --chart-4: #8a9589;
-    --chart-5: #e07a6a;
-    --sidebar: #0c1310;
-    --sidebar-foreground: #f2f0e6;
-    --sidebar-primary: #7dd8c0;
-    --sidebar-primary-foreground: #0c1512;
-    --sidebar-accent: #1b2721;
-    --sidebar-accent-foreground: #f2f0e6;
-    --sidebar-border: rgba(242, 240, 230, 0.14);
-    --sidebar-ring: #7dd8c0;
+    --background: #131430;
+    --foreground: #eef0fa;
+    --card: #1a1c3e;
+    --card-foreground: #eef0fa;
+    --popover: #1a1c3e;
+    --popover-foreground: #eef0fa;
+    --primary: #7a79f0;
+    --primary-foreground: #10112a;
+    --secondary: #222450;
+    --secondary-foreground: #eef0fa;
+    --muted: #1e2047;
+    --muted-foreground: #9ba0c0;
+    --accent: #26285c;
+    --accent-foreground: #b9b8f7;
+    --destructive: #e0664f;
+    --destructive-foreground: #10112a;
+    --border: rgba(238, 240, 250, 0.12);
+    --input: rgba(238, 240, 250, 0.12);
+    --ring: #7a79f0;
+    --chart-1: #7a79f0;
+    --chart-2: #eef0fa;
+    --chart-3: #4f4ee6;
+    --chart-4: #9ba0c0;
+    --chart-5: #e0664f;
+    --sidebar: #10112a;
+    --sidebar-foreground: #eef0fa;
+    --sidebar-primary: #7a79f0;
+    --sidebar-primary-foreground: #10112a;
+    --sidebar-accent: #222450;
+    --sidebar-accent-foreground: #b9b8f7;
+    --sidebar-border: rgba(238, 240, 250, 0.12);
+    --sidebar-ring: #7a79f0;
   }
 }
 
@@ -146,106 +145,51 @@
     color: var(--primary-foreground);
   }
 
-  /* 全站黑板颗粒：极淡的粉笔尘噪点覆盖层（不拦截交互） */
-  body::after {
+  /* 画框侧轨：首页各区块的内容画布左右边框，模拟装裱画框 */
+  .curvg-frame {
+    border-inline: 1px solid var(--border);
+  }
+
+  /* 画框角落的十字定位标记（配合绝对定位使用） */
+  .curvg-corner {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+  }
+  .curvg-corner::after {
     content: '';
-    position: fixed;
-    inset: 0;
-    z-index: 80;
-    pointer-events: none;
-    opacity: 0.045;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-    background-size: 180px 180px;
+    position: absolute;
+    inset: 3px;
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--primary) 45%, transparent);
   }
 
-  /* 粉笔手绘下划线：标题重点词专用 */
-  .curvg-chalk-underline {
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 8' preserveAspectRatio='none'><path d='M2 5.5 C 24 2.5, 46 6.5, 68 4 S 108 3, 118 5' fill='none' stroke='%237dd8c0' stroke-width='2.2' stroke-linecap='round' opacity='0.75'/></svg>");
-    background-repeat: no-repeat;
-    background-position: 0 96%;
-    background-size: 100% 0.32em;
-    padding-bottom: 0.12em;
+  /* 点阵装饰：靛蓝细点矩阵，用于 hero 与区块空白处 */
+  .curvg-dotmatrix {
+    background-image: radial-gradient(
+      color-mix(in oklab, var(--primary) 32%, transparent) 1px,
+      transparent 1px
+    );
+    background-size: 14px 14px;
+    mask-image: radial-gradient(ellipse at center, black 30%, transparent 72%);
   }
 
-  /* 黑板上的柔和板擦痕：薄荷与琥珀的极低透明度光晕 */
-  .curvg-hero-glow {
-    background:
-      radial-gradient(
-        circle at 76% 24%,
-        rgb(125 216 192 / 8%),
-        transparent 40%
-      ),
-      radial-gradient(circle at 18% 12%, rgb(232 196 119 / 6%), transparent 35%);
-    filter: blur(18px);
-  }
-
+  /* 深色面板上的细网格（CTA 用） */
   .curvg-cta-grid {
     background-image:
-      linear-gradient(rgb(242 240 230 / 5%) 1px, transparent 1px),
-      linear-gradient(90deg, rgb(242 240 230 / 5%) 1px, transparent 1px);
+      linear-gradient(rgb(255 255 255 / 4%) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(255 255 255 / 4%) 1px, transparent 1px);
     background-size: 32px 32px;
     mask-image: radial-gradient(circle at center, black, transparent 76%);
   }
 
-  .curvg-curve-draw {
-    stroke-dasharray: 1;
-    stroke-dashoffset: 1;
-    animation: curve-draw 5.5s ease-in-out infinite;
-  }
-
-  @keyframes curve-draw {
-    0% {
-      stroke-dashoffset: 1;
-      opacity: 0.35;
-    }
-    46%,
-    82% {
-      stroke-dashoffset: 0;
-      opacity: 1;
-    }
-    100% {
-      stroke-dashoffset: -1;
-      opacity: 0.35;
-    }
-  }
-
-  @keyframes drift-a {
-    0%,
-    100% {
-      transform: translate3d(0, 0, 0) scale(1);
-    }
-    50% {
-      transform: translate3d(6%, -4%, 0) scale(1.1);
-    }
-  }
-  @keyframes drift-b {
-    0%,
-    100% {
-      transform: translate3d(0, 0, 0) scale(1);
-    }
-    50% {
-      transform: translate3d(-5%, 5%, 0) scale(0.95);
-    }
-  }
-  @keyframes drift-c {
-    0%,
-    100% {
-      transform: translate3d(0, 0, 0) scale(1);
-    }
-    50% {
-      transform: translate3d(4%, 6%, 0) scale(1.08);
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .animate-drift-a,
-    .animate-drift-b,
-    .animate-drift-c,
-    .curvg-curve-draw {
-      animation: none !important;
-    }
-
-    .curvg-curve-draw {
-      stroke-dashoffset: 0;
-    }
+  /* 虚线分隔带：区块之间的手账式点线过渡 */
+  .curvg-dotted-divider {
+    background-image: linear-gradient(90deg, var(--border) 33%, transparent 0%);
+    background-size: 6px 1px;
+    background-repeat: repeat-x;
+    height: 1px;
   }
 }

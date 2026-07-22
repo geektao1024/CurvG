@@ -1,4 +1,4 @@
-import { ArrowUpRight } from 'lucide-react';
+import { ArrowUpRight, Spline } from 'lucide-react';
 
 import { tDynamic } from '@/core/i18n/dynamic';
 import { m } from '@/paraglide/messages.js';
@@ -29,7 +29,7 @@ const CURVES = [
       0,
       Math.PI * 2
     ),
-    color: '#f2f0e6',
+    color: '#4f4ee6',
   },
   {
     key: 'rose',
@@ -45,7 +45,7 @@ const CURVES = [
       0,
       Math.PI * 2
     ),
-    color: '#e8c477',
+    color: '#191b3a',
   },
   {
     key: 'spirograph',
@@ -58,7 +58,7 @@ const CURVES = [
       0,
       Math.PI * 6
     ),
-    color: '#7dd8c0',
+    color: '#7a79f0',
   },
   {
     key: 'fourier',
@@ -71,37 +71,48 @@ const CURVES = [
       0,
       Math.PI * 2
     ),
-    color: '#8a9589',
+    color: '#9ba0c0',
   },
 ] as const;
 
 export function CurveGallery() {
   return (
-    <section id="gallery" className="px-4 py-20 sm:px-6 sm:py-28">
-      <div className="mx-auto max-w-6xl">
-        <div className="grid gap-8 lg:grid-cols-[0.72fr_1.28fr] lg:items-end">
-          <div>
-            <p className="text-primary font-mono text-xs font-semibold tracking-[0.18em] uppercase">
-              <span className="text-accent">§ 02</span>
-              <span className="text-muted-foreground mx-2">·</span>
+    <section id="gallery" className="px-4 sm:px-6">
+      <div className="curvg-frame relative mx-auto max-w-6xl px-6 py-20 sm:px-10 sm:py-28">
+        <span className="curvg-corner top-5 left-5" aria-hidden />
+        <span className="curvg-corner top-5 right-5" aria-hidden />
+        <div className="curvg-dotted-divider absolute inset-x-0 top-0" />
+
+        {/* 居中章节徽章 */}
+        <div className="flex justify-center">
+          <p className="text-muted-foreground flex items-center gap-2.5 font-mono text-sm">
+            <span className="text-border select-none" aria-hidden>
+              ‹‹
+            </span>
+            <Spline className="text-primary size-4" aria-hidden />
+            <span className="text-foreground font-medium">
               {m['landing.gallery.eyebrow']()}
-            </p>
-            <h2 className="mt-4 font-serif text-4xl leading-tight text-balance italic sm:text-5xl">
-              {m['landing.gallery.title']()}
-            </h2>
-          </div>
-          <p className="text-muted-foreground max-w-2xl text-base leading-7 lg:justify-self-end lg:text-lg">
-            {m['landing.gallery.description']()}
+            </span>
+            <span className="text-border select-none" aria-hidden>
+              ››
+            </span>
           </p>
         </div>
+
+        <h2 className="mx-auto mt-5 max-w-2xl text-center text-4xl leading-[1.1] font-semibold tracking-[-0.03em] text-balance sm:text-5xl">
+          {m['landing.gallery.title']()}
+        </h2>
+        <p className="text-muted-foreground mx-auto mt-5 max-w-xl text-center text-base leading-relaxed sm:text-lg">
+          {m['landing.gallery.description']()}
+        </p>
 
         <div className="mt-12 grid gap-5 md:grid-cols-2">
           {CURVES.map((curve) => (
             <article
               key={curve.key}
-              className="border-border bg-card group overflow-hidden rounded-2xl border-2 border-dashed transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_60px_-36px_rgba(0,0,0,0.6)]"
+              className="border-border bg-card group overflow-hidden rounded-xl border transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_60px_-36px_rgba(25,27,58,0.4)]"
             >
-              <div className="relative h-64 overflow-hidden bg-[#0c1310]">
+              <div className="bg-secondary relative h-64 overflow-hidden">
                 <svg
                   viewBox="0 0 320 216"
                   role="img"
@@ -118,7 +129,7 @@ export function CurveGallery() {
                       <path
                         d="M24 0H0V24"
                         fill="none"
-                        stroke="rgba(242,240,230,0.06)"
+                        stroke="rgba(25,27,58,0.07)"
                         strokeWidth="1"
                       />
                     </pattern>
@@ -132,7 +143,7 @@ export function CurveGallery() {
                   <path
                     d="M14 20h12M20 14v12 M306 20h-12M300 14v12 M14 196h12M20 202v-12 M306 196h-12M300 202v-12"
                     fill="none"
-                    stroke="rgba(242,240,230,0.14)"
+                    stroke="rgba(25,27,58,0.16)"
                     strokeWidth="1"
                     strokeLinecap="round"
                   />
@@ -147,7 +158,7 @@ export function CurveGallery() {
                     className="transition-[stroke-width] duration-300 group-hover:[stroke-width:3.2]"
                   />
                 </svg>
-                <span className="absolute top-4 left-4 rounded-full border border-white/10 bg-black/20 px-3 py-1 font-mono text-[10px] tracking-[0.14em] text-white/65 uppercase backdrop-blur">
+                <span className="border-border bg-card/80 text-muted-foreground absolute top-4 left-4 rounded-full border px-3 py-1 font-mono text-[10px] tracking-[0.14em] uppercase backdrop-blur">
                   {tDynamic(`landing.gallery.${curve.key}.tag`)}
                 </span>
               </div>
@@ -163,7 +174,7 @@ export function CurveGallery() {
                   </div>
                   <ArrowUpRight className="text-muted-foreground group-hover:text-primary mt-1 size-5 shrink-0 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                 </div>
-                <code className="bg-muted text-accent/85 border-border mt-5 block overflow-x-auto rounded-xl border border-dashed px-4 py-3 font-mono text-xs">
+                <code className="bg-muted text-foreground/75 border-border mt-5 block overflow-x-auto rounded-lg border px-4 py-3 font-mono text-xs">
                   {curve.formula}
                 </code>
               </div>
