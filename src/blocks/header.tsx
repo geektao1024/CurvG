@@ -3,6 +3,7 @@ import { SiteHeader } from '@/components/site-header';
 
 export function Header() {
   const navLinks = [
+    { href: '/creator', label: m['landing.nav.creator']() },
     { href: '/#gallery', label: m['landing.nav.gallery']() },
     { href: '/#workflow', label: m['landing.nav.workflow']() },
     { href: '/#faq', label: m['landing.nav.faq']() },
@@ -11,8 +12,8 @@ export function Header() {
   return (
     <SiteHeader
       navLinks={navLinks}
-      ctaHref="/sign-up"
-      ctaLabel={m['landing.nav.early_access']()}
+      ctaHref="/creator"
+      ctaLabel={m['landing.nav.creator']()}
     />
   );
 }

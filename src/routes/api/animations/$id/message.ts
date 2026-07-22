@@ -1,0 +1,52 @@
+import { createFileRoute } from '@tanstack/react-router';
+
+import { getAuth } from '@/core/auth';
+import { reviseAnimation } from '@/modules/animations/service';
+import { getAllConfigs } from '@/modules/config/service';
+import { enforceMinIntervalRateLimit } from '@/lib/rate-limit';
+import { respData, respErr } from '@/lib/resp';
+
+import { parseModelChoice, resolveChatProvider } from '../-shared';
+
+async function POST({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { id: string };
+}) {
+  try {
+    const auth = getAuth();
+    const session = await auth.api.getSession({ headers: request.headers });
+    if (!session?.user) return respErr('Unauthorized');
+    const limited = enforceMinIntervalRateLimit(request, {
+      intervalMs: 5_000,
+      keyPrefix: 'animation-revision',
+      extraKey: session.user.id,
+    });
+    if (limited) return limited;
+    const body = await request.json().catch(() => ({}));
+    const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+    if (!prompt) return respErr('Prompt is required');
+    if (prompt.length > 5000) return respErr('Prompt is too long');
+    const configs = await getAllConfigs();
+    const provider = resolveChatProvider(
+      configs,
+      parseModelChoice(body.modelChoice)
+    );
+    return respData(
+      await reviseAnimation({
+        userId: session.user.id,
+        id: params.id,
+        prompt,
+        ...provider,
+      })
+    );
+  } catch (error) {
+    return respErr(error instanceof Error ? error.message : 'Internal error');
+  }
+}
+
+export const Route = createFileRoute('/api/animations/$id/message')({
+  server: { handlers: { POST } },
+});

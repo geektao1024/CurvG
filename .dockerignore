@@ -13,6 +13,8 @@ src/paraglide
 .env
 .env.local
 .env.development
+.dev.vars
+.dev.vars.*
 !.env.example
 !.env.production
 

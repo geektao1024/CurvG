@@ -165,6 +165,12 @@ export function getSettingGroups(): SettingGroup[] {
       tab: 'ai',
     },
     {
+      name: 'animation_renderer',
+      title: 'Animation Renderer',
+      description: 'Isolated Manim renderer service',
+      tab: 'ai',
+    },
+    {
       name: 'replicate',
       title: 'Replicate',
       description: 'Replicate AI API',
@@ -768,6 +774,14 @@ export function getSettings(): Setting[] {
       group: 'openai',
       tab: 'ai',
     },
+    {
+      name: 'openai_model',
+      title: 'Animation Model',
+      type: 'text',
+      placeholder: 'gpt-4.1-mini',
+      group: 'openai',
+      tab: 'ai',
+    },
 
     // ─── AI / Anthropic ──────────────────────────────────────────────
     {
@@ -784,6 +798,31 @@ export function getSettings(): Setting[] {
       type: 'password',
       placeholder: 'sk-ant-xxx',
       group: 'anthropic',
+      tab: 'ai',
+    },
+    {
+      name: 'anthropic_model',
+      title: 'Animation Model',
+      type: 'text',
+      placeholder: 'claude-sonnet-4-5',
+      group: 'anthropic',
+      tab: 'ai',
+    },
+
+    {
+      name: 'animation_renderer_url',
+      title: 'Renderer URL',
+      type: 'text',
+      placeholder: 'https://renderer.example.workers.dev',
+      group: 'animation_renderer',
+      tab: 'ai',
+    },
+    {
+      name: 'animation_renderer_token',
+      title: 'Renderer Token',
+      type: 'password',
+      placeholder: '',
+      group: 'animation_renderer',
       tab: 'ai',
     },
 
