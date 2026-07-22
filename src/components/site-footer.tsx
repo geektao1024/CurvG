@@ -35,10 +35,10 @@ export function SiteFooter({
   const year = new Date().getFullYear();
 
   return (
-    <footer className="bg-[#001e2b] text-neutral-100">
+    <footer className="bg-sidebar text-sidebar-foreground border-border border-t-2 border-dashed">
       <div className="mx-auto max-w-7xl px-6 pt-14 pb-6 sm:px-10 sm:pt-16 lg:px-16">
         {tagline && (
-          <p className="mb-12 max-w-2xl text-3xl leading-[1.1] font-semibold tracking-[-0.04em] text-white sm:text-4xl">
+          <p className="text-foreground mb-12 max-w-2xl font-serif text-3xl leading-[1.15] text-balance italic sm:text-4xl">
             {tagline}
           </p>
         )}
@@ -56,7 +56,7 @@ export function SiteFooter({
           >
             {columns.map((col) => (
               <div key={col.title} className="space-y-5">
-                <p className="text-[13px] font-semibold tracking-wide text-neutral-100">
+                <p className="text-foreground text-[13px] font-semibold tracking-wide">
                   {col.title}
                 </p>
                 <ul className="space-y-2">
@@ -67,7 +67,7 @@ export function SiteFooter({
                           href={link.href}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-sm text-neutral-400 transition-colors hover:text-neutral-100"
+                          className="text-muted-foreground hover:text-foreground text-sm transition-colors"
                         >
                           {link.label}
                         </a>
@@ -75,7 +75,7 @@ export function SiteFooter({
                         <Link
                           href={link.href}
                           target={link.external ? '_blank' : undefined}
-                          className="text-sm text-neutral-400 transition-colors hover:text-neutral-100"
+                          className="text-muted-foreground hover:text-foreground text-sm transition-colors"
                         >
                           {link.label}
                         </Link>
@@ -99,7 +99,7 @@ export function SiteFooter({
                   aria-label={s.label}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-neutral-300 transition-colors hover:text-neutral-100"
+                  className="text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <s.icon className="size-[18px]" />
                 </a>
@@ -110,14 +110,14 @@ export function SiteFooter({
           )}
           <LocaleSelector
             variant="pill"
-            className="border-neutral-700 text-neutral-200 hover:bg-white/5 hover:text-neutral-50"
+            className="border-border text-foreground hover:bg-secondary hover:text-foreground"
           />
         </div>
 
         {/* Bottom bar */}
-        <div className="mt-6 flex flex-col gap-3 border-t border-neutral-800 pt-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="border-border mt-6 flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
           <BuiltWithShipAny />
-          <span className="text-sm text-neutral-400">
+          <span className="text-muted-foreground text-sm">
             {copyright ||
               `© ${year} ${envConfigs.app_name}. All rights reserved.`}
           </span>

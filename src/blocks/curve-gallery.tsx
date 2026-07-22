@@ -29,7 +29,7 @@ const CURVES = [
       0,
       Math.PI * 2
     ),
-    color: '#00ed64',
+    color: '#f2f0e6',
   },
   {
     key: 'rose',
@@ -45,7 +45,7 @@ const CURVES = [
       0,
       Math.PI * 2
     ),
-    color: '#ffcc00',
+    color: '#e8c477',
   },
   {
     key: 'spirograph',
@@ -58,7 +58,7 @@ const CURVES = [
       0,
       Math.PI * 6
     ),
-    color: '#75e6ff',
+    color: '#7dd8c0',
   },
   {
     key: 'fourier',
@@ -71,7 +71,7 @@ const CURVES = [
       0,
       Math.PI * 2
     ),
-    color: '#c7a8ff',
+    color: '#8a9589',
   },
 ] as const;
 
@@ -97,9 +97,9 @@ export function CurveGallery() {
           {CURVES.map((curve) => (
             <article
               key={curve.key}
-              className="border-border bg-card group overflow-hidden rounded-3xl border transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_60px_-36px_rgba(0,30,43,0.5)]"
+              className="border-border bg-card group overflow-hidden rounded-2xl border-2 border-dashed transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_60px_-36px_rgba(0,0,0,0.6)]"
             >
-              <div className="relative h-64 overflow-hidden bg-[#001e2b]">
+              <div className="relative h-64 overflow-hidden bg-[#0c1310]">
                 <svg
                   viewBox="0 0 320 216"
                   role="img"
@@ -116,7 +116,7 @@ export function CurveGallery() {
                       <path
                         d="M24 0H0V24"
                         fill="none"
-                        stroke="rgba(255,255,255,0.055)"
+                        stroke="rgba(242,240,230,0.06)"
                         strokeWidth="1"
                       />
                     </pattern>

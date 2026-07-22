@@ -123,7 +123,7 @@ function RootComponent() {
 
 function RootDocument({ children }: { children: ReactNode }) {
   return (
-    <html lang={getLocale()} suppressHydrationWarning>
+    <html lang={getLocale()} className="bg-background" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>

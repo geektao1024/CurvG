@@ -58,75 +58,78 @@
 }
 
 @layer base {
+  /* 黑板宇宙（定案主题）：深色即正典，不是暗色变体。
+     色板见 docs/DESIGN_SYSTEM.md 第二节。 */
   :root {
-    --background: oklch(0.99 0.005 165);
-    --foreground: oklch(0.22 0.04 210);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.22 0.04 210);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.22 0.04 210);
-    --primary: oklch(0.83 0.22 148);
-    --primary-foreground: oklch(0.2 0.04 210);
-    --secondary: oklch(0.955 0.025 157);
-    --secondary-foreground: oklch(0.22 0.04 210);
-    --muted: oklch(0.96 0.01 180);
-    --muted-foreground: oklch(0.5 0.03 210);
-    --accent: oklch(0.94 0.045 153);
-    --accent-foreground: oklch(0.22 0.04 210);
-    --destructive: oklch(0.577 0.245 27.325);
-    --destructive-foreground: oklch(0.577 0.245 27.325);
-    --border: oklch(0.9 0.018 180);
-    --input: oklch(0.9 0.018 180);
-    --ring: oklch(0.83 0.22 148);
-    --chart-1: oklch(0.646 0.222 41.116);
-    --chart-2: oklch(0.6 0.118 184.714);
-    --chart-3: oklch(0.398 0.07 227.392);
-    --chart-4: oklch(0.828 0.189 84.429);
-    --chart-5: oklch(0.769 0.188 70.08);
+    --background: #101815;
+    --foreground: #f2f0e6;
+    --card: #16211d;
+    --card-foreground: #f2f0e6;
+    --popover: #16211d;
+    --popover-foreground: #f2f0e6;
+    --primary: #7dd8c0;
+    --primary-foreground: #0c1512;
+    --secondary: #1b2721;
+    --secondary-foreground: #f2f0e6;
+    --muted: #16211d;
+    --muted-foreground: #8a9589;
+    --accent: #e8c477;
+    --accent-foreground: #101815;
+    --destructive: #e07a6a;
+    --destructive-foreground: #101815;
+    --border: rgba(242, 240, 230, 0.14);
+    --input: rgba(242, 240, 230, 0.14);
+    --ring: #7dd8c0;
+    --chart-1: #7dd8c0;
+    --chart-2: #e8c477;
+    --chart-3: #f2f0e6;
+    --chart-4: #8a9589;
+    --chart-5: #e07a6a;
     --radius: 0.75rem;
-    --sidebar: oklch(0.985 0.008 175);
-    --sidebar-foreground: oklch(0.22 0.04 210);
-    --sidebar-primary: oklch(0.83 0.22 148);
-    --sidebar-primary-foreground: oklch(0.2 0.04 210);
-    --sidebar-accent: oklch(0.94 0.045 153);
-    --sidebar-accent-foreground: oklch(0.22 0.04 210);
-    --sidebar-border: oklch(0.9 0.018 180);
-    --sidebar-ring: oklch(0.83 0.22 148);
+    --sidebar: #0c1310;
+    --sidebar-foreground: #f2f0e6;
+    --sidebar-primary: #7dd8c0;
+    --sidebar-primary-foreground: #0c1512;
+    --sidebar-accent: #1b2721;
+    --sidebar-accent-foreground: #f2f0e6;
+    --sidebar-border: rgba(242, 240, 230, 0.14);
+    --sidebar-ring: #7dd8c0;
   }
 
+  /* 黑板宇宙深色即默认，.dark 与 :root 保持一致以兼容主题切换逻辑 */
   .dark {
-    --background: oklch(0.2 0.04 210);
-    --foreground: oklch(0.97 0.01 170);
-    --card: oklch(0.24 0.04 210);
-    --card-foreground: oklch(0.97 0.01 170);
-    --popover: oklch(0.24 0.04 210);
-    --popover-foreground: oklch(0.97 0.01 170);
-    --primary: oklch(0.83 0.22 148);
-    --primary-foreground: oklch(0.2 0.04 210);
-    --secondary: oklch(0.28 0.04 210);
-    --secondary-foreground: oklch(0.97 0.01 170);
-    --muted: oklch(0.28 0.035 210);
-    --muted-foreground: oklch(0.72 0.025 185);
-    --accent: oklch(0.32 0.05 195);
-    --accent-foreground: oklch(0.97 0.01 170);
-    --destructive: oklch(0.577 0.245 27.325);
-    --destructive-foreground: oklch(0.577 0.245 27.325);
-    --border: oklch(0.34 0.04 205);
-    --input: oklch(0.34 0.04 205);
-    --ring: oklch(0.83 0.22 148);
-    --chart-1: oklch(0.488 0.243 264.376);
-    --chart-2: oklch(0.696 0.17 162.48);
-    --chart-3: oklch(0.769 0.188 70.08);
-    --chart-4: oklch(0.627 0.265 303.9);
-    --chart-5: oklch(0.645 0.246 16.439);
-    --sidebar: oklch(0.185 0.04 210);
-    --sidebar-foreground: oklch(0.97 0.01 170);
-    --sidebar-primary: oklch(0.83 0.22 148);
-    --sidebar-primary-foreground: oklch(0.2 0.04 210);
-    --sidebar-accent: oklch(0.28 0.04 210);
-    --sidebar-accent-foreground: oklch(0.97 0.01 170);
-    --sidebar-border: oklch(0.34 0.04 205);
-    --sidebar-ring: oklch(0.83 0.22 148);
+    --background: #101815;
+    --foreground: #f2f0e6;
+    --card: #16211d;
+    --card-foreground: #f2f0e6;
+    --popover: #16211d;
+    --popover-foreground: #f2f0e6;
+    --primary: #7dd8c0;
+    --primary-foreground: #0c1512;
+    --secondary: #1b2721;
+    --secondary-foreground: #f2f0e6;
+    --muted: #16211d;
+    --muted-foreground: #8a9589;
+    --accent: #e8c477;
+    --accent-foreground: #101815;
+    --destructive: #e07a6a;
+    --destructive-foreground: #101815;
+    --border: rgba(242, 240, 230, 0.14);
+    --input: rgba(242, 240, 230, 0.14);
+    --ring: #7dd8c0;
+    --chart-1: #7dd8c0;
+    --chart-2: #e8c477;
+    --chart-3: #f2f0e6;
+    --chart-4: #8a9589;
+    --chart-5: #e07a6a;
+    --sidebar: #0c1310;
+    --sidebar-foreground: #f2f0e6;
+    --sidebar-primary: #7dd8c0;
+    --sidebar-primary-foreground: #0c1512;
+    --sidebar-accent: #1b2721;
+    --sidebar-accent-foreground: #f2f0e6;
+    --sidebar-border: rgba(242, 240, 230, 0.14);
+    --sidebar-ring: #7dd8c0;
   }
 }
 
@@ -139,25 +142,26 @@
   }
 
   ::selection {
-    background: color-mix(in oklab, var(--primary) 70%, white);
-    color: #001e2b;
+    background: var(--primary);
+    color: var(--primary-foreground);
   }
 
+  /* 黑板上的柔和板擦痕：薄荷与琥珀的极低透明度光晕 */
   .curvg-hero-glow {
     background:
-      radial-gradient(circle at 76% 24%, rgb(0 237 100 / 24%), transparent 27%),
       radial-gradient(
-        circle at 18% 12%,
-        rgb(117 230 255 / 18%),
-        transparent 24%
-      );
+        circle at 76% 24%,
+        rgb(125 216 192 / 8%),
+        transparent 40%
+      ),
+      radial-gradient(circle at 18% 12%, rgb(232 196 119 / 6%), transparent 35%);
     filter: blur(18px);
   }
 
   .curvg-cta-grid {
     background-image:
-      linear-gradient(rgb(0 30 43 / 12%) 1px, transparent 1px),
-      linear-gradient(90deg, rgb(0 30 43 / 12%) 1px, transparent 1px);
+      linear-gradient(rgb(242 240 230 / 5%) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(242 240 230 / 5%) 1px, transparent 1px);
     background-size: 32px 32px;
     mask-image: radial-gradient(circle at center, black, transparent 76%);
   }
