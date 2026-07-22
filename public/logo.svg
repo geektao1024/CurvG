@@ -1,6 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="CurvG logo">
-  <rect width="512" height="512" rx="112" fill="#001e2b"/>
-  <path d="M365 142c-31-38-77-59-126-54-83 8-145 82-137 165 8 83 82 145 165 137 40-4 76-23 102-51" fill="none" stroke="#00ed64" stroke-width="58" stroke-linecap="round"/>
-  <path d="M269 260h100v79" fill="none" stroke="#b7ffcb" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="369" cy="339" r="20" fill="#00ed64"/>
+  <!-- 黑板宇宙品牌 logo：粉笔曲线 C + 琥珀追踪点（呼应首页 LivingCurve） -->
+  <rect width="512" height="512" rx="112" fill="#101815"/>
+  <!-- 粉笔坐标轴原点：左下角的 L 形轴线 -->
+  <path d="M100 330v70h70" fill="none" stroke="#f2f0e6" stroke-opacity="0.34" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- 薄荷粉笔曲线 C：起笔重、收笔轻的手绘弧 -->
+  <path d="M368 150c-34-36-84-52-133-40-72 18-116 91-98 163 18 72 91 116 163 98 31-8 57-26 75-50" fill="none" stroke="#7dd8c0" stroke-width="52" stroke-linecap="round"/>
+  <!-- 琥珀追踪点：停在笔尖 -->
+  <circle cx="381" cy="314" r="30" fill="#e8c477"/>
 </svg>
