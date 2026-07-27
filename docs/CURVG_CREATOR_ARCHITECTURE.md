@@ -49,6 +49,8 @@ CurvG exposes a provider-neutral chat completion interface. The first adapters a
 
 Model IDs are configuration, not source-code constants. This prevents the application from depending on names that change over time.
 
+The Creator model selector loads Yunwu's current OpenAI-compatible model directory from `/v1/models`, keeps text/chat-capable entries, and sends the selected provider/model pair with create, revise and approve requests. `Auto` is available only when an administrator has configured a default model; it does not silently choose an arbitrary catalog entry.
+
 ## Renderer boundary
 
 The web application does not execute generated Python. It dispatches approved code to an authenticated renderer endpoint.
@@ -91,6 +93,18 @@ sequenceDiagram
 - A Python AST gate permits only Manim, `math` and NumPy imports before execution.
 
 The AST gate is defense in depth, not the primary security boundary. Generated code still runs only inside a disposable Sandbox container with no application or provider secrets.
+
+## Artifact inspection model
+
+The Creator exposes the same three persisted truths used by the backend instead of collapsing them into one preview:
+
+- `Specification` renders formulas, assumptions, scenes, frame layout, area descriptions, dependencies and implementation notes.
+- `Code` renders the generated Python as a read-only, line-numbered artifact with copy and `.py` download actions.
+- `Video` reads the private MP4 through the authenticated artifact route and shows queued, rendering, completed and failed states.
+
+The right workspace also maps persistent states to `Spec → Approve → Process → Done`. It automatically selects the newest relevant artifact only when the animation ID or status changes, so polling does not override a user's manual tab selection.
+
+The browser first plays the same-origin artifact URL so HTTP Range remains available. A full authenticated Blob download is only a compatibility fallback after native playback fails.
 
 ## Implemented files
 
@@ -155,9 +169,11 @@ pnpm exec wrangler dev --config renderer/wrangler.jsonc --port 8787 \
   --var RENDERER_TOKEN:<local-test-token>
 ```
 
-The local callback receiver must listen on port `8788`, return `{ "code": 0 }`, and accept the same bearer token. A render request is then sent to `POST http://localhost:8787/render` with `animationId`, `callbackUrl` and valid `CurvGScene` source.
+The callback can target the running CurvG application, for example `http://localhost:3000/api/animations/<id>/render-callback`, or a standalone receiver. It must return `{ "code": 0 }` and accept the same bearer token. A render request is sent to `POST http://localhost:8787/render` with `animationId`, `callbackUrl` and valid `CurvGScene` source.
 
 The renderer actively consumes the Sandbox RPC file stream and uploads artifacts with R2 multipart upload in 5 MiB parts. Passing the RPC stream directly to local R2 caused `WritableStream RPC stub was disposed without calling close()` with Sandbox SDK 0.12.4; multipart upload avoids that transport failure without buffering an entire video in Worker memory.
+
+Before upload, FFmpeg remuxes the Manim MP4 with `-movflags +faststart`, placing the `moov` metadata before `mdat` so browsers can read duration and begin playback through byte-range requests. Renderer callbacks store same-origin relative artifact URLs. In production the app reads the shared `CURVG_ASSETS` binding directly; during local development, when that binding is absent, the authenticated artifact route proxies Range requests to the renderer's protected `GET /artifact/:animationId/:jobId/:kind` endpoint.
 
 ## Cloudflare fit
 
@@ -172,6 +188,17 @@ Cloudflare is a suitable single-platform choice for this architecture:
 This does not mean rendering is free or operationally zero-cost. Container startup, CPU time, memory, disk, Queue operations, Durable Objects and R2 storage are billed separately according to their current Cloudflare pricing.
 
 ## Verification status
+
+Verified on 2026-07-24:
+
+- The saved Yunwu credential authenticated against `https://yunwu.ai/v1/models`; 403 provider models were returned during the test and the Creator selector loaded the filtered dynamic catalog.
+- A direct `deepseek-v4-pro` smoke request returned HTTP 200 and the expected response. Its first full specification request ended with a transient `fetch failed`; the added one-retry policy recovered the next request.
+- `deepseek-v4-pro` was not reliable enough for this Manim compiler workload. Live outputs used unsupported `self.camera.frame` on `Scene`, later invented `MathTex.get_scale_factor()`, reassigned an undisplayed Transform target as the next source, and produced one technically valid render whose equations were mis-scaled and overlapped the diagram.
+- The same approved workflow was then run with Yunwu `deepseek-chat` (reported by the catalog as DeepSeek V3.2). The final attempt completed without manual source editing: model specification → approval → generated Python → AST validation → Cloudflare Queue → Sandbox → Manim → FFmpeg thumbnail → local R2 → authenticated callback.
+- The final `deepseek-chat` artifact was read back from local R2 and inspected: H.264, 1280×720, yuv420p, 30 fps, exactly 6.0 seconds, 103,919 bytes. Four sampled stages show the blue, orange, green and purple layers forming the 1×1 through 4×4 squares; each equation remains visible above the grid without overlap.
+- The run exposed and fixed missing guardrails for provider retry behavior, approval-time model audit fields, `self.camera.frame`, guessed Axes helpers, `get_scale_factor`, hidden FadeIn targets, Transform-source reassignment, unpositioned formula targets, text outside the safe frame, non-positive `run_time`, and non-positive `wait` durations.
+- The Creator record `5ea16f36-66df-4d9a-b6d0-0f5cf4a83418` finished as `completed` with provider `yunwu`, model `deepseek-chat`, and render job `4f381e2c-817b-40a7-baca-3db7b942b19c`.
+- The completed Euler test artifact was normalized from tail-`moov` MP4 to faststart MP4. Renderer and app-proxy Range reads return HTTP 206 with `video/mp4`; FFprobe reports H.264 High, yuv420p, 1280×720, 30 fps and 23.0 seconds.
 
 Verified on 2026-07-22:
 
@@ -191,8 +218,6 @@ Verified on 2026-07-22:
 
 Not yet verified:
 
-- No live model request was sent. The local config database contains no OpenAI or Anthropic API key/model, and no supported provider credential exists in the process environment.
-- The complete model → specification → approval → code → renderer path therefore remains blocked on a real provider credential. Configure it in `/admin/settings`; do not paste the secret into project files or chat.
 - No production Sandbox, Queue or R2 resource was created or tested because deployment was intentionally deferred.
 - Local Miniflare R2 success proves the application flow and binding API, but it is not evidence that remote Cloudflare account resources, permissions, limits or billing are correctly configured.
 

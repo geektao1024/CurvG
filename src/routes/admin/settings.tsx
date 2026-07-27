@@ -387,6 +387,7 @@ function SettingField({
       <Label htmlFor={setting.name}>{label}</Label>
       <Input
         id={setting.name}
+        name={`config-${setting.name}`}
         type={
           setting.type === 'password'
             ? 'password'
@@ -397,6 +398,11 @@ function SettingField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        autoComplete={setting.type === 'password' ? 'new-password' : 'off'}
+        data-1p-ignore
+        data-lpignore="true"
+        data-form-type="other"
+        spellCheck={false}
       />
     </div>
   );

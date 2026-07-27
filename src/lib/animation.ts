@@ -9,6 +9,46 @@ export type AnimationSubject =
 
 export type AnimationModelChoice = 'auto' | 'openai' | 'yunwu' | 'anthropic';
 
+export type AnimationModelProvider = Exclude<AnimationModelChoice, 'auto'>;
+
+export interface AnimationModelOption {
+  provider: AnimationModelProvider;
+  model: string;
+  isDefault: boolean;
+  description?: string;
+}
+
+export interface AnimationModelCatalog {
+  options: AnimationModelOption[];
+  defaultProvider?: AnimationModelProvider;
+  defaultModel?: string;
+}
+
+export function animationModelValue(
+  provider: AnimationModelProvider,
+  model: string
+): string {
+  return `${provider}:${model}`;
+}
+
+export function parseAnimationModelValue(value: string): {
+  modelChoice: AnimationModelChoice;
+  model?: string;
+} {
+  if (!value || value === 'auto') return { modelChoice: 'auto' };
+  const separator = value.indexOf(':');
+  if (separator <= 0) return { modelChoice: 'auto' };
+  const provider = value.slice(0, separator);
+  const model = value.slice(separator + 1).trim();
+  if (!model || !['openai', 'yunwu', 'anthropic'].includes(provider)) {
+    return { modelChoice: 'auto' };
+  }
+  return {
+    modelChoice: provider as AnimationModelProvider,
+    model,
+  };
+}
+
 export type AnimationStatus =
   | 'draft'
   | 'generating_spec'
@@ -30,6 +70,12 @@ export interface AnimationSceneSpec {
   actions: string[];
 }
 
+export interface AnimationAreaSpec {
+  name: string;
+  content: string;
+  implementation: string;
+}
+
 export interface AnimationSpec {
   title: string;
   summary: string;
@@ -41,6 +87,10 @@ export interface AnimationSpec {
     palette: string[];
     camera: string;
   };
+  layout?: string;
+  areas?: AnimationAreaSpec[];
+  dependencies?: string[];
+  notes?: string[];
   scenes: AnimationSceneSpec[];
 }
 
@@ -98,6 +148,12 @@ export interface AnimationDetail extends AnimationSummary {
   parts: AnimationParts;
   messages: AnimationMessage[];
 }
+
+export type AnimationGenerationEvent =
+  | { type: 'started'; animation: AnimationDetail }
+  | { type: 'delta'; delta: string }
+  | { type: 'completed'; animation: AnimationDetail }
+  | { type: 'error'; message: string };
 
 const busyStatuses = new Set<AnimationStatus>([
   'generating_spec',

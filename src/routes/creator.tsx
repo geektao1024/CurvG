@@ -2,16 +2,14 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { envConfigs } from '@/config';
 import { m } from '@/paraglide/messages.js';
-import { getLocale, localizeUrl } from '@/paraglide/runtime.js';
+import { getLocale, locales, localizeUrl } from '@/paraglide/runtime.js';
 import { CreatorWorkspace } from '@/blocks/creator-workspace';
-import { Header } from '@/blocks/header';
 
 function CreatorPage() {
   const { locale } = Route.useLoaderData();
   const { animationId } = Route.useSearch();
   return (
     <div className="bg-background text-foreground min-h-screen">
-      <Header />
       <CreatorWorkspace locale={locale} initialAnimationId={animationId} />
     </div>
   );
@@ -35,16 +33,31 @@ export const Route = createFileRoute('/creator')({
     const url = localizeUrl(`${envConfigs.app_url}/creator`, {
       locale: locale as any,
     }).href;
+    const urlFor = (loc: string) =>
+      localizeUrl(`${envConfigs.app_url}/creator`, {
+        locale: loc as any,
+      }).href;
     return {
       meta: [
         { title },
         { name: 'description', content: description },
         { property: 'og:title', content: title },
         { property: 'og:description', content: description },
+        { property: 'og:type', content: 'website' },
         { property: 'og:url', content: url },
-        { name: 'robots', content: 'noindex, nofollow' },
+        { name: 'twitter:card', content: 'summary' },
+        { name: 'twitter:title', content: title },
+        { name: 'twitter:description', content: description },
       ],
-      links: [{ rel: 'canonical', href: url }],
+      links: [
+        { rel: 'canonical', href: url },
+        ...locales.map((loc) => ({
+          rel: 'alternate',
+          hrefLang: loc,
+          href: urlFor(loc),
+        })),
+        { rel: 'alternate', hrefLang: 'x-default', href: urlFor('en') },
+      ],
     };
   },
   component: CreatorPage,

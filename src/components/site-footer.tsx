@@ -26,17 +26,31 @@ export function SiteFooter({
   columns,
   socials,
   copyright,
+  disclaimer,
+  framed = false,
 }: {
   tagline?: string;
   columns?: FooterColumn[];
   socials?: FooterSocial[];
   copyright?: string;
+  disclaimer?: string;
+  framed?: boolean;
 }) {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="bg-sidebar text-sidebar-foreground border-border border-t">
-      <div className="mx-auto max-w-7xl px-6 pt-14 pb-6 sm:px-10 sm:pt-16 lg:px-16">
+    <footer
+      className={cn(
+        'text-sidebar-foreground border-border border-t',
+        framed ? 'bg-background' : 'bg-sidebar'
+      )}
+    >
+      <div
+        className={cn(
+          'px-6 pt-14 pb-6 sm:px-10 sm:pt-16',
+          framed ? 'curvg-stage curvg-frame' : 'mx-auto max-w-7xl lg:px-16'
+        )}
+      >
         {tagline && (
           <p className="text-foreground mb-12 max-w-2xl text-3xl leading-[1.15] font-semibold tracking-[-0.03em] text-balance sm:text-4xl">
             {tagline}
@@ -122,6 +136,11 @@ export function SiteFooter({
               `© ${year} ${envConfigs.app_name}. All rights reserved.`}
           </span>
         </div>
+        {disclaimer ? (
+          <p className="text-muted-foreground mt-4 max-w-4xl text-xs leading-5">
+            {disclaimer}
+          </p>
+        ) : null}
       </div>
     </footer>
   );

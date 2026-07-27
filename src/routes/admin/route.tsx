@@ -14,6 +14,9 @@ import { m } from '@/paraglide/messages.js';
 import { AppLayout } from '@/components/app-layout';
 
 export const Route = createFileRoute('/admin')({
+  head: () => ({
+    meta: [{ name: 'robots', content: 'noindex, nofollow' }],
+  }),
   component: AdminLayout,
 });
 

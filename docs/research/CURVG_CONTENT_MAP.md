@@ -28,9 +28,9 @@
 
 ## 关键词方向
 
-- math curve animation
-- parametric curve animation
-- polar curve animation
-- Manim generator
-- equation animation
-- mathematical animation gallery
+- 首页：math curve animation gallery、math animation generator、equation animation。
+- Creator：AI Manim animation generator、online Manim generator、Manim 数学动画生成器。
+- 内容库：parametric curve animation、polar curve animation、公式动画、数学可视化动画。
+- 定价：CurvG pricing、early access、render cost validation。
+
+完整页面映射、中文表达和能力声明边界见 `docs/SEO_CONTENT_STRATEGY.md`。当前没有关键词搜索量数据，不应把以上表达宣传为“高流量关键词”。

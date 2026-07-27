@@ -2,6 +2,10 @@
 
 Verified with the authenticated Ego Lite session on 2026-07-22.
 
+Public code, artifact and Playground behavior was rechecked on 2026-07-27. See
+`docs/research/animg.app/CODE_AND_ARTIFACT_IMPLEMENTATION.md` for the verified
+display structure and the CurvG adaptation.
+
 Target: <https://animg.app/en/creator?animationId=R7nZ818ESbyNDVfAW0bD>
 
 ## Verified frontend architecture

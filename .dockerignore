@@ -33,6 +33,8 @@ drizzle
 .codex
 .vercel
 .wrangler
+.playwright-cli
+output
 wrangler.jsonc
 wrangler.example.jsonc
 

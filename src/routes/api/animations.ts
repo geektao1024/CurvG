@@ -12,6 +12,7 @@ import {
   parseSubject,
   resolveChatProvider,
 } from './animations/-shared';
+import { animationEventStream } from './animations/-stream';
 
 async function GET({ request }: { request: Request }) {
   try {
@@ -40,10 +41,27 @@ async function POST({ request }: { request: Request }) {
     if (!prompt) return respErr('Prompt is required');
     if (prompt.length > 5000) return respErr('Prompt is too long');
     const configs = await getAllConfigs();
-    const provider = resolveChatProvider(
+    const provider = await resolveChatProvider(
       configs,
-      parseModelChoice(body.modelChoice)
+      parseModelChoice(body.modelChoice),
+      typeof body.model === 'string' ? body.model.trim() : undefined
     );
+    if (request.headers.get('accept')?.includes('text/event-stream')) {
+      return animationEventStream(async (send) => {
+        const animation = await createAnimation({
+          userId: session.user.id,
+          prompt,
+          subject: parseSubject(body.subject),
+          ...provider,
+          hooks: {
+            onStarted: (started) =>
+              send({ type: 'started', animation: started }),
+            onSummaryDelta: (delta) => send({ type: 'delta', delta }),
+          },
+        });
+        send({ type: 'completed', animation });
+      });
+    }
     const result: AnimationDetail = await createAnimation({
       userId: session.user.id,
       prompt,

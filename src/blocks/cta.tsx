@@ -1,14 +1,13 @@
-import { ArrowRight } from 'lucide-react';
-
 import { Link } from '@/core/i18n/navigation';
 import { cn } from '@/lib/utils';
 import { m } from '@/paraglide/messages.js';
+import { PixelArrowRail } from '@/components/pixel-arrow';
 import { buttonVariants } from '@/components/ui/button';
 
 export function CTA() {
   return (
-    <section className="px-4 sm:px-6">
-      <div className="curvg-frame relative mx-auto max-w-6xl px-6 py-20 sm:px-10 sm:py-24">
+    <section>
+      <div className="curvg-stage curvg-frame relative px-6 py-20 sm:px-10 sm:py-24">
         <span className="curvg-corner top-5 left-5" aria-hidden />
         <span className="curvg-corner top-5 right-5" aria-hidden />
         <span className="curvg-corner bottom-5 left-5" aria-hidden />
@@ -28,18 +27,18 @@ export function CTA() {
           </p>
           <div className="relative mt-9 flex justify-center">
             <Link
-              href="/sign-up"
+              href="/creator"
               className={cn(
                 buttonVariants({ size: 'lg' }),
-                'curvg-btn-sharp h-12 gap-2 px-8'
+                'curvg-btn-primary curvg-pixel-button h-12 gap-2 border-white/20 bg-[#f3f3f9] px-8 text-[#201f32] hover:bg-white'
               )}
             >
-              {m['landing.cta.button']()}
-              <ArrowRight className="size-4" />
+              <span>{m['landing.cta.button']()}</span>
+              <PixelArrowRail />
             </Link>
           </div>
           <p className="curvg-meta relative mt-8 text-[#f3f3f9]/40">
-            manim runtime · deterministic render · export mp4 / gif / webm
+            {m['landing.cta.meta']()}
           </p>
         </div>
       </div>

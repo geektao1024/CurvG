@@ -7,6 +7,7 @@ import { enforceMinIntervalRateLimit } from '@/lib/rate-limit';
 import { respData, respErr } from '@/lib/resp';
 
 import { parseModelChoice, resolveChatProvider } from '../-shared';
+import { animationEventStream } from '../-stream';
 
 async function POST({
   request,
@@ -30,10 +31,27 @@ async function POST({
     if (!prompt) return respErr('Prompt is required');
     if (prompt.length > 5000) return respErr('Prompt is too long');
     const configs = await getAllConfigs();
-    const provider = resolveChatProvider(
+    const provider = await resolveChatProvider(
       configs,
-      parseModelChoice(body.modelChoice)
+      parseModelChoice(body.modelChoice),
+      typeof body.model === 'string' ? body.model.trim() : undefined
     );
+    if (request.headers.get('accept')?.includes('text/event-stream')) {
+      return animationEventStream(async (send) => {
+        const animation = await reviseAnimation({
+          userId: session.user.id,
+          id: params.id,
+          prompt,
+          ...provider,
+          hooks: {
+            onStarted: (started) =>
+              send({ type: 'started', animation: started }),
+            onSummaryDelta: (delta) => send({ type: 'delta', delta }),
+          },
+        });
+        send({ type: 'completed', animation });
+      });
+    }
     return respData(
       await reviseAnimation({
         userId: session.user.id,

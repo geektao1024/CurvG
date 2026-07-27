@@ -32,9 +32,10 @@ async function POST({
     if (limited) return limited;
     const body = await request.json().catch(() => ({}));
     const configs = await getAllConfigs();
-    const provider = resolveChatProvider(
+    const provider = await resolveChatProvider(
       configs,
-      parseModelChoice(body.modelChoice)
+      parseModelChoice(body.modelChoice),
+      typeof body.model === 'string' ? body.model.trim() : undefined
     );
     return respData(
       await approveAnimation({

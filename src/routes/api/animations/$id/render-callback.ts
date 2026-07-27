@@ -16,7 +16,7 @@ function optionalArtifactUrl(
   kind: 'video' | 'thumbnail'
 ): string | undefined {
   if (typeof value !== 'string' || !value.trim()) return undefined;
-  const url = new URL(value);
+  const url = new URL(value, origin);
   if (url.origin !== origin) {
     throw new Error('Artifact URL origin is invalid');
   }
@@ -27,7 +27,7 @@ function optionalArtifactUrl(
   ) {
     throw new Error('Artifact URL is invalid');
   }
-  return url.toString();
+  return `${expectedPath}?jobId=${encodeURIComponent(jobId)}`;
 }
 
 async function POST({

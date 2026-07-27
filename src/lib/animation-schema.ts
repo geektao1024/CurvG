@@ -12,6 +12,12 @@ const sceneSchema = z.object({
   actions: z.array(z.string().max(1000)).min(1).max(30),
 });
 
+const areaSchema = z.object({
+  name: z.string().min(1).max(120),
+  content: z.string().min(1).max(1200),
+  implementation: z.string().min(1).max(1200),
+});
+
 const specSchema = z.object({
   title: z.string().min(1).max(160),
   summary: z.string().min(1).max(2400),
@@ -23,6 +29,10 @@ const specSchema = z.object({
     palette: z.array(z.string().min(1).max(120)).min(1).max(12),
     camera: z.string().min(1).max(600),
   }),
+  layout: z.string().max(4000).default(''),
+  areas: z.array(areaSchema).max(12).default([]),
+  dependencies: z.array(z.string().max(500)).max(20).default([]),
+  notes: z.array(z.string().max(1000)).max(30).default([]),
   scenes: z.array(sceneSchema).min(1).max(16),
 });
 
@@ -67,6 +77,21 @@ export function parseManimCode(value: string): string {
   }
   if (!/\bfrom\s+manim\s+import\b/.test(code)) {
     throw new Error('Generated code does not import Manim');
+  }
+  const sceneClasses = [
+    ...code.matchAll(
+      /\bclass\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*Scene\s*\)\s*:/g
+    ),
+  ];
+  if (
+    !/\bclass\s+CurvGScene\s*\(\s*Scene\s*\)/.test(code) &&
+    sceneClasses.length === 1
+  ) {
+    const [declaration, className] = sceneClasses[0];
+    code = code.replace(
+      declaration,
+      declaration.replace(`class ${className}`, 'class CurvGScene')
+    );
   }
   if (!/\bclass\s+CurvGScene\s*\(\s*Scene\s*\)/.test(code)) {
     throw new Error('Generated code must define CurvGScene');

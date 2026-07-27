@@ -18,7 +18,7 @@ export function Typewriter({
   deleteMs?: number;
   holdMs?: number;
 }) {
-  const [text, setText] = useState('');
+  const [text, setText] = useState(words[0] ?? '');
   const [wordIndex, setWordIndex] = useState(0);
   const [phase, setPhase] = useState<'typing' | 'holding' | 'deleting'>(
     'typing'

@@ -47,6 +47,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+/.playwright-cli/
+/output/
 
 # env — local files hold secrets, never commit (keep .env.example tracked)
 .env

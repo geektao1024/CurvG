@@ -138,6 +138,9 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings:
+      'kern' 1,
+      'liga' 1;
   }
 
   ::selection {
@@ -145,25 +148,108 @@
     color: var(--primary-foreground);
   }
 
+  .curvg-page-shell {
+    position: relative;
+    isolation: isolate;
+    background-image:
+      radial-gradient(
+        circle at 50% 0%,
+        color-mix(in oklab, var(--primary) 2.8%, transparent),
+        transparent 34rem
+      ),
+      linear-gradient(var(--background), var(--background));
+  }
+
+  .curvg-page-shell::before,
+  .curvg-page-shell::after {
+    position: fixed;
+    z-index: 60;
+    top: 0;
+    bottom: 0;
+    width: 40px;
+    content: '';
+    pointer-events: none;
+    border-inline: 1px solid color-mix(in oklab, var(--border) 88%, transparent);
+    background-image: repeating-linear-gradient(
+      135deg,
+      color-mix(in oklab, var(--foreground) 8%, transparent) 0 1px,
+      transparent 1px 4px
+    );
+    opacity: 0.48;
+  }
+
+  .curvg-page-shell::before {
+    left: max(0px, calc(50% - 720px));
+  }
+
+  .curvg-page-shell::after {
+    right: max(0px, calc(50% - 720px));
+  }
+
+  .curvg-stage {
+    width: min(1360px, calc(100% - 80px));
+    margin-inline: auto;
+  }
+
   /* 画框侧轨：首页各区块的内容画布左右边框，模拟装裱画框 */
   .curvg-frame {
     border-inline: 1px solid var(--border);
   }
 
-  /* 画框角落的十字定位标记（配合绝对定位使用） */
+  .curvg-section-field {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .curvg-section-field::before,
+  .curvg-section-field::after {
+    position: absolute;
+    top: 1.5rem;
+    width: 170px;
+    height: 220px;
+    content: '';
+    pointer-events: none;
+    background-image: radial-gradient(
+      color-mix(in oklab, var(--primary) 31%, transparent) 0.7px,
+      transparent 0.8px
+    );
+    background-size: 5px 5px;
+    mask-image: radial-gradient(ellipse at center, black 18%, transparent 68%);
+    opacity: 0.72;
+  }
+
+  .curvg-section-field::before {
+    left: -72px;
+    transform: rotate(-12deg);
+  }
+
+  .curvg-section-field::after {
+    right: -72px;
+    transform: rotate(12deg);
+  }
+
+  /* 画框角落定位标记：15px 双瓣螺帽，目标站为 5s 线性持续旋转。 */
   .curvg-corner {
     position: absolute;
-    width: 12px;
-    height: 12px;
-    border: 1px solid var(--border);
-    border-radius: 9999px;
+    width: 15px;
+    height: 15px;
+    border: 0;
+    background: url('/corner-marker.svg') center / 15px 15px no-repeat;
+    opacity: 1;
+    pointer-events: none;
+    transform-origin: center;
+    animation: curvg-corner-spin 5s linear infinite;
+    will-change: transform;
   }
+
   .curvg-corner::after {
-    content: '';
-    position: absolute;
-    inset: 3px;
-    border-radius: 9999px;
-    background: color-mix(in oklab, var(--primary) 45%, transparent);
+    content: none;
+  }
+
+  @keyframes curvg-corner-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   /* 点阵装饰：靛蓝细点矩阵，用于 hero 与区块空白处 */
@@ -174,6 +260,21 @@
     );
     background-size: 14px 14px;
     mask-image: radial-gradient(ellipse at center, black 30%, transparent 72%);
+  }
+
+  .curvg-coordinate-grid {
+    background-image:
+      linear-gradient(
+        color-mix(in oklab, var(--foreground) 5.5%, transparent) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        90deg,
+        color-mix(in oklab, var(--foreground) 5.5%, transparent) 1px,
+        transparent 1px
+      );
+    background-size: 32px 32px;
+    mask-image: radial-gradient(ellipse at center, black 24%, transparent 76%);
   }
 
   /* 深色面板上的细网格（CTA 用） */
@@ -227,7 +328,7 @@
     box-shadow: inset 0 -3px 23px -5px rgba(255, 255, 255, 0.25);
   }
 
-  /* 主按钮：直角、电光靛蓝，hover 位移出硬投影 */
+  /* 旧版锐利按钮，保留给非首页场景。 */
   .curvg-btn-sharp {
     border-radius: 0;
     background: var(--primary);
@@ -244,6 +345,274 @@
   .curvg-btn-sharp:active {
     transform: translate(0, 0);
     box-shadow: none;
+  }
+
+  /* 首页主按钮：竞品实测为深色、5px 圆角、克制反馈。 */
+  .curvg-btn-primary {
+    border: 1px solid color-mix(in oklab, var(--foreground) 84%, white);
+    border-radius: 5px;
+    background: var(--foreground);
+    color: var(--background);
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 10%, transparent),
+      0 8px 24px -18px color-mix(in oklab, var(--foreground) 60%, transparent);
+    transition:
+      background-color 180ms ease,
+      border-color 180ms ease,
+      box-shadow 180ms ease;
+  }
+
+  .curvg-btn-primary:hover {
+    border-color: color-mix(in oklab, var(--primary) 42%, var(--foreground));
+    background: color-mix(in oklab, var(--foreground) 93%, var(--primary));
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 14%, transparent),
+      0 10px 30px -20px color-mix(in oklab, var(--primary) 44%, transparent);
+  }
+
+  .curvg-btn-primary:active {
+    background: color-mix(in oklab, var(--foreground) 88%, black);
+  }
+
+  .curvg-pixel-button {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+  }
+
+  .curvg-pixel-button > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .curvg-pixel-arrow-rail {
+    display: block;
+    width: 16px;
+    height: 16px;
+    overflow: hidden;
+    flex: 0 0 16px;
+  }
+
+  .curvg-pixel-arrow-track {
+    display: flex;
+    width: 32px;
+    height: 16px;
+    transform: translateX(-16px);
+    transition: transform 180ms steps(2, end);
+    will-change: transform;
+  }
+
+  .curvg-pixel-arrow {
+    display: block;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    image-rendering: pixelated;
+  }
+
+  .curvg-pixel-button:hover .curvg-pixel-arrow-track,
+  .curvg-pixel-button:focus-visible .curvg-pixel-arrow-track {
+    transform: translateX(0);
+  }
+
+  .curvg-pixel-reveal-link {
+    position: relative;
+    display: inline-flex;
+    isolation: isolate;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 5px;
+    font-family: var(--font-sans, Inter, sans-serif);
+    font-weight: 400;
+    text-decoration: none;
+    transition:
+      border-color 600ms cubic-bezier(0.44, 0, 0.56, 1),
+      box-shadow 600ms cubic-bezier(0.44, 0, 0.56, 1);
+  }
+
+  .curvg-pixel-reveal-link[data-variant='primary'] {
+    min-height: 53px;
+    gap: 8px;
+    border: 1px solid #201f32;
+    background: #201f32;
+    padding: 14px 16px;
+    color: #fff;
+    font-size: 18px;
+    line-height: 25.2px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.1),
+      0 8px 24px -18px rgba(32, 31, 50, 0.6);
+  }
+
+  .curvg-pixel-reveal-link[data-variant='navigation'] {
+    min-height: 38px;
+    border: 1px solid #e3e2e5;
+    background: #f3f3f9;
+    padding: 8px 10px;
+    color: #201f32;
+    font-size: 16px;
+    line-height: 22.4px;
+  }
+
+  .curvg-pixel-reveal-link[data-variant='nav-item'] {
+    min-height: 38px;
+    overflow: visible;
+    border: 0;
+    border-radius: 4px;
+    background: color-mix(in oklab, var(--foreground) 0%, transparent);
+    padding: 11px 10px;
+    color: var(--foreground);
+    font-size: 16px;
+    line-height: 16px;
+    transition: background-color 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .curvg-pixel-reveal-link[data-variant='nav-item'][data-active='true'] {
+    background: color-mix(in oklab, var(--foreground) 5%, transparent);
+  }
+
+  .curvg-pixel-reveal-link:focus-visible {
+    outline: 2px solid #262ef2;
+    outline-offset: 3px;
+  }
+
+  .curvg-pixel-reveal-grid {
+    position: absolute;
+    z-index: 0;
+    inset: 0;
+    display: grid;
+    overflow: hidden;
+    border-radius: 4px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .curvg-pixel-reveal-link[data-active='true'] .curvg-pixel-reveal-grid {
+    opacity: 1;
+  }
+
+  .curvg-pixel-reveal-link[data-variant='primary'] .curvg-pixel-reveal-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    background: #262ef2;
+  }
+
+  .curvg-pixel-reveal-link[data-variant='navigation'] .curvg-pixel-reveal-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: 1fr;
+    background: #fff;
+  }
+
+  .curvg-pixel-reveal-cell {
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .curvg-pixel-reveal-link[data-variant='primary'] .curvg-pixel-reveal-cell {
+    background: #201f32;
+  }
+
+  .curvg-pixel-reveal-link[data-variant='navigation'] .curvg-pixel-reveal-cell {
+    background: #f3f3f9;
+  }
+
+  .curvg-pixel-reveal-link[data-active='true'] .curvg-pixel-reveal-cell {
+    animation: curvg-pixel-cell-hide 1ms steps(1, end) var(--curvg-pixel-delay)
+      forwards;
+  }
+
+  .curvg-pixel-reveal-content {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .curvg-pixel-label-stack {
+    position: relative;
+    display: inline-block;
+    white-space: pre;
+  }
+
+  .curvg-pixel-label-base {
+    transition: opacity 600ms cubic-bezier(0.44, 0, 0.56, 1);
+  }
+
+  .curvg-pixel-reveal-link[data-active='true'] .curvg-pixel-label-base {
+    opacity: 0;
+  }
+
+  .curvg-pixel-label-scramble {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: max-content;
+    white-space: pre;
+  }
+
+  .curvg-pixel-reveal-link[data-variant='primary'] .curvg-pixel-label-noise {
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  .curvg-pixel-reveal-link[data-variant='navigation'] .curvg-pixel-label-noise,
+  .curvg-pixel-reveal-link[data-variant='nav-item'] .curvg-pixel-label-noise {
+    color: #a1a1a1;
+  }
+
+  .curvg-pixel-reveal-link[data-variant='nav-item'] .curvg-pixel-label-base {
+    transition: opacity 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .curvg-pixel-label-hidden {
+    opacity: 0;
+  }
+
+  .curvg-pixel-reveal-link .curvg-pixel-arrow-track {
+    transition: transform 600ms cubic-bezier(0.44, 0, 0.56, 1);
+  }
+
+  .curvg-pixel-reveal-link[data-active='true'] .curvg-pixel-arrow-track {
+    transform: translateX(0);
+  }
+
+  @keyframes curvg-pixel-cell-hide {
+    to {
+      opacity: 0;
+    }
+  }
+
+  .curvg-interactive-surface {
+    --pointer-x: 50%;
+    --pointer-y: 50%;
+    position: relative;
+    isolation: isolate;
+  }
+
+  .curvg-interactive-surface::before {
+    position: absolute;
+    z-index: 0;
+    inset: 0;
+    border-radius: inherit;
+    content: '';
+    pointer-events: none;
+    background: radial-gradient(
+      240px circle at var(--pointer-x) var(--pointer-y),
+      color-mix(in oklab, var(--primary) 9%, transparent),
+      transparent 72%
+    );
+    opacity: 0;
+    transition: opacity 180ms ease;
+  }
+
+  .curvg-interactive-surface > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .curvg-interactive-surface[data-pointer-active='true']::before {
+    opacity: 1;
   }
 
   /* 元数据标签：10px 等宽小字（"12 Items" 式） */
@@ -263,10 +632,67 @@
     .curvg-cursor {
       animation: none;
     }
+
+    .curvg-corner {
+      animation: none;
+      will-change: auto;
+    }
+    .curvg-pixel-arrow-track,
+    .curvg-pixel-button:hover .curvg-pixel-arrow-track,
+    .curvg-pixel-button:focus-visible .curvg-pixel-arrow-track {
+      transition: none;
+    }
+
+    .curvg-pixel-reveal-link .curvg-pixel-label-base,
+    .curvg-pixel-reveal-link .curvg-pixel-arrow-track {
+      transition: none;
+    }
+
+    .curvg-pixel-reveal-link[data-active='true'] .curvg-pixel-reveal-cell {
+      animation: none;
+      opacity: 0;
+    }
+
+    .curvg-pixel-reveal-link[data-active='true'] .curvg-pixel-label-base {
+      opacity: 1;
+    }
+
+    .curvg-pixel-label-scramble {
+      display: none;
+    }
     .curvg-btn-sharp,
     .curvg-btn-sharp:hover {
       transform: none;
       box-shadow: none;
+    }
+
+    .curvg-interactive-surface::before {
+      display: none;
+    }
+
+    .curvg-interactive-surface,
+    .curvg-interactive-surface:hover {
+      transform: none;
+      box-shadow: none;
+      transition: none;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .curvg-page-shell::before,
+    .curvg-page-shell::after {
+      display: none;
+    }
+
+    .curvg-stage {
+      width: 100%;
+    }
+
+    .curvg-section-field::before,
+    .curvg-section-field::after {
+      width: 112px;
+      height: 150px;
+      opacity: 0.5;
     }
   }
 }

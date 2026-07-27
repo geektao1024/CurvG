@@ -6,9 +6,12 @@ export function Footer() {
     {
       title: m['landing.footer.product'](),
       links: [
-        { label: m['landing.footer.gallery'](), href: '/#gallery' },
+        {
+          label: m['landing.footer.prompt_examples'](),
+          href: '/#prompt-examples',
+        },
         { label: m['landing.footer.workflow'](), href: '/#workflow' },
-        { label: m['landing.footer.early_access'](), href: '/sign-up' },
+        { label: m['landing.footer.early_access'](), href: '/creator' },
       ],
     },
     {
@@ -28,6 +31,11 @@ export function Footer() {
   ];
 
   return (
-    <SiteFooter tagline={m['landing.footer.tagline']()} columns={columns} />
+    <SiteFooter
+      tagline={m['landing.footer.tagline']()}
+      columns={columns}
+      disclaimer={m['landing.footer.disclaimer']()}
+      framed
+    />
   );
 }

@@ -18,7 +18,7 @@ export const envConfigs: Record<string, string> = {
   app_name: publicEnv('VITE_APP_NAME') ?? 'CurvG',
   app_description:
     publicEnv('VITE_APP_DESCRIPTION') ??
-    'Math curve animation gallery and formula-first generator',
+    'Formula-first Manim math animation generator and curve gallery',
   app_logo: publicEnv('VITE_APP_LOGO') ?? '/logo.svg',
 
   // Database

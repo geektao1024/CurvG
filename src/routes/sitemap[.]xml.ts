@@ -4,20 +4,45 @@ import { envConfigs } from '@/config';
 import { baseLocale, locales, localizeUrl } from '@/paraglide/runtime.js';
 import { getLocalPosts, mergePosts } from '@/content/posts';
 
-const STATIC_PATHS = [
-  '',
-  '/pricing',
-  '/blog',
-  '/privacy-policy',
-  '/terms-of-service',
-];
-
 type Entry = {
   path: string;
   lastModified?: string;
   changeFrequency: string;
   priority: number;
 };
+
+const STATIC_ENTRIES: Entry[] = [
+  {
+    path: '',
+    lastModified: '2026-07-23',
+    changeFrequency: 'weekly',
+    priority: 1,
+  },
+  {
+    path: '/creator',
+    lastModified: '2026-07-23',
+    changeFrequency: 'weekly',
+    priority: 0.9,
+  },
+  {
+    path: '/pricing',
+    lastModified: '2026-07-23',
+    changeFrequency: 'monthly',
+    priority: 0.7,
+  },
+  {
+    path: '/privacy-policy',
+    lastModified: '2026-07-23',
+    changeFrequency: 'yearly',
+    priority: 0.3,
+  },
+  {
+    path: '/terms-of-service',
+    lastModified: '2026-07-23',
+    changeFrequency: 'yearly',
+    priority: 0.3,
+  },
+];
 
 function urlFor(path: string, locale: string): string {
   return localizeUrl(`${envConfigs.app_url}${path || '/'}`, {
@@ -32,10 +57,12 @@ function entryXml(e: Entry): string {
         `    <xhtml:link rel="alternate" hreflang="${loc}" href="${urlFor(e.path, loc)}"/>`
     )
     .join('\n');
+  const xDefault = `    <xhtml:link rel="alternate" hreflang="x-default" href="${urlFor(e.path, baseLocale)}"/>`;
   return [
     '  <url>',
     `    <loc>${urlFor(e.path, baseLocale)}</loc>`,
     alternates,
+    xDefault,
     e.lastModified ? `    <lastmod>${e.lastModified}</lastmod>` : null,
     `    <changefreq>${e.changeFrequency}</changefreq>`,
     `    <priority>${e.priority}</priority>`,
@@ -49,11 +76,8 @@ export const Route = createFileRoute('/sitemap.xml')({
   server: {
     handlers: {
       GET: async () => {
-        const entries: Entry[] = STATIC_PATHS.map((path) => ({
-          path,
-          changeFrequency: path === '/blog' ? 'daily' : 'weekly',
-          priority: path === '' ? 1 : 0.8,
-        }));
+        const entries: Entry[] = [...STATIC_ENTRIES];
+        let posts = getLocalPosts(baseLocale);
 
         // Blog posts: db posts merged with local MDX posts.
         try {
@@ -67,18 +91,19 @@ export const Route = createFileRoute('/sitemap.xml')({
             createdAt: new Date(row.createdAt).toISOString(),
             source: 'db' as const,
           }));
-          const posts = mergePosts(dbPosts, getLocalPosts(baseLocale));
-          for (const post of posts) {
-            entries.push({
-              path: `/blog/${post.slug}`,
-              lastModified: post.createdAt,
-              changeFrequency: 'monthly',
-              priority: 0.6,
-            });
-          }
+          posts = mergePosts(dbPosts, posts);
         } catch {
-          // Database unreachable — static paths + local posts still listed.
-          for (const post of getLocalPosts(baseLocale)) {
+          // Database unreachable — local posts still listed.
+        }
+
+        if (posts.length > 0) {
+          entries.push({
+            path: '/blog',
+            lastModified: posts[0]?.createdAt,
+            changeFrequency: 'weekly',
+            priority: 0.7,
+          });
+          for (const post of posts) {
             entries.push({
               path: `/blog/${post.slug}`,
               lastModified: post.createdAt,

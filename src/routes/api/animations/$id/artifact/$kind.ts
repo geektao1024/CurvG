@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { getAuth } from '@/core/auth';
 import { getAnimation } from '@/modules/animations/service';
+import { getAllConfigs } from '@/modules/config/service';
 import { respErr } from '@/lib/resp';
 
 interface ArtifactBucket {
@@ -11,6 +12,57 @@ interface ArtifactBucket {
 function artifactBucket(): ArtifactBucket | undefined {
   const bindings = (globalThis as any).__CF_ENV__;
   return bindings?.CURVG_ASSETS as ArtifactBucket | undefined;
+}
+
+async function proxyRendererArtifact(params: {
+  request: Request;
+  animationId: string;
+  jobId: string;
+  kind: 'video' | 'thumbnail';
+}): Promise<Response> {
+  const configs = await getAllConfigs();
+  const baseUrl = configs.animation_renderer_url?.trim();
+  const token = configs.animation_renderer_token?.trim();
+  if (!baseUrl || !token) {
+    return respErr('Artifact storage is unavailable', { status: 503 });
+  }
+  const target = new URL(
+    `/artifact/${encodeURIComponent(params.animationId)}/${encodeURIComponent(params.jobId)}/${params.kind}`,
+    baseUrl
+  );
+  if (!['http:', 'https:'].includes(target.protocol)) {
+    return respErr('Artifact storage is unavailable', { status: 503 });
+  }
+  const requestHeaders = new Headers({
+    Authorization: `Bearer ${token}`,
+  });
+  const range = params.request.headers.get('range');
+  if (range) requestHeaders.set('range', range);
+  const response = await fetch(target, {
+    headers: requestHeaders,
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok || !response.body) {
+    return respErr(
+      response.status === 404 ? 'Artifact not found' : 'Artifact read failed',
+      { status: response.status === 404 ? 404 : 502 }
+    );
+  }
+  const headers = new Headers();
+  for (const name of [
+    'accept-ranges',
+    'cache-control',
+    'content-disposition',
+    'content-length',
+    'content-range',
+    'content-type',
+    'etag',
+    'last-modified',
+  ]) {
+    const value = response.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  return new Response(response.body, { status: response.status, headers });
 }
 
 async function GET({
@@ -43,7 +95,14 @@ async function GET({
       return respErr('Artifact version is not current', { status: 404 });
     }
     const bucket = artifactBucket();
-    if (!bucket) return respErr('Artifact storage is unavailable');
+    if (!bucket) {
+      return proxyRendererArtifact({
+        request,
+        animationId: params.id,
+        jobId,
+        kind: params.kind as 'video' | 'thumbnail',
+      });
+    }
     const object = await bucket.get(
       `animations/${params.id}/${jobId}/${extension}`,
       { range: request.headers }

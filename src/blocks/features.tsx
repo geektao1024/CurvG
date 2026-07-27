@@ -8,6 +8,7 @@ import {
 
 import { tDynamic } from '@/core/i18n/dynamic';
 import { m } from '@/paraglide/messages.js';
+import { InteractiveSurface } from '@/components/interactive-surface';
 
 const STEPS: { key: string; icon: LucideIcon; number: string }[] = [
   { key: 'describe', icon: Braces, number: '01' },
@@ -17,8 +18,8 @@ const STEPS: { key: string; icon: LucideIcon; number: string }[] = [
 
 export function Features() {
   return (
-    <section id="workflow" className="px-4 sm:px-6">
-      <div className="curvg-frame relative mx-auto max-w-6xl px-6 py-20 sm:px-10 sm:py-28">
+    <section id="workflow">
+      <div className="curvg-stage curvg-frame curvg-section-field relative px-6 py-20 sm:px-10 sm:py-28">
         <span className="curvg-corner top-5 left-5" aria-hidden />
         <span className="curvg-corner top-5 right-5" aria-hidden />
         <div className="curvg-dotted-divider absolute inset-x-0 top-0" />
@@ -48,9 +49,9 @@ export function Features() {
 
         <div className="mt-14 grid gap-4 lg:grid-cols-3">
           {STEPS.map(({ key, icon: Icon, number }) => (
-            <article
+            <InteractiveSurface
               key={key}
-              className="group border-border bg-card relative overflow-hidden rounded-xl border p-7 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-24px_rgba(32,31,50,0.25)] sm:p-8"
+              className="group border-border bg-card hover:border-primary/20 relative overflow-hidden rounded-lg border p-7 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_46px_-40px_rgba(38,46,242,0.4)] sm:p-8"
             >
               <div className="flex items-center justify-between">
                 <div className="bg-accent text-accent-foreground flex size-11 items-center justify-center rounded-lg">
@@ -64,7 +65,7 @@ export function Features() {
               <p className="text-muted-foreground mt-3 text-sm leading-relaxed">
                 {tDynamic(`landing.workflow.${key}.description`)}
               </p>
-            </article>
+            </InteractiveSurface>
           ))}
         </div>
 

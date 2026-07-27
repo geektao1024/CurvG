@@ -17,17 +17,24 @@ export const Route = createFileRoute('/blog/')({
   },
   head: ({ loaderData }) => {
     const locale = loaderData?.locale;
+    const title = `${m['blog.title']({}, { locale: locale as any })} | ${envConfigs.app_name}`;
+    const description = m['blog.description']({}, { locale: locale as any });
     const urlFor = (loc: string) =>
       localizeUrl(`${envConfigs.app_url}/blog`, { locale: loc as any }).href;
     return {
       meta: [
-        {
-          title: `${m['blog.title']({}, { locale: locale as any })} | ${envConfigs.app_name}`,
-        },
-        {
-          name: 'description',
-          content: m['blog.description']({}, { locale: locale as any }),
-        },
+        { title },
+        { name: 'description', content: description },
+        { property: 'og:title', content: title },
+        { property: 'og:description', content: description },
+        { property: 'og:type', content: 'website' },
+        { property: 'og:url', content: urlFor(locale ?? 'en') },
+        { name: 'twitter:card', content: 'summary' },
+        { name: 'twitter:title', content: title },
+        { name: 'twitter:description', content: description },
+        ...(loaderData?.posts.length === 0
+          ? [{ name: 'robots', content: 'noindex, follow' }]
+          : []),
       ],
       links: [
         { rel: 'canonical', href: urlFor(locale ?? 'en') },
@@ -36,6 +43,7 @@ export const Route = createFileRoute('/blog/')({
           hrefLang: loc,
           href: urlFor(loc),
         })),
+        { rel: 'alternate', hrefLang: 'x-default', href: urlFor('en') },
       ],
     };
   },

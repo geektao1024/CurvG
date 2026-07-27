@@ -17,6 +17,8 @@ interface Env {
   RENDERER_TOKEN: string;
 }
 
+class NonRetryableRenderError extends Error {}
+
 const animationIdPattern = /^[A-Za-z0-9-]{1,80}$/;
 
 function hasBearerToken(request: Request, expected: string): boolean {
@@ -103,12 +105,64 @@ async function notify(
 }
 
 function artifactUrls(job: RenderJob) {
-  const origin = new URL(job.callbackUrl).origin;
-  const base = `${origin}/api/animations/${encodeURIComponent(job.animationId)}/artifact`;
+  const base = `/api/animations/${encodeURIComponent(job.animationId)}/artifact`;
   return {
     videoUrl: `${base}/video?jobId=${encodeURIComponent(job.jobId)}`,
     thumbnailUrl: `${base}/thumbnail?jobId=${encodeURIComponent(job.jobId)}`,
   };
+}
+
+function artifactResponse(object: R2ObjectBody): Response {
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set('etag', object.httpEtag);
+  headers.set('accept-ranges', 'bytes');
+  headers.set('cache-control', 'private, max-age=86400');
+  headers.set('content-disposition', 'inline');
+  let status = 200;
+  const range = object.range;
+  if (
+    range &&
+    'offset' in range &&
+    'length' in range &&
+    typeof range.offset === 'number' &&
+    typeof range.length === 'number'
+  ) {
+    const start = range.offset;
+    const end = start + range.length - 1;
+    headers.set('content-range', `bytes ${start}-${end}/${object.size}`);
+    headers.set('content-length', String(range.length));
+    status = 206;
+  } else {
+    headers.set('content-length', String(object.size));
+  }
+  return new Response(object.body, { status, headers });
+}
+
+async function serveArtifact(request: Request, env: Env): Promise<Response> {
+  const match = new URL(request.url).pathname.match(
+    /^\/artifact\/([A-Za-z0-9-]{1,80})\/([A-Za-z0-9-]{1,80})\/(video|thumbnail)$/
+  );
+  if (!match) {
+    return Response.json({ error: 'Artifact not found' }, { status: 404 });
+  }
+  const [, animationId, jobId, kind] = match;
+  const extension = kind === 'video' ? 'video.mp4' : 'thumbnail.jpg';
+  const object = await env.ARTIFACTS.get(
+    `animations/${animationId}/${jobId}/${extension}`,
+    { range: request.headers }
+  );
+  if (!object || !('body' in object)) {
+    return Response.json({ error: 'Artifact not found' }, { status: 404 });
+  }
+  return artifactResponse(object);
+}
+
+function commandError(stderr: string, fallback: string): string {
+  const message = stderr.trim();
+  if (!message) return fallback;
+  if (message.length <= 1900) return message;
+  return `${message.slice(0, 300)}\n... traceback truncated ...\n${message.slice(-1550)}`;
 }
 
 const multipartPartSize = 5 * 1024 * 1024;
@@ -206,14 +260,18 @@ async function processJob(job: RenderJob, env: Env) {
       { timeout: 30_000, cwd: '/workspace' }
     );
     if (!validation.success) {
-      throw new Error(validation.stderr || 'Generated code failed validation');
+      throw new NonRetryableRenderError(
+        commandError(validation.stderr, 'Generated code failed validation')
+      );
     }
     const render = await sandbox.exec(
       'manim -qm --format=mp4 --disable_caching scene.py CurvGScene --media_dir /workspace/media',
       { timeout: 600_000, cwd: '/workspace' }
     );
     if (!render.success) {
-      throw new Error(render.stderr || 'Manim render failed');
+      throw new NonRetryableRenderError(
+        commandError(render.stderr, 'Manim render failed')
+      );
     }
     const locate = await sandbox.exec(
       "find /workspace/media -type f -name 'CurvGScene.mp4' -print -quit",
@@ -221,17 +279,29 @@ async function processJob(job: RenderJob, env: Env) {
     );
     const videoPath = locate.stdout.trim();
     if (!/^\/workspace\/media\/[A-Za-z0-9_./-]+\.mp4$/.test(videoPath)) {
-      throw new Error('Rendered video path is invalid');
+      throw new NonRetryableRenderError('Rendered video path is invalid');
+    }
+    const playbackPath = '/workspace/video.mp4';
+    const optimize = await sandbox.exec(
+      `ffmpeg -y -i ${videoPath} -map 0:v:0 -an -c copy -movflags +faststart ${playbackPath}`,
+      { timeout: 60_000 }
+    );
+    if (!optimize.success) {
+      throw new NonRetryableRenderError(
+        commandError(optimize.stderr, 'Video playback optimization failed')
+      );
     }
     const thumbnailPath = '/workspace/thumbnail.jpg';
     const thumbnail = await sandbox.exec(
-      `ffmpeg -y -ss 00:00:01 -i ${videoPath} -frames:v 1 ${thumbnailPath}`,
+      `ffmpeg -y -ss 00:00:01 -i ${playbackPath} -frames:v 1 ${thumbnailPath}`,
       { timeout: 30_000 }
     );
     if (!thumbnail.success) {
-      throw new Error(thumbnail.stderr || 'Thumbnail generation failed');
+      throw new NonRetryableRenderError(
+        commandError(thumbnail.stderr, 'Thumbnail generation failed')
+      );
     }
-    await uploadBinaryFile(sandbox, env.ARTIFACTS, videoKey, videoPath, {
+    await uploadBinaryFile(sandbox, env.ARTIFACTS, videoKey, playbackPath, {
       httpMetadata: { contentType: 'video/mp4' },
       customMetadata: { animationId: job.animationId, jobId: job.jobId },
     });
@@ -253,6 +323,23 @@ async function processJob(job: RenderJob, env: Env) {
 
 const worker: ExportedHandler<Env, RenderJob> = {
   async fetch(request, env) {
+    const pathname = new URL(request.url).pathname;
+    if (request.method === 'GET' && pathname.startsWith('/artifact/')) {
+      if (!hasBearerToken(request, env.RENDERER_TOKEN)) {
+        return Response.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      try {
+        return await serveArtifact(request, env);
+      } catch (error) {
+        return Response.json(
+          {
+            error:
+              error instanceof Error ? error.message : 'Artifact read failed',
+          },
+          { status: 500 }
+        );
+      }
+    }
     if (request.method !== 'POST') {
       return Response.json({ error: 'Method not allowed' }, { status: 405 });
     }
@@ -282,7 +369,10 @@ const worker: ExportedHandler<Env, RenderJob> = {
         await processJob(message.body, env);
         message.ack();
       } catch (error) {
-        if (message.attempts < 3) {
+        if (
+          !(error instanceof NonRetryableRenderError) &&
+          message.attempts < 3
+        ) {
           message.retry({ delaySeconds: 30 });
           continue;
         }
