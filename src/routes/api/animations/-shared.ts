@@ -1,17 +1,33 @@
+import { and, eq, isNull, lte, or } from 'drizzle-orm';
+
 import {
-  AnthropicChatProvider,
+  ChatModelCircuitBreaker,
+  ChatProviderError,
+  FailoverChatProvider,
   OpenAICompatibleChatProvider,
   type ChatProvider,
 } from '@/core/ai/chat';
 import { HttpAnimationRenderer } from '@/core/animation-renderer';
+import { db } from '@/core/db';
+import {
+  animationModelPolicies,
+  canUseAnimationModel,
+  decideAnimationModelAccess,
+  DEFAULT_ANIMATION_MODEL,
+  PRO_AUTO_FALLBACK_MODELS,
+  type AnimationAccessTier,
+} from '@/config/animation-models';
+import { animationGenerationLease } from '@/config/db/schema';
+import { AnimationConflictError } from '@/modules/animations/service';
 import type { ConfigMap } from '@/modules/config/service';
+import { getAnimationAccessTier } from '@/modules/subscriptions/service';
 import type {
   AnimationModelCatalog,
   AnimationModelChoice,
   AnimationModelOption,
-  AnimationModelProvider,
   AnimationSubject,
 } from '@/lib/animation';
+import { getUuid, md5 } from '@/lib/hash';
 
 const subjects = new Set<AnimationSubject>([
   'general',
@@ -23,12 +39,130 @@ const subjects = new Set<AnimationSubject>([
   'economics',
 ]);
 
-const modelChoices = new Set<AnimationModelChoice>([
-  'auto',
-  'openai',
-  'yunwu',
-  'anthropic',
-]);
+const modelChoices = new Set<AnimationModelChoice>(['auto', 'yunwu']);
+
+export class AnimationApiError extends Error {
+  constructor(
+    message: string,
+    readonly code:
+      | 'PRO_REQUIRED'
+      | 'MODEL_UNAVAILABLE'
+      | 'INVALID_MODEL'
+      | 'INSUFFICIENT_CREDITS'
+      | 'CAPACITY_LIMIT',
+    readonly status: number,
+    readonly retryAfterSeconds?: number
+  ) {
+    super(message);
+    this.name = 'AnimationApiError';
+  }
+}
+
+export interface AnimationErrorResponse {
+  message: string;
+  status: number;
+  retryAfterSeconds?: number;
+}
+
+function retryAfterSeconds(
+  retryAfterMs: number | undefined,
+  fallbackSeconds: number
+) {
+  if (typeof retryAfterMs === 'number' && retryAfterMs >= 0) {
+    return Math.max(1, Math.min(Math.ceil(retryAfterMs / 1_000), 60));
+  }
+  return fallbackSeconds;
+}
+
+function retryAfterFromCause(error: unknown): number | undefined {
+  if (error instanceof ChatProviderError && error.retryable) {
+    return retryAfterSeconds(
+      error.retryAfterMs,
+      error.code === 'upstream_saturated' ? 5 : 3
+    );
+  }
+  if (error && typeof error === 'object' && 'cause' in error) {
+    return retryAfterFromCause((error as { cause?: unknown }).cause);
+  }
+  return undefined;
+}
+
+export function animationErrorResponse(error: unknown): AnimationErrorResponse {
+  if (error instanceof AnimationApiError) {
+    return {
+      message: error.message,
+      status: error.status,
+      retryAfterSeconds:
+        error.retryAfterSeconds ??
+        (error.code === 'CAPACITY_LIMIT'
+          ? 5
+          : error.status === 503
+            ? 15
+            : undefined),
+    };
+  }
+  if (error instanceof AnimationConflictError) {
+    return { message: error.message, status: error.status };
+  }
+  if (error instanceof ChatProviderError) {
+    const messages: Record<typeof error.code, string> = {
+      upstream_saturated:
+        'The selected AI model is at capacity. Please retry shortly.',
+      upstream_timeout: 'The AI model timed out. Please retry.',
+      upstream_unavailable: 'The AI provider is temporarily unavailable.',
+      model_unavailable: 'The selected AI model is not currently available.',
+      upstream_auth: 'The AI provider configuration is invalid.',
+      upstream_quota: 'The AI provider quota is exhausted.',
+      invalid_response: 'The AI provider returned an invalid response.',
+      empty_response: 'The AI provider returned an empty response.',
+      stream_interrupted: 'The AI response was interrupted. Please retry.',
+      unknown: 'The AI request failed.',
+    };
+    const saturated = error.code === 'upstream_saturated';
+    return {
+      message: messages[error.code],
+      status: saturated ? 429 : 503,
+      retryAfterSeconds: error.retryable
+        ? retryAfterSeconds(error.retryAfterMs, saturated ? 5 : 3)
+        : undefined,
+    };
+  }
+  if (error && typeof error === 'object') {
+    const failure = (
+      error as {
+        failure?: { message?: unknown; code?: unknown; retryable?: unknown };
+      }
+    ).failure;
+    if (failure && typeof failure.message === 'string') {
+      const code = failure.code;
+      const saturated = code === 'UPSTREAM_SATURATED';
+      const retryable = failure.retryable === true;
+      return {
+        message: failure.message,
+        status: saturated ? 429 : 503,
+        retryAfterSeconds: retryable
+          ? (retryAfterFromCause(error) ?? (saturated ? 5 : 3))
+          : undefined,
+      };
+    }
+  }
+  console.error('[animations] request failed', error);
+  return {
+    message: 'Animation service is temporarily unavailable',
+    status: 500,
+  };
+}
+
+export function animationErrorInit(
+  failure: AnimationErrorResponse
+): ResponseInit {
+  return {
+    status: failure.status,
+    headers: failure.retryAfterSeconds
+      ? { 'Retry-After': String(failure.retryAfterSeconds) }
+      : undefined,
+  };
+}
 
 export function parseSubject(value: unknown): AnimationSubject {
   if (typeof value === 'string' && subjects.has(value as AnimationSubject)) {
@@ -38,48 +172,29 @@ export function parseSubject(value: unknown): AnimationSubject {
 }
 
 export function parseModelChoice(value: unknown): AnimationModelChoice {
+  if (value === undefined || value === null) return 'auto';
   if (
     typeof value === 'string' &&
     modelChoices.has(value as AnimationModelChoice)
   ) {
     return value as AnimationModelChoice;
   }
-  return 'auto';
+  throw new AnimationApiError('Invalid animation model', 'INVALID_MODEL', 400);
 }
 
-function openAIProvider(configs: ConfigMap) {
-  if (!configs.openai_api_key || !configs.openai_model) return null;
-  return {
-    provider: new OpenAICompatibleChatProvider({
-      apiKey: configs.openai_api_key,
-      baseUrl: configs.openai_base_url,
-    }),
-    model: configs.openai_model,
-  };
-}
-
-function anthropicProvider(configs: ConfigMap) {
-  if (!configs.anthropic_api_key || !configs.anthropic_model) return null;
-  return {
-    provider: new AnthropicChatProvider({
-      apiKey: configs.anthropic_api_key,
-      baseUrl: configs.anthropic_base_url,
-    }),
-    model: configs.anthropic_model,
-  };
-}
-
-function yunwuProvider(configs: ConfigMap, requestedModel?: string) {
-  const model = requestedModel || configs.yunwu_model;
-  if (!configs.yunwu_api_key || !model) return null;
-  return {
-    provider: new OpenAICompatibleChatProvider({
-      apiKey: configs.yunwu_api_key,
-      baseUrl: configs.yunwu_base_url || 'https://yunwu.ai/v1',
-      name: 'yunwu',
-    }),
-    model,
-  };
+function yunwuProvider(configs: ConfigMap) {
+  if (!configs.yunwu_api_key) {
+    throw new AnimationApiError(
+      'Animation AI provider is not configured',
+      'MODEL_UNAVAILABLE',
+      503
+    );
+  }
+  return new OpenAICompatibleChatProvider({
+    apiKey: configs.yunwu_api_key,
+    baseUrl: configs.yunwu_base_url || 'https://yunwu.ai/v1',
+    name: 'yunwu',
+  });
 }
 
 interface ProviderResolution {
@@ -90,6 +205,7 @@ interface ProviderResolution {
 interface ModelCacheEntry {
   expiresAt: number;
   models: DiscoveredModel[];
+  stale: boolean;
 }
 
 interface DiscoveredModel {
@@ -98,25 +214,16 @@ interface DiscoveredModel {
 }
 
 const modelCache = new Map<string, ModelCacheEntry>();
+const modelRefreshes = new Map<
+  string,
+  Promise<{ models: DiscoveredModel[]; stale: boolean }>
+>();
 const MODEL_CACHE_TTL = 5 * 60_000;
+const MODEL_CACHE_FAILURE_TTL = 30_000;
 const MODEL_ID_PATTERN = /^[A-Za-z0-9._:/-]{1,180}$/;
+const autoModelCircuitBreaker = new ChatModelCircuitBreaker();
 
-function configuredDefault(
-  configs: ConfigMap
-): (ProviderResolution & { choice: AnimationModelProvider }) | null {
-  const openai = openAIProvider(configs);
-  if (openai) return { choice: 'openai', ...openai };
-  const anthropic = anthropicProvider(configs);
-  if (anthropic) return { choice: 'anthropic', ...anthropic };
-  const yunwu = yunwuProvider(configs);
-  if (yunwu) return { choice: 'yunwu', ...yunwu };
-  return null;
-}
-
-function discoverableModels(
-  values: unknown[],
-  defaultModel?: string
-): DiscoveredModel[] {
+function discoverableModels(values: unknown[]): DiscoveredModel[] {
   const models = new Map<string, DiscoveredModel>();
   for (const value of values) {
     if (!value || typeof value !== 'object') continue;
@@ -126,7 +233,7 @@ function discoverableModels(
     const endpointTypes = Array.isArray(record.supported_endpoint_types)
       ? record.supported_endpoint_types
       : [];
-    if (!endpointTypes.includes('openai')) continue;
+    if (endpointTypes.length > 0 && !endpointTypes.includes('openai')) continue;
     if (typeof record.model_type === 'string' && record.model_type !== '文本') {
       continue;
     }
@@ -145,132 +252,366 @@ function discoverableModels(
         : undefined;
     models.set(id, { id, description: description || undefined });
   }
-  if (defaultModel && MODEL_ID_PATTERN.test(defaultModel)) {
-    models.set(defaultModel, models.get(defaultModel) || { id: defaultModel });
-  }
-  return [...models.values()]
-    .sort((left, right) => {
-      if (left.id === defaultModel) return -1;
-      if (right.id === defaultModel) return 1;
-      return left.id.localeCompare(right.id);
-    })
-    .slice(0, 250);
+  return [...models.values()];
 }
 
-async function discoverYunwuModels(
-  configs: ConfigMap
-): Promise<DiscoveredModel[]> {
-  if (!configs.yunwu_api_key) return [];
+async function discoverYunwuModels(configs: ConfigMap): Promise<{
+  models: DiscoveredModel[];
+  stale: boolean;
+}> {
+  if (!configs.yunwu_api_key) return { models: [], stale: true };
   const baseUrl = (configs.yunwu_base_url || 'https://yunwu.ai/v1').replace(
     /\/+$/,
     ''
   );
-  const cacheKey = `${baseUrl}:${configs.yunwu_api_key.slice(-8)}`;
+  // Catalog visibility may differ between Yunwu credentials. Key the cache by
+  // a one-way credential fingerprint so rotating keys never inherits another
+  // account's five-minute catalog without storing or logging the secret.
+  const cacheKey = `${baseUrl}|${md5(configs.yunwu_api_key)}`;
   const cached = modelCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.models;
-  const response = await fetch(`${baseUrl}/models`, {
-    headers: { Authorization: `Bearer ${configs.yunwu_api_key}` },
-    signal: AbortSignal.timeout(20_000),
-  });
-  const data = (await response.json().catch(() => ({}))) as Record<
-    string,
-    unknown
-  >;
-  if (!response.ok) {
-    throw new Error(`Yunwu model discovery failed (${response.status})`);
+  if (cached && cached.expiresAt > Date.now()) {
+    return { models: cached.models, stale: cached.stale };
   }
-  const models = discoverableModels(
-    Array.isArray(data.data) ? data.data : [],
-    configs.yunwu_model
-  );
-  modelCache.set(cacheKey, {
-    models,
-    expiresAt: Date.now() + MODEL_CACHE_TTL,
+  const inFlight = modelRefreshes.get(cacheKey);
+  if (inFlight) return inFlight;
+  const refresh = (async () => {
+    try {
+      const response = await fetch(`${baseUrl}/models`, {
+        headers: { Authorization: `Bearer ${configs.yunwu_api_key}` },
+        signal: AbortSignal.timeout(20_000),
+      });
+      const data = (await response.json().catch(() => ({}))) as Record<
+        string,
+        unknown
+      >;
+      if (!response.ok) {
+        throw new Error(`Yunwu model discovery failed (${response.status})`);
+      }
+      const models = discoverableModels(
+        Array.isArray(data.data) ? data.data.slice(0, 5_000) : []
+      );
+      if (models.length === 0) {
+        throw new Error('Yunwu returned an empty model catalog');
+      }
+      modelCache.set(cacheKey, {
+        models,
+        expiresAt: Date.now() + MODEL_CACHE_TTL,
+        stale: false,
+      });
+      return { models, stale: false };
+    } catch (error) {
+      console.error('[animation-models] catalog refresh failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      const models = cached?.models || [];
+      modelCache.set(cacheKey, {
+        models,
+        expiresAt: Date.now() + MODEL_CACHE_FAILURE_TTL,
+        stale: true,
+      });
+      return { models, stale: true };
+    }
+  })();
+  modelRefreshes.set(cacheKey, refresh);
+  try {
+    return await refresh;
+  } finally {
+    if (modelRefreshes.get(cacheKey) === refresh) {
+      modelRefreshes.delete(cacheKey);
+    }
+  }
+}
+
+function policyOptions(
+  tier: AnimationAccessTier,
+  discovered: DiscoveredModel[],
+  useStaticFallback: boolean
+): AnimationModelOption[] {
+  const discoveredById = new Map(discovered.map((model) => [model.id, model]));
+  return animationModelPolicies.flatMap((policy) => {
+    const live = discoveredById.get(policy.model);
+    if (!useStaticFallback && !live) return [];
+    return [
+      {
+        provider: policy.provider,
+        model: policy.model,
+        isDefault: policy.model === DEFAULT_ANIMATION_MODEL,
+        description: live?.description,
+        presetKey: policy.presetKey,
+        requiredTier: policy.requiredTier,
+        entitled: canUseAnimationModel(tier, policy),
+      },
+    ];
   });
-  return models;
 }
 
 export async function listAnimationModels(
-  configs: ConfigMap
+  configs: ConfigMap,
+  userId: string
 ): Promise<AnimationModelCatalog> {
-  const options: AnimationModelOption[] = [];
-  if (configs.openai_api_key && configs.openai_model) {
-    options.push({
-      provider: 'openai',
-      model: configs.openai_model,
-      isDefault: true,
-    });
-  }
-  if (configs.yunwu_api_key) {
-    let models: DiscoveredModel[] = [];
-    try {
-      models = await discoverYunwuModels(configs);
-    } catch {
-      models = configs.yunwu_model ? [{ id: configs.yunwu_model }] : [];
-    }
-    for (const model of models) {
-      options.push({
-        provider: 'yunwu',
-        model: model.id,
-        isDefault: model.id === configs.yunwu_model,
-        description: model.description,
-      });
-    }
-  }
-  if (configs.anthropic_api_key && configs.anthropic_model) {
-    options.push({
-      provider: 'anthropic',
-      model: configs.anthropic_model,
-      isDefault: true,
-    });
-  }
-  const defaultProvider = configuredDefault(configs);
+  const viewerTier = await getAnimationAccessTier(userId);
+  const discovery = await discoverYunwuModels(configs);
+  // Only fall back to the last verified static catalog when discovery itself
+  // failed. A successful live catalog that omits a model is authoritative and
+  // that model must disappear instead of being reintroduced as "available".
+  const catalogStale = discovery.stale;
+  const discoveredOptions = configs.yunwu_api_key
+    ? policyOptions(viewerTier, discovery.models, catalogStale)
+    : [];
+  const entitledModels = new Set(
+    discoveredOptions
+      .filter((option) => option.entitled)
+      .map((option) => option.model)
+  );
+  const effectiveDefault = [
+    DEFAULT_ANIMATION_MODEL,
+    ...(viewerTier === 'pro' ? PRO_AUTO_FALLBACK_MODELS : []),
+  ].find((model) => entitledModels.has(model));
+  const options = discoveredOptions.map((option) => ({
+    ...option,
+    isDefault: option.model === effectiveDefault,
+  }));
   return {
     options,
-    defaultProvider: defaultProvider?.choice,
-    defaultModel: defaultProvider?.model,
+    defaultProvider: effectiveDefault ? 'yunwu' : undefined,
+    defaultModel: effectiveDefault,
+    viewerTier,
+    catalogStale,
   };
 }
 
+/**
+ * Resolve and authorize in one operation so every animation AI entry point is
+ * forced through the same server-side policy. Client badges are never trusted.
+ */
 export async function resolveChatProvider(
   configs: ConfigMap,
+  userId: string,
   choice: AnimationModelChoice,
   requestedModel?: string
-): Promise<{ provider: ChatProvider; model: string }> {
-  const openai = openAIProvider(configs);
-  const yunwu = yunwuProvider(
-    configs,
-    choice === 'yunwu' ? requestedModel : undefined
+): Promise<ProviderResolution> {
+  const tier = await getAnimationAccessTier(userId);
+  const decision = decideAnimationModelAccess({
+    tier,
+    choice,
+    requestedModel,
+  });
+  if (!decision.allowed) {
+    const errors = {
+      INVALID_MODEL: { message: 'Invalid animation model', status: 400 },
+      MODEL_UNAVAILABLE: {
+        message: 'Animation model is not available',
+        status: 400,
+      },
+      PRO_REQUIRED: {
+        message: 'A Pro plan is required for this model',
+        status: 403,
+      },
+    } as const;
+    const error = errors[decision.reason];
+    throw new AnimationApiError(error.message, decision.reason, error.status);
+  }
+
+  const isAuto = decision.auto;
+  let model: string = decision.policy.model;
+  let fallbackModels: string[] =
+    isAuto && tier === 'pro' ? [...PRO_AUTO_FALLBACK_MODELS] : [];
+  const baseProvider = yunwuProvider(configs);
+  const discovery = await discoverYunwuModels(configs);
+  if (!discovery.stale) {
+    const liveModels = new Set(discovery.models.map((item) => item.id));
+    if (isAuto) {
+      const candidates = [model, ...fallbackModels].filter((candidate) =>
+        liveModels.has(candidate)
+      );
+      if (candidates.length === 0) {
+        throw new AnimationApiError(
+          'Animation model is not currently available',
+          'MODEL_UNAVAILABLE',
+          503
+        );
+      }
+      [model, ...fallbackModels] = candidates;
+    } else if (!liveModels.has(model)) {
+      throw new AnimationApiError(
+        'Animation model is not currently available',
+        'MODEL_UNAVAILABLE',
+        503
+      );
+    }
+  }
+  const provider = new FailoverChatProvider(
+    baseProvider,
+    fallbackModels,
+    300_000,
+    autoModelCircuitBreaker
   );
-  const anthropic = anthropicProvider(configs);
-  if (requestedModel) {
-    if (choice === 'auto' || !MODEL_ID_PATTERN.test(requestedModel)) {
-      throw new Error('Invalid animation model');
+  return { provider, model };
+}
+
+interface AnimationCapacityState {
+  activeUsers: Set<string>;
+}
+
+declare global {
+  var __animationCapacityState: AnimationCapacityState | undefined;
+}
+
+const MAX_CONCURRENT_ANIMATION_GENERATIONS = 4;
+const ANIMATION_CAPACITY_LEASE_MS = 6 * 60_000;
+const ANIMATION_CAPACITY_SLOT_IDS = Array.from(
+  { length: MAX_CONCURRENT_ANIMATION_GENERATIONS },
+  (_, index) => `animation-${index}`
+);
+
+export interface AnimationCapacityLeaseBackend {
+  acquire(userId: string): Promise<string | null>;
+  release(token: string): Promise<void>;
+}
+
+let capacitySlotsReady: Promise<void> | undefined;
+
+async function ensureAnimationCapacitySlots() {
+  if (!capacitySlotsReady) {
+    capacitySlotsReady = (async () => {
+      for (const slotId of ANIMATION_CAPACITY_SLOT_IDS) {
+        try {
+          await db()
+            .insert(animationGenerationLease)
+            .values({ slotId, updatedAt: new Date() });
+        } catch (error) {
+          // Cross-dialect "insert if absent" syntax differs. Verify that the
+          // expected duplicate row exists; otherwise this is a real schema or
+          // database failure and generation must fail closed.
+          const [existing] = await db()
+            .select({ slotId: animationGenerationLease.slotId })
+            .from(animationGenerationLease)
+            .where(eq(animationGenerationLease.slotId, slotId))
+            .limit(1);
+          if (!existing) throw error;
+        }
+      }
+    })().catch((error) => {
+      capacitySlotsReady = undefined;
+      throw error;
+    });
+  }
+  return capacitySlotsReady;
+}
+
+export const databaseAnimationCapacityLease: AnimationCapacityLeaseBackend = {
+  async acquire(userId) {
+    await ensureAnimationCapacitySlots();
+    const now = new Date();
+    await db()
+      .update(animationGenerationLease)
+      .set({ leaseToken: null, userId: null, expiresAt: null })
+      .where(lte(animationGenerationLease.expiresAt, now));
+
+    const [existingUserLease] = await db()
+      .select({ slotId: animationGenerationLease.slotId })
+      .from(animationGenerationLease)
+      .where(eq(animationGenerationLease.userId, userId))
+      .limit(1);
+    if (existingUserLease) return null;
+
+    const token = getUuid();
+    const expiresAt = new Date(now.getTime() + ANIMATION_CAPACITY_LEASE_MS);
+    for (const slotId of ANIMATION_CAPACITY_SLOT_IDS) {
+      try {
+        await db()
+          .update(animationGenerationLease)
+          .set({ leaseToken: token, userId, expiresAt })
+          .where(
+            and(
+              eq(animationGenerationLease.slotId, slotId),
+              or(
+                isNull(animationGenerationLease.leaseToken),
+                lte(animationGenerationLease.expiresAt, now)
+              )
+            )
+          );
+      } catch {
+        // Most commonly the nullable unique user_id constraint won a race in
+        // another instance. The token read below decides whether we acquired.
+      }
+      const [claimed] = await db()
+        .select({ leaseToken: animationGenerationLease.leaseToken })
+        .from(animationGenerationLease)
+        .where(
+          and(
+            eq(animationGenerationLease.slotId, slotId),
+            eq(animationGenerationLease.leaseToken, token)
+          )
+        )
+        .limit(1);
+      if (claimed) return token;
     }
-    const catalog = await listAnimationModels(configs);
-    const allowed = catalog.options.some(
-      (option) => option.provider === choice && option.model === requestedModel
+    return null;
+  },
+
+  async release(token) {
+    await db()
+      .update(animationGenerationLease)
+      .set({ leaseToken: null, userId: null, expiresAt: null })
+      .where(eq(animationGenerationLease.leaseToken, token));
+  },
+};
+
+function animationCapacityState(): AnimationCapacityState {
+  if (!globalThis.__animationCapacityState) {
+    globalThis.__animationCapacityState = { activeUsers: new Set() };
+  }
+  return globalThis.__animationCapacityState;
+}
+
+/**
+ * Apply backpressure before consuming an upstream model slot. Database state
+ * claims in the animation service separately protect a single animation from
+ * races. The database lease enforces four slots and one slot per user across
+ * server processes/Worker isolates; the local Set avoids needless DB races.
+ */
+export async function withAnimationGenerationCapacity<T>(
+  userId: string,
+  task: () => Promise<T>,
+  leaseBackend: AnimationCapacityLeaseBackend = databaseAnimationCapacityLease
+): Promise<T> {
+  const state = animationCapacityState();
+  if (
+    state.activeUsers.has(userId) ||
+    state.activeUsers.size >= MAX_CONCURRENT_ANIMATION_GENERATIONS
+  ) {
+    throw new AnimationApiError(
+      'Animation generation is busy. Please retry shortly.',
+      'CAPACITY_LIMIT',
+      429
     );
-    if (!allowed) throw new Error('Animation model is not available');
   }
-  if (choice === 'openai') {
-    if (!openai) throw new Error('OpenAI provider or model is not configured');
-    return { ...openai, model: requestedModel || openai.model };
-  }
-  if (choice === 'anthropic') {
-    if (!anthropic) {
-      throw new Error('Anthropic provider or model is not configured');
+  state.activeUsers.add(userId);
+  let leaseToken: string | null = null;
+  try {
+    leaseToken = await leaseBackend.acquire(userId);
+    if (!leaseToken) {
+      throw new AnimationApiError(
+        'Animation generation is busy. Please retry shortly.',
+        'CAPACITY_LIMIT',
+        429,
+        5
+      );
     }
-    return { ...anthropic, model: requestedModel || anthropic.model };
+    return await task();
+  } finally {
+    if (leaseToken) {
+      try {
+        await leaseBackend.release(leaseToken);
+      } catch (error) {
+        console.error('[animation-capacity] lease release failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    state.activeUsers.delete(userId);
   }
-  if (choice === 'yunwu') {
-    if (!yunwu) throw new Error('Yunwu provider or model is not configured');
-    return { ...yunwu, model: requestedModel || yunwu.model };
-  }
-  if (openai) return openai;
-  if (anthropic) return anthropic;
-  if (yunwu) return yunwu;
-  throw new Error('No animation chat model is configured');
 }
 
 export function resolveRenderer(configs: ConfigMap) {

@@ -11,6 +11,8 @@ import {
   PaymentStatus,
 } from './types';
 
+const PAYMENT_REQUEST_TIMEOUT_MS = 30_000;
+
 /**
  * WeChat Pay (Native) provider configs
  * @docs https://pay.weixin.qq.com/doc/v3/merchant/4012791858
@@ -244,6 +246,7 @@ export class WechatPayProvider implements PaymentProvider {
         Authorization: authorization,
       },
       body: body ? bodyStr : undefined,
+      signal: AbortSignal.timeout(PAYMENT_REQUEST_TIMEOUT_MS),
     });
 
     if (!res.ok) {

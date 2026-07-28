@@ -8,6 +8,9 @@ export interface ChatCompletionInput {
   messages: ChatTurn[];
   temperature?: number;
   maxTokens?: number;
+  /** Shared absolute deadline used by retry/failover chains. */
+  deadlineAt?: number;
+  signal?: AbortSignal;
 }
 
 export interface ChatCompletionResult {
@@ -23,6 +26,58 @@ export interface ChatProvider {
     input: ChatCompletionInput,
     onDelta: (delta: string) => void
   ): Promise<ChatCompletionResult>;
+}
+
+export type ChatFailureCode =
+  | 'upstream_saturated'
+  | 'upstream_timeout'
+  | 'upstream_unavailable'
+  | 'model_unavailable'
+  | 'upstream_auth'
+  | 'upstream_quota'
+  | 'invalid_response'
+  | 'empty_response'
+  | 'stream_interrupted'
+  | 'unknown';
+
+export class ChatProviderError extends Error {
+  readonly code: ChatFailureCode;
+  readonly retryable: boolean;
+  readonly status?: number;
+  readonly requestId?: string;
+  readonly retryAfterMs?: number;
+  readonly provider?: string;
+  readonly model?: string;
+  readonly partialOutput: boolean;
+
+  constructor(
+    message: string,
+    options: {
+      code: ChatFailureCode;
+      retryable: boolean;
+      status?: number;
+      requestId?: string;
+      retryAfterMs?: number;
+      provider?: string;
+      model?: string;
+      partialOutput?: boolean;
+      cause?: unknown;
+    }
+  ) {
+    super(
+      message,
+      options.cause === undefined ? undefined : { cause: options.cause }
+    );
+    this.name = 'ChatProviderError';
+    this.code = options.code;
+    this.retryable = options.retryable;
+    this.status = options.status;
+    this.requestId = options.requestId;
+    this.retryAfterMs = options.retryAfterMs;
+    this.provider = options.provider;
+    this.model = options.model;
+    this.partialOutput = options.partialOutput ?? false;
+  }
 }
 
 function normalizeBaseUrl(value: string, fallback: string): string {
@@ -46,22 +101,176 @@ function errorMessage(data: unknown, fallback: string): string {
   return typeof message === 'string' ? message : fallback;
 }
 
-function retryableStatus(status: number): boolean {
+export function retryableStatus(status: number): boolean {
   return status === 408 || status === 429 || status >= 500;
 }
 
-function retryDelay(attempt: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, attempt * 1_000));
+function sleep(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
 
-class NonRetryableChatError extends Error {}
+function responseRequestId(response: Response, data?: Record<string, unknown>) {
+  const bodyId = data?.request_id ?? data?.requestId ?? data?.id;
+  return (
+    response.headers.get('x-request-id') ||
+    response.headers.get('request-id') ||
+    response.headers.get('cf-ray') ||
+    (typeof bodyId === 'string' ? bodyId : undefined)
+  );
+}
+
+function retryAfterMs(response: Response): number | undefined {
+  const value = response.headers.get('retry-after')?.trim();
+  if (!value) return undefined;
+  const seconds = Number(value);
+  const delay = Number.isFinite(seconds)
+    ? seconds * 1_000
+    : Date.parse(value) - Date.now();
+  if (!Number.isFinite(delay)) return undefined;
+  return Math.max(0, Math.min(delay, 15_000));
+}
+
+function failureCode(status: number | undefined, message: string) {
+  const normalized = message.toLowerCase();
+  const modelUnavailable =
+    /(?:model|模型).*(?:not found|does not exist|unavailable|不存在|不可用)|(?:not found|does not exist|不存在).*(?:model|模型)|model[_ -]?not[_ -]?found|invalid model/.test(
+      normalized
+    );
+  // A missing model cannot be fixed by retrying the same model. Auto may
+  // advance to its verified fallback, while an explicit selection fails as-is.
+  if ((status === 400 || status === 404) && modelUnavailable) {
+    return { code: 'model_unavailable' as const, retryable: false };
+  }
+  const quota = /quota|insufficient.+(balance|credit)|余额|额度不足/.test(
+    normalized
+  );
+  if (quota) return { code: 'upstream_quota' as const, retryable: false };
+  if (status === 401 || status === 403) {
+    return { code: 'upstream_auth' as const, retryable: false };
+  }
+  if (
+    status === 429 ||
+    /saturat|capacity|too many requests|rate.?limit|上游.+满|负载/.test(
+      normalized
+    )
+  ) {
+    return { code: 'upstream_saturated' as const, retryable: true };
+  }
+  if (status === 408 || /timed?\s*out|timeout/.test(normalized)) {
+    return { code: 'upstream_timeout' as const, retryable: true };
+  }
+  if (status !== undefined && status >= 500) {
+    return { code: 'upstream_unavailable' as const, retryable: true };
+  }
+  return {
+    code: 'invalid_response' as const,
+    retryable: status !== undefined && retryableStatus(status),
+  };
+}
+
+function httpError(
+  response: Response,
+  data: Record<string, unknown>,
+  provider: string,
+  model: string
+) {
+  const message = errorMessage(
+    data,
+    `AI upstream request failed (${response.status})`
+  );
+  const classification = failureCode(response.status, message);
+  return new ChatProviderError(message, {
+    ...classification,
+    status: response.status,
+    requestId: responseRequestId(response, data),
+    retryAfterMs: retryAfterMs(response),
+    provider,
+    model,
+  });
+}
+
+function normalizedError(
+  error: unknown,
+  provider: string,
+  model: string,
+  partialOutput = false
+): ChatProviderError {
+  if (error instanceof ChatProviderError) {
+    if (partialOutput && !error.partialOutput) {
+      return new ChatProviderError(error.message, {
+        code: 'stream_interrupted',
+        retryable: false,
+        status: error.status,
+        requestId: error.requestId,
+        provider: error.provider || provider,
+        model: error.model || model,
+        partialOutput: true,
+        cause: error,
+      });
+    }
+    return error;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  const isTimeout =
+    (error instanceof Error &&
+      (error.name === 'TimeoutError' || error.name === 'AbortError')) ||
+    /timed?\s*out|timeout/i.test(message);
+  return new ChatProviderError(message || 'AI upstream request failed', {
+    code: partialOutput
+      ? 'stream_interrupted'
+      : isTimeout
+        ? 'upstream_timeout'
+        : 'upstream_unavailable',
+    retryable: !partialOutput,
+    provider,
+    model,
+    partialOutput,
+    cause: error,
+  });
+}
+
+function textContent(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (!Array.isArray(value)) return '';
+  return value
+    .map((part) => {
+      if (!part || typeof part !== 'object') return '';
+      const text = (part as Record<string, unknown>).text;
+      return typeof text === 'string' ? text : '';
+    })
+    .join('');
+}
+
+function requestSignal(input: ChatCompletionInput, timeoutMs: number) {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return input.signal ? AbortSignal.any([input.signal, timeout]) : timeout;
+}
+
+interface OpenAICompatibleChatProviderConfig {
+  apiKey: string;
+  baseUrl?: string;
+  name?: string;
+  /** Test seams and operational tuning; production callers use defaults. */
+  fetch?: typeof globalThis.fetch;
+  sleep?: (delayMs: number) => Promise<void>;
+  random?: () => number;
+  maxAttempts?: number;
+  requestTimeoutMs?: number;
+  overallTimeoutMs?: number;
+}
 
 export class OpenAICompatibleChatProvider implements ChatProvider {
   readonly name: string;
   private readonly apiKey: string;
   private readonly baseUrl: string;
+  private readonly fetchImpl: typeof globalThis.fetch;
+  private readonly sleepImpl: (delayMs: number) => Promise<void>;
+  private readonly random: () => number;
+  private readonly maxAttempts: number;
+  private readonly requestTimeoutMs: number;
+  private readonly overallTimeoutMs: number;
 
-  constructor(config: { apiKey: string; baseUrl?: string; name?: string }) {
+  constructor(config: OpenAICompatibleChatProviderConfig) {
     if (!config.apiKey.trim()) throw new Error('OpenAI API key is required');
     this.name = config.name?.trim() || 'openai';
     this.apiKey = config.apiKey.trim();
@@ -69,104 +278,172 @@ export class OpenAICompatibleChatProvider implements ChatProvider {
       config.baseUrl || '',
       'https://api.openai.com/v1'
     );
+    this.fetchImpl = config.fetch || globalThis.fetch;
+    this.sleepImpl = config.sleep || sleep;
+    this.random = config.random || Math.random;
+    this.maxAttempts = Math.max(1, Math.min(config.maxAttempts ?? 3, 5));
+    this.requestTimeoutMs = Math.max(config.requestTimeoutMs ?? 180_000, 1_000);
+    this.overallTimeoutMs = Math.max(config.overallTimeoutMs ?? 240_000, 1_000);
+  }
+
+  private deadline(input: ChatCompletionInput) {
+    return input.deadlineAt ?? Date.now() + this.overallTimeoutMs;
+  }
+
+  private async waitForRetry(
+    error: ChatProviderError,
+    attempt: number,
+    deadlineAt: number
+  ) {
+    const exponential = Math.min(500 * 2 ** (attempt - 1), 5_000);
+    const jitter = Math.floor(this.random() * 250);
+    const requested = error.retryAfterMs ?? exponential + jitter;
+    const remaining = deadlineAt - Date.now();
+    if (remaining <= requested) {
+      throw new ChatProviderError('AI upstream retry deadline exceeded', {
+        code: 'upstream_timeout',
+        retryable: true,
+        provider: this.name,
+        model: error.model,
+        requestId: error.requestId,
+        cause: error,
+      });
+    }
+    await this.sleepImpl(requested);
+  }
+
+  private timeoutFor(deadlineAt: number) {
+    const remaining = deadlineAt - Date.now();
+    if (remaining <= 0) {
+      throw new ChatProviderError('AI upstream request deadline exceeded', {
+        code: 'upstream_timeout',
+        retryable: true,
+        provider: this.name,
+      });
+    }
+    return Math.max(1, Math.min(this.requestTimeoutMs, remaining));
   }
 
   async complete(input: ChatCompletionInput): Promise<ChatCompletionResult> {
-    let lastError: unknown;
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const deadlineAt = this.deadline(input);
+    let lastError: ChatProviderError | undefined;
+    for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
       try {
-        const response = await fetch(`${this.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${this.apiKey}`,
-          },
-          body: JSON.stringify({
-            model: input.model,
-            messages: input.messages,
-            temperature: input.temperature ?? 0.2,
-            max_tokens: input.maxTokens ?? 6000,
-          }),
-          signal: AbortSignal.timeout(180_000),
-        });
+        const response = await this.fetchImpl(
+          `${this.baseUrl}/chat/completions`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${this.apiKey}`,
+            },
+            body: JSON.stringify({
+              model: input.model,
+              messages: input.messages,
+              temperature: input.temperature ?? 0.2,
+              max_tokens: input.maxTokens ?? 6000,
+            }),
+            signal: requestSignal(input, this.timeoutFor(deadlineAt)),
+          }
+        );
         const data = (await response.json().catch(() => ({}))) as Record<
           string,
           unknown
         >;
         if (!response.ok) {
-          const error = new Error(
-            errorMessage(data, `OpenAI request failed (${response.status})`)
-          );
-          if (attempt < 2 && retryableStatus(response.status)) {
-            lastError = error;
-            await retryDelay(attempt);
-            continue;
-          }
-          throw new NonRetryableChatError(error.message);
+          throw httpError(response, data, this.name, input.model);
         }
         const choices = Array.isArray(data.choices) ? data.choices : [];
         const first = choices[0] as Record<string, unknown> | undefined;
         const message = first?.message as Record<string, unknown> | undefined;
-        const content =
-          typeof message?.content === 'string' ? message.content : '';
-        if (!content.trim())
-          throw new Error('OpenAI returned an empty response');
+        const content = textContent(message?.content);
+        if (!content.trim()) {
+          throw new ChatProviderError(
+            'AI upstream returned an empty response',
+            {
+              code: 'empty_response',
+              retryable: true,
+              requestId: responseRequestId(response, data),
+              provider: this.name,
+              model: input.model,
+            }
+          );
+        }
         return {
           content: content.trim(),
           model: typeof data.model === 'string' ? data.model : input.model,
           provider: this.name,
         };
       } catch (error) {
-        lastError = error;
-        if (error instanceof NonRetryableChatError) throw error;
-        if (attempt >= 2) throw error;
-        await retryDelay(attempt);
+        if (input.signal?.aborted) {
+          throw new ChatProviderError('AI request was canceled', {
+            code: 'stream_interrupted',
+            retryable: false,
+            provider: this.name,
+            model: input.model,
+            cause: error,
+          });
+        }
+        lastError = normalizedError(error, this.name, input.model);
+        if (!lastError.retryable || attempt >= this.maxAttempts)
+          throw lastError;
+        await this.waitForRetry(lastError, attempt, deadlineAt);
       }
     }
-    throw lastError instanceof Error
-      ? lastError
-      : new Error('OpenAI request failed');
+    throw (
+      lastError ||
+      new ChatProviderError('AI upstream request failed', {
+        code: 'unknown',
+        retryable: false,
+        provider: this.name,
+        model: input.model,
+      })
+    );
   }
 
   async stream(
     input: ChatCompletionInput,
     onDelta: (delta: string) => void
   ): Promise<ChatCompletionResult> {
-    let lastError: unknown;
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const deadlineAt = this.deadline(input);
+    let lastError: ChatProviderError | undefined;
+    for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
       let emitted = false;
       try {
-        const response = await fetch(`${this.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${this.apiKey}`,
-          },
-          body: JSON.stringify({
-            model: input.model,
-            messages: input.messages,
-            temperature: input.temperature ?? 0.2,
-            max_tokens: input.maxTokens ?? 6000,
-            stream: true,
-          }),
-          signal: AbortSignal.timeout(180_000),
-        });
+        const response = await this.fetchImpl(
+          `${this.baseUrl}/chat/completions`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${this.apiKey}`,
+            },
+            body: JSON.stringify({
+              model: input.model,
+              messages: input.messages,
+              temperature: input.temperature ?? 0.2,
+              max_tokens: input.maxTokens ?? 6000,
+              stream: true,
+            }),
+            signal: requestSignal(input, this.timeoutFor(deadlineAt)),
+          }
+        );
         if (!response.ok) {
           const data = (await response.json().catch(() => ({}))) as Record<
             string,
             unknown
           >;
-          const error = new Error(
-            errorMessage(data, `OpenAI request failed (${response.status})`)
-          );
-          if (attempt < 2 && retryableStatus(response.status)) {
-            lastError = error;
-            await retryDelay(attempt);
-            continue;
-          }
-          throw new NonRetryableChatError(error.message);
+          throw httpError(response, data, this.name, input.model);
         }
-        if (!response.body) throw new Error('OpenAI returned an empty stream');
+        if (!response.body) {
+          throw new ChatProviderError('AI upstream returned an empty stream', {
+            code: 'empty_response',
+            retryable: true,
+            requestId: responseRequestId(response),
+            provider: this.name,
+            model: input.model,
+          });
+        }
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -185,23 +462,25 @@ export class OpenAICompatibleChatProvider implements ChatProvider {
           } catch {
             return;
           }
+          if (data.error) {
+            const message = errorMessage(data, 'AI upstream stream failed');
+            const classification = failureCode(undefined, message);
+            throw new ChatProviderError(message, {
+              ...classification,
+              requestId:
+                typeof data.request_id === 'string'
+                  ? data.request_id
+                  : responseRequestId(response),
+              provider: this.name,
+              model: input.model,
+              partialOutput: emitted,
+            });
+          }
           if (typeof data.model === 'string') responseModel = data.model;
           const choices = Array.isArray(data.choices) ? data.choices : [];
           const first = choices[0] as Record<string, unknown> | undefined;
           const delta = first?.delta as Record<string, unknown> | undefined;
-          const value = delta?.content;
-          const text =
-            typeof value === 'string'
-              ? value
-              : Array.isArray(value)
-                ? value
-                    .map((part) => {
-                      if (!part || typeof part !== 'object') return '';
-                      const text = (part as Record<string, unknown>).text;
-                      return typeof text === 'string' ? text : '';
-                    })
-                    .join('')
-                : '';
+          const text = textContent(delta?.content);
           if (!text) return;
           emitted = true;
           content += text;
@@ -220,24 +499,223 @@ export class OpenAICompatibleChatProvider implements ChatProvider {
           if (done) break;
         }
         if (buffer.trim()) consumeLine(buffer);
-        if (!content.trim())
-          throw new Error('OpenAI returned an empty response');
+        if (!content.trim()) {
+          throw new ChatProviderError(
+            'AI upstream returned an empty response',
+            {
+              code: 'empty_response',
+              retryable: true,
+              requestId: responseRequestId(response),
+              provider: this.name,
+              model: input.model,
+            }
+          );
+        }
         return {
           content: content.trim(),
           model: responseModel,
           provider: this.name,
         };
       } catch (error) {
-        lastError = error;
-        if (error instanceof NonRetryableChatError || emitted || attempt >= 2) {
-          throw error;
+        if (input.signal?.aborted) {
+          throw new ChatProviderError('AI request was canceled', {
+            code: 'stream_interrupted',
+            retryable: false,
+            provider: this.name,
+            model: input.model,
+            partialOutput: emitted,
+            cause: error,
+          });
         }
-        await retryDelay(attempt);
+        lastError = normalizedError(error, this.name, input.model, emitted);
+        if (!lastError.retryable || emitted || attempt >= this.maxAttempts) {
+          throw lastError;
+        }
+        await this.waitForRetry(lastError, attempt, deadlineAt);
       }
     }
-    throw lastError instanceof Error
-      ? lastError
-      : new Error('OpenAI request failed');
+    throw (
+      lastError ||
+      new ChatProviderError('AI upstream request failed', {
+        code: 'unknown',
+        retryable: false,
+        provider: this.name,
+        model: input.model,
+      })
+    );
+  }
+}
+
+/**
+ * All animation calls use the circuit breaker. Only Auto supplies fallback
+ * models; explicit selections keep deterministic model identity.
+ */
+export class ChatModelCircuitBreaker {
+  private readonly openUntil = new Map<string, number>();
+
+  constructor(private readonly now: () => number = Date.now) {}
+
+  private key(provider: string, model: string) {
+    return `${provider}:${model}`;
+  }
+
+  canAttempt(provider: string, model: string) {
+    const key = this.key(provider, model);
+    const until = this.openUntil.get(key) || 0;
+    if (until <= this.now()) {
+      this.openUntil.delete(key);
+      return true;
+    }
+    return false;
+  }
+
+  recordSuccess(provider: string, model: string) {
+    this.openUntil.delete(this.key(provider, model));
+  }
+
+  recordFailure(provider: string, model: string, error: ChatProviderError) {
+    const duration =
+      error.code === 'upstream_saturated'
+        ? 30_000
+        : error.code === 'upstream_unavailable'
+          ? 15_000
+          : error.code === 'upstream_timeout'
+            ? 5_000
+            : 0;
+    if (duration > 0) {
+      this.openUntil.set(this.key(provider, model), this.now() + duration);
+    }
+  }
+}
+
+export class FailoverChatProvider implements ChatProvider {
+  readonly name: string;
+
+  constructor(
+    private readonly provider: ChatProvider,
+    private readonly fallbackModels: readonly string[],
+    private readonly overallTimeoutMs = 300_000,
+    private readonly circuitBreaker = new ChatModelCircuitBreaker(),
+    private readonly perModelTimeoutMs = 90_000,
+    private readonly now: () => number = Date.now
+  ) {
+    this.name = provider.name;
+  }
+
+  private candidates(primary: string) {
+    return [primary, ...this.fallbackModels].filter(
+      (model, index, models) => models.indexOf(model) === index
+    );
+  }
+
+  async complete(input: ChatCompletionInput): Promise<ChatCompletionResult> {
+    const deadlineAt = input.deadlineAt ?? this.now() + this.overallTimeoutMs;
+    let lastError: ChatProviderError | undefined;
+    let attempted = false;
+    for (const model of this.candidates(input.model)) {
+      if (this.now() >= deadlineAt) {
+        lastError = new ChatProviderError(
+          'AI upstream request deadline exceeded',
+          {
+            code: 'upstream_timeout',
+            retryable: true,
+            provider: this.provider.name,
+            model,
+          }
+        );
+        break;
+      }
+      if (!this.circuitBreaker.canAttempt(this.provider.name, model)) continue;
+      attempted = true;
+      try {
+        const modelDeadlineAt = this.fallbackModels.length
+          ? Math.min(deadlineAt, this.now() + this.perModelTimeoutMs)
+          : deadlineAt;
+        const result = await this.provider.complete({
+          ...input,
+          model,
+          deadlineAt: modelDeadlineAt,
+        });
+        this.circuitBreaker.recordSuccess(this.provider.name, model);
+        return result;
+      } catch (error) {
+        lastError = normalizedError(error, this.provider.name, model);
+        const canFailOver =
+          lastError.retryable || lastError.code === 'model_unavailable';
+        if (!canFailOver || lastError.partialOutput) throw lastError;
+        this.circuitBreaker.recordFailure(this.provider.name, model, lastError);
+      }
+    }
+    throw (
+      lastError ||
+      new ChatProviderError('AI models are temporarily at capacity', {
+        code: attempted ? 'upstream_unavailable' : 'upstream_saturated',
+        retryable: true,
+        provider: this.provider.name,
+        model: input.model,
+      })
+    );
+  }
+
+  async stream(
+    input: ChatCompletionInput,
+    onDelta: (delta: string) => void
+  ): Promise<ChatCompletionResult> {
+    const deadlineAt = input.deadlineAt ?? this.now() + this.overallTimeoutMs;
+    let lastError: ChatProviderError | undefined;
+    let attempted = false;
+    for (const model of this.candidates(input.model)) {
+      if (this.now() >= deadlineAt) {
+        lastError = new ChatProviderError(
+          'AI upstream request deadline exceeded',
+          {
+            code: 'upstream_timeout',
+            retryable: true,
+            provider: this.provider.name,
+            model,
+          }
+        );
+        break;
+      }
+      if (!this.circuitBreaker.canAttempt(this.provider.name, model)) continue;
+      attempted = true;
+      try {
+        const modelDeadlineAt = this.fallbackModels.length
+          ? Math.min(deadlineAt, this.now() + this.perModelTimeoutMs)
+          : deadlineAt;
+        if (this.provider.stream) {
+          const result = await this.provider.stream(
+            { ...input, model, deadlineAt: modelDeadlineAt },
+            onDelta
+          );
+          this.circuitBreaker.recordSuccess(this.provider.name, model);
+          return result;
+        }
+        const result = await this.provider.complete({
+          ...input,
+          model,
+          deadlineAt: modelDeadlineAt,
+        });
+        onDelta(result.content);
+        this.circuitBreaker.recordSuccess(this.provider.name, model);
+        return result;
+      } catch (error) {
+        lastError = normalizedError(error, this.provider.name, model);
+        const canFailOver =
+          lastError.retryable || lastError.code === 'model_unavailable';
+        if (!canFailOver || lastError.partialOutput) throw lastError;
+        this.circuitBreaker.recordFailure(this.provider.name, model, lastError);
+      }
+    }
+    throw (
+      lastError ||
+      new ChatProviderError('AI models are temporarily at capacity', {
+        code: attempted ? 'upstream_unavailable' : 'upstream_saturated',
+        retryable: true,
+        provider: this.provider.name,
+        model: input.model,
+      })
+    );
   }
 }
 

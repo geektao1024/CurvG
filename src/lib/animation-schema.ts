@@ -2,39 +2,159 @@ import { z } from 'zod';
 
 import type { AnimationSpec } from '@/lib/animation';
 
-const sceneSchema = z.object({
-  id: z.string().min(1).max(80),
-  title: z.string().min(1).max(160),
-  purpose: z.string().min(1).max(1200),
-  durationSeconds: z.number().min(0.5).max(120),
-  math: z.array(z.string().max(1000)).max(20).default([]),
-  visuals: z.array(z.string().max(1000)).min(1).max(30),
-  actions: z.array(z.string().max(1000)).min(1).max(30),
+const identifierSchema = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,79}$/);
+
+const objectSchema = z.object({
+  id: identifierSchema,
+  kind: z.enum([
+    'axes',
+    'curve',
+    'area',
+    'formula',
+    'text',
+    'series',
+    'matrix',
+  ]),
+  region: z.enum(['title', 'formula', 'graph']),
+  label: z.string().max(500).optional(),
+  expr: z.string().max(1000).optional(),
+  domain: z
+    .tuple([z.number().min(-100).max(100), z.number().min(-100).max(100)])
+    .optional(),
+  color: z.string().max(40).optional(),
+  values: z
+    .array(z.array(z.number().finite()).min(1).max(8))
+    .min(1)
+    .max(8)
+    .optional(),
 });
 
-const areaSchema = z.object({
-  name: z.string().min(1).max(120),
-  content: z.string().min(1).max(1200),
-  implementation: z.string().min(1).max(1200),
+const timelineSchema = z.object({
+  id: identifierSchema,
+  at: z.number().min(0).max(300),
+  op: z.enum(['draw', 'write', 'fade_in', 'fade_out', 'transform', 'hold']),
+  ref: identifierSchema,
+  targetRef: identifierSchema.optional(),
+  runTime: z.number().min(0.1).max(120),
+  ease: z.enum(['linear', 'smooth', 'there_and_back']).default('smooth'),
 });
 
-const specSchema = z.object({
-  title: z.string().min(1).max(160),
-  summary: z.string().min(1).max(2400),
-  durationSeconds: z.number().min(1).max(300),
-  assumptions: z.array(z.string().max(1000)).max(20).default([]),
-  formulas: z.array(z.string().max(1000)).max(40).default([]),
-  style: z.object({
-    background: z.string().min(1).max(120),
-    palette: z.array(z.string().min(1).max(120)).min(1).max(12),
-    camera: z.string().min(1).max(600),
-  }),
-  layout: z.string().max(4000).default(''),
-  areas: z.array(areaSchema).max(12).default([]),
-  dependencies: z.array(z.string().max(500)).max(20).default([]),
-  notes: z.array(z.string().max(1000)).max(30).default([]),
-  scenes: z.array(sceneSchema).min(1).max(16),
-});
+export const animationSpecSchema = z
+  .object({
+    schemaVersion: z.literal(2),
+    title: z.string().min(1).max(160),
+    summary: z.string().min(1).max(2400),
+    durationSeconds: z.number().min(1).max(300),
+    assumptions: z.array(z.string().max(1000)).max(20).default([]),
+    style: z.object({
+      background: z.string().min(1).max(120),
+      palette: z.array(z.string().min(1).max(120)).min(1).max(12),
+      camera: z.string().min(1).max(600),
+    }),
+    objects: z.array(objectSchema).min(1).max(40),
+    timeline: z.array(timelineSchema).min(1).max(80),
+    layout: z.object({
+      regions: z.enum(['single', 'left|right', 'top|bottom']),
+      title: z.string().max(160).optional(),
+    }),
+    dependencies: z.array(z.string().max(500)).max(20).default([]),
+    notes: z.array(z.string().max(1000)).max(30).default([]),
+  })
+  .superRefine((spec, context) => {
+    const objectIds = new Set<string>();
+    for (const [index, object] of spec.objects.entries()) {
+      if (objectIds.has(object.id)) {
+        context.addIssue({
+          code: 'custom',
+          message: `Duplicate object id: ${object.id}`,
+          path: ['objects', index, 'id'],
+        });
+      }
+      objectIds.add(object.id);
+      if (object.domain && object.domain[0] >= object.domain[1]) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Object domain must be increasing',
+          path: ['objects', index, 'domain'],
+        });
+      }
+      if (
+        ['curve', 'area', 'formula', 'series'].includes(object.kind) &&
+        !object.expr
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: `${object.kind} requires expr`,
+          path: ['objects', index, 'expr'],
+        });
+      }
+      if (object.kind === 'matrix' && !object.values) {
+        context.addIssue({
+          code: 'custom',
+          message: 'matrix requires values',
+          path: ['objects', index, 'values'],
+        });
+      }
+    }
+
+    const eventIds = new Set<string>();
+    for (const [index, event] of spec.timeline.entries()) {
+      if (eventIds.has(event.id)) {
+        context.addIssue({
+          code: 'custom',
+          message: `Duplicate timeline id: ${event.id}`,
+          path: ['timeline', index, 'id'],
+        });
+      }
+      eventIds.add(event.id);
+      if (event.op !== 'hold' && !objectIds.has(event.ref)) {
+        context.addIssue({
+          code: 'custom',
+          message: `Unknown object reference: ${event.ref}`,
+          path: ['timeline', index, 'ref'],
+        });
+      }
+      if (
+        event.op === 'transform' &&
+        (!event.targetRef || !objectIds.has(event.targetRef))
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Transform requires a valid targetRef',
+          path: ['timeline', index, 'targetRef'],
+        });
+      }
+      if (event.at + event.runTime > spec.durationSeconds + 0.001) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Timeline event exceeds the animation duration',
+          path: ['timeline', index],
+        });
+      }
+    }
+    const groups = [...spec.timeline]
+      .sort((left, right) => left.at - right.at)
+      .reduce<Array<{ at: number; duration: number }>>((result, event) => {
+        const current = result.at(-1);
+        if (current && Math.abs(current.at - event.at) < 0.001) {
+          current.duration = Math.max(current.duration, event.runTime);
+        } else {
+          result.push({ at: event.at, duration: event.runTime });
+        }
+        return result;
+      }, []);
+    for (let index = 1; index < groups.length; index += 1) {
+      const previous = groups[index - 1];
+      if (groups[index].at < previous.at + previous.duration - 0.001) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Overlapping start times are not supported yet',
+          path: ['timeline'],
+        });
+        break;
+      }
+    }
+  });
 
 function extractJson(value: string): unknown {
   const trimmed = value.trim();
@@ -53,7 +173,11 @@ function extractJson(value: string): unknown {
 }
 
 export function parseAnimationSpec(value: string): AnimationSpec {
-  return specSchema.parse(extractJson(value));
+  return animationSpecSchema.parse(extractJson(value));
+}
+
+export function validateAnimationSpec(value: unknown): AnimationSpec {
+  return animationSpecSchema.parse(value);
 }
 
 export function parseManimCode(value: string): string {

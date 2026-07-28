@@ -48,7 +48,7 @@ export function UseCases() {
 
   return (
     <section id="use-cases">
-      <div className="curvg-stage curvg-frame curvg-section-field relative px-6 py-20 sm:px-10 sm:py-28">
+      <div className="curvg-stage curvg-frame curvg-section-field curvg-section-spacing relative">
         <span className="curvg-corner top-5 left-5" aria-hidden />
         <span className="curvg-corner top-5 right-5" aria-hidden />
         <div className="curvg-dotted-divider absolute inset-x-0 top-0" />
@@ -76,7 +76,7 @@ export function UseCases() {
           </p>
         </div>
 
-        <div className="mt-14 grid gap-4 lg:grid-cols-3">
+        <div className="mt-10 grid gap-4 sm:mt-12 lg:grid-cols-3">
           {useCases.map(
             ({ number, icon: Icon, title, description, tags, cta }) => (
               <InteractiveSurface
@@ -87,7 +87,9 @@ export function UseCases() {
                   <span className="bg-accent text-primary flex size-11 items-center justify-center rounded-lg border">
                     <Icon className="size-5" strokeWidth={1.8} aria-hidden />
                   </span>
-                  <span className="curvg-meta">case {number} / 03</span>
+                  <span className="curvg-meta">
+                    {m['landing.use_cases.index']({ number })}
+                  </span>
                 </div>
                 <h3 className="mt-7 text-xl font-semibold tracking-tight">
                   {title}

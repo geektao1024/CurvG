@@ -1,14 +1,9 @@
 import type { ComponentType } from 'react';
 import { notFound, useLoaderData } from '@tanstack/react-router';
 
-import { envConfigs } from '@/config';
+import { localizedLinks, socialMeta } from '@/lib/seo';
 import { m } from '@/paraglide/messages.js';
-import {
-  baseLocale,
-  getLocale,
-  locales,
-  localizeUrl,
-} from '@/paraglide/runtime.js';
+import { baseLocale, getLocale } from '@/paraglide/runtime.js';
 
 type PageMeta = {
   title: string;
@@ -52,32 +47,18 @@ export function staticPageRouteOptions(slug: string) {
     head: ({ loaderData }: { loaderData?: LoaderData }) => {
       if (!loaderData) return {};
       const { meta, locale } = loaderData;
-      const urlFor = (loc: string) =>
-        localizeUrl(`${envConfigs.app_url}/${slug}`, {
-          locale: loc as ReturnType<typeof getLocale>,
-        }).href;
-      const canonical = urlFor(locale);
+      const seoLinks = localizedLinks({ path: `/${slug}`, locale });
       return {
         meta: [
           { title: meta.title },
           { name: 'description', content: meta.description },
-          { property: 'og:title', content: meta.title },
-          { property: 'og:description', content: meta.description },
-          { property: 'og:type', content: 'website' },
-          { property: 'og:url', content: canonical },
-          { name: 'twitter:card', content: 'summary' },
-          { name: 'twitter:title', content: meta.title },
-          { name: 'twitter:description', content: meta.description },
+          ...socialMeta({
+            title: meta.title,
+            description: meta.description,
+            url: seoLinks.canonical,
+          }),
         ],
-        links: [
-          { rel: 'canonical', href: canonical },
-          ...locales.map((loc) => ({
-            rel: 'alternate',
-            hrefLang: loc,
-            href: urlFor(loc),
-          })),
-          { rel: 'alternate', hrefLang: 'x-default', href: urlFor('en') },
-        ],
+        links: seoLinks.links,
       };
     },
     component: StaticPage,

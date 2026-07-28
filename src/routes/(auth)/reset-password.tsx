@@ -18,17 +18,17 @@ import {
 } from '@/components/ui/card';
 import { Field, FieldDescription, FieldGroup } from '@/components/ui/field';
 
-const resetSchema = z
-  .object({
-    password: z.string().min(8),
-    confirmPassword: z.string().min(8),
-  })
-  .refine((d) => d.password === d.confirmPassword, {
-    path: ['confirmPassword'],
-    message: m['common.sign.password_mismatch'](),
-  });
-
 function ResetPasswordPage() {
+  const resetSchema = z
+    .object({
+      password: z.string().min(8),
+      confirmPassword: z.string().min(8),
+    })
+    .refine((d) => d.password === d.confirmPassword, {
+      path: ['confirmPassword'],
+      message: m['common.sign.password_mismatch'](),
+    });
+
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
   const [tokenChecked, setTokenChecked] = useState(false);

@@ -1,10 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
-import { Activity, CreditCard, Key, TrendingUp } from 'lucide-react';
+import { CreditCard, Key, Sparkles, TrendingUp } from 'lucide-react';
 
 import { useSession } from '@/core/auth/client';
+import { Link } from '@/core/i18n/navigation';
 import { apiGet } from '@/lib/api-client';
+import { cn } from '@/lib/utils';
 import { m } from '@/paraglide/messages.js';
+import { buttonVariants } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -107,14 +110,16 @@ function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">
-              {m['settings.overview.usage']()}
+              {m['settings.overview.creator']()}
             </CardTitle>
-            <Activity className="text-muted-foreground size-4" />
+            <Sparkles className="text-muted-foreground size-4" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">0</div>
+            <div className="text-2xl font-bold">
+              {m['settings.overview.access_active']()}
+            </div>
             <p className="text-muted-foreground mt-1 text-xs">
-              {m['settings.overview.usage_description']()}
+              {m['settings.overview.creator_description']()}
             </p>
           </CardContent>
         </Card>
@@ -130,8 +135,16 @@ function DashboardPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="border-border text-muted-foreground rounded-lg border border-dashed p-8 text-center">
-            <p className="text-sm">{m['settings.placeholder']()}</p>
+          <div className="border-border rounded-lg border border-dashed p-8 text-center">
+            <p className="text-muted-foreground mx-auto max-w-xl text-sm leading-6">
+              {m['settings.placeholder']()}
+            </p>
+            <Link
+              href="/creator"
+              className={cn(buttonVariants(), 'mt-5 rounded-full px-6')}
+            >
+              {m['settings.overview.open_creator']()}
+            </Link>
           </div>
         </CardContent>
       </Card>

@@ -114,7 +114,8 @@ The browser first plays the same-origin artifact URL so HTTP Range remains avail
 - `src/components/creator-workspace.tsx` — responsive history, conversation, composer, specification, code and video UI.
 - `src/routes/api/animations*` — owner-scoped create, revise, approve, callback and artifact APIs.
 - `src/modules/animations/service.ts` — state machine, conversation history, version snapshots, spec generation and code generation.
-- `src/core/ai/chat.ts` — OpenAI-compatible and Anthropic chat adapters.
+- `src/core/ai/chat.ts` — bounded Yunwu-compatible chat requests, retries and Auto failover.
+- `src/config/animation-models.ts` — server-authoritative Creator model and Free/Pro policy.
 - `src/core/animation-renderer.ts` — authenticated renderer client.
 - `src/lib/animation-schema.ts` — structured specification and generated-code validation.
 - `src/modules/config/settings.ts` — model IDs and renderer endpoint settings in the admin panel.
@@ -128,11 +129,15 @@ The browser first plays the same-origin artifact URL so HTTP Range remains avail
 
 ## Required configuration
 
-In `/admin/settings`, configure at least one model provider:
+For Creator, configure Yunwu in `/admin/settings`:
 
-- OpenAI-compatible: `openai_base_url`, `openai_api_key`, `openai_model`.
-- Yunwu: `yunwu_base_url`, `yunwu_api_key`, `yunwu_model` (default base URL: `https://yunwu.ai/v1`).
-- Anthropic: `anthropic_base_url`, `anthropic_api_key`, `anthropic_model`.
+- `yunwu_base_url` (default: `https://yunwu.ai/v1`).
+- `yunwu_api_key`.
+
+Creator does not accept arbitrary provider or model strings. Its API intersects
+Yunwu's live catalog with the allowlist in `src/config/animation-models.ts`.
+OpenAI and Anthropic settings remain available to unrelated generic AI modules,
+but they are not Creator model choices.
 
 After deploying the renderer, configure:
 
@@ -189,7 +194,16 @@ This does not mean rendering is free or operationally zero-cost. Container start
 
 ## Verification status
 
-Verified on 2026-07-24:
+Verified on 2026-07-28:
+
+- Yunwu `/models` returned HTTP 200 with 408 advertised model IDs.
+- Minimal, sequential chat probes returned HTTP 200 with non-empty text for the seven allowed models: `deepseek-v4-pro`, `deepseek-v4-flash`, `qwen3-coder-plus`, `gpt-5`, `gpt-5.5`, `claude-sonnet-4-6`, and `claude-opus-4-7`.
+- `deepseek-v4-pro` is the only Free model. The other six require a current recurring Pro/Enterprise subscription; API authorization is server-side.
+- `qwen3-coder` remained advertised but returned HTTP 429 in two separate probe runs, so it was removed. `MiniMax-M3` and the three former Gemini 3.1 aliases were absent from the live catalog and were removed.
+- A minimal probe confirms current endpoint acceptance only. It is not evidence of long-form Manim quality or future upstream availability.
+- Upstream retry/circuit-breaker behavior, cross-instance capacity leases, payment replay handling, request-size limits, and Free/Pro boundary tests pass in the automated adversarial suite.
+
+Historical verification on 2026-07-24 (superseded model selection):
 
 - The saved Yunwu credential authenticated against `https://yunwu.ai/v1/models`; 403 provider models were returned during the test and the Creator selector loaded the filtered dynamic catalog.
 - A direct `deepseek-v4-pro` smoke request returned HTTP 200 and the expected response. Its first full specification request ended with a transient `fetch failed`; the added one-retry policy recovered the next request.

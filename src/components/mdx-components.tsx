@@ -1,6 +1,7 @@
 import type { AnchorHTMLAttributes, HTMLAttributes } from 'react';
 import type { MDXComponents } from 'mdx/types';
 
+import { Link } from '@/core/i18n/navigation';
 import { cn } from '@/lib/utils';
 
 export const mdxComponents: MDXComponents = {
@@ -37,15 +38,27 @@ export const mdxComponents: MDXComponents = {
       {...props}
     />
   ),
-  a: ({ className, ...props }: AnchorHTMLAttributes<HTMLAnchorElement>) => (
-    <a
-      className={cn(
-        'text-primary font-medium underline-offset-4 hover:underline',
-        className
-      )}
-      {...props}
-    />
-  ),
+  a: ({
+    className,
+    href = '',
+    rel,
+    target,
+    ...props
+  }: AnchorHTMLAttributes<HTMLAnchorElement>) => {
+    const external = /^https?:\/\//i.test(href);
+    return (
+      <Link
+        href={href}
+        className={cn(
+          'text-primary font-medium underline-offset-4 hover:underline',
+          className
+        )}
+        target={external ? (target ?? '_blank') : target}
+        rel={external ? (rel ?? 'noopener noreferrer') : rel}
+        {...props}
+      />
+    );
+  },
   ul: ({ className, ...props }: HTMLAttributes<HTMLUListElement>) => (
     <ul
       className={cn(
@@ -88,6 +101,41 @@ export const mdxComponents: MDXComponents = {
         'bg-muted text-foreground rounded px-[0.4rem] py-[0.2rem] font-mono text-sm',
         className
       )}
+      {...props}
+    />
+  ),
+  pre: ({ className, ...props }: HTMLAttributes<HTMLPreElement>) => (
+    <pre
+      className={cn(
+        'border-border bg-muted my-4 overflow-x-auto rounded-xl border p-4 [&_code]:bg-transparent [&_code]:p-0',
+        className
+      )}
+      {...props}
+    />
+  ),
+  table: ({ className, ...props }: HTMLAttributes<HTMLTableElement>) => (
+    <div className="my-5 overflow-x-auto">
+      <table
+        className={cn(
+          'border-border w-full min-w-[42rem] border-collapse',
+          className
+        )}
+        {...props}
+      />
+    </div>
+  ),
+  th: ({ className, ...props }: HTMLAttributes<HTMLTableCellElement>) => (
+    <th
+      className={cn(
+        'border-border bg-muted/60 border px-3 py-2 text-left font-semibold',
+        className
+      )}
+      {...props}
+    />
+  ),
+  td: ({ className, ...props }: HTMLAttributes<HTMLTableCellElement>) => (
+    <td
+      className={cn('border-border border px-3 py-2 align-top', className)}
       {...props}
     />
   ),

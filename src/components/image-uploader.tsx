@@ -26,7 +26,39 @@ interface ImageUploaderProps {
   className?: string;
   defaultPreviews?: string[];
   onChange?: (items: ImageUploaderValue[]) => void;
+  copy?: Partial<ImageUploaderCopy>;
 }
+
+export interface ImageUploaderCopy {
+  dropToUpload: string;
+  previewAlt: string;
+  replaceImage: string;
+  uploading: string;
+  failed: string;
+  removeImage: string;
+  upload: string;
+  maxSize: (size: number) => string;
+  onlyImages: string;
+  notAnImage: (fileName: string) => string;
+  exceedsLimit: (fileName: string, size: number) => string;
+  onlyFirstImages: (count: number) => string;
+}
+
+const defaultCopy: ImageUploaderCopy = {
+  dropToUpload: 'Drop to upload',
+  previewAlt: 'Selected image preview',
+  replaceImage: 'Replace image',
+  uploading: 'Uploading…',
+  failed: 'Upload failed',
+  removeImage: 'Remove image',
+  upload: 'Upload image',
+  maxSize: (size) => `Up to ${size} MB`,
+  onlyImages: 'Only image files are supported',
+  notAnImage: (fileName) => `"${fileName}" is not an image`,
+  exceedsLimit: (fileName, size) =>
+    `"${fileName}" exceeds the ${size} MB limit`,
+  onlyFirstImages: (count) => `Only the first ${count} images will be added`,
+};
 
 interface UploadItem extends ImageUploaderValue {
   file?: File;
@@ -72,7 +104,9 @@ export function ImageUploader({
   className,
   defaultPreviews,
   onChange,
+  copy: copyOverrides,
 }: ImageUploaderProps) {
+  const copy = { ...defaultCopy, ...copyOverrides };
   const inputRef = useRef<HTMLInputElement | null>(null);
   const isInitializedRef = useRef(false);
   const onChangeRef = useRef(onChange);
@@ -204,9 +238,7 @@ export function ImageUploader({
         })
         .catch((error: any) => {
           console.error('Upload failed:', error);
-          toast.error(
-            error?.message ? `Upload failed: ${error.message}` : 'Upload failed'
-          );
+          toast.error(copy.failed);
           setItems((prev) =>
             prev.map((item) => {
               if (item.id !== id) return item;
@@ -228,12 +260,12 @@ export function ImageUploader({
       const file = selectedFiles[0];
       if (!file) return;
       if (!file.type?.startsWith('image/')) {
-        toast.error('Only image files are supported');
+        toast.error(copy.onlyImages);
         if (inputRef.current) inputRef.current.value = '';
         return;
       }
       if (file.size > maxBytes) {
-        toast.error(`"${file.name}" exceeds the ${maxSizeMB}MB limit`);
+        toast.error(copy.exceedsLimit(file.name, maxSizeMB));
         if (inputRef.current) inputRef.current.value = '';
         return;
       }
@@ -245,11 +277,11 @@ export function ImageUploader({
     const filesToAdd = selectedFiles
       .filter((file) => {
         if (!file.type?.startsWith('image/')) {
-          toast.error(`"${file.name}" is not an image`);
+          toast.error(copy.notAnImage(file.name));
           return false;
         }
         if (file.size > maxBytes) {
-          toast.error(`"${file.name}" exceeds the ${maxSizeMB}MB limit`);
+          toast.error(copy.exceedsLimit(file.name, maxSizeMB));
           return false;
         }
         return true;
@@ -281,9 +313,7 @@ export function ImageUploader({
     }
 
     if (availableSlots < selectedFiles.length) {
-      toast.message(
-        `Only the first ${filesToAdd.length} image(s) will be added`
-      );
+      toast.message(copy.onlyFirstImages(filesToAdd.length));
     }
 
     const newItems = filesToAdd.map((file) => ({
@@ -325,9 +355,7 @@ export function ImageUploader({
           );
         } catch (error: any) {
           console.error('Upload failed:', error);
-          toast.error(
-            error?.message ? `Upload failed: ${error.message}` : 'Upload failed'
-          );
+          toast.error(copy.failed);
           setItems((prev) =>
             prev.map((current) => {
               if (current.id !== item.id) return current;
@@ -441,7 +469,7 @@ export function ImageUploader({
       {isDragActive && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-black/10 backdrop-blur-sm">
           <div className="bg-background/80 text-foreground rounded-full px-4 py-2 text-sm font-medium shadow-sm">
-            Drop to upload
+            {copy.dropToUpload}
           </div>
         </div>
       )}
@@ -478,7 +506,7 @@ export function ImageUploader({
             <div className="relative overflow-hidden rounded-lg">
               <img
                 src={item.preview}
-                alt="Preview"
+                alt={copy.previewAlt}
                 className="h-32 w-32 rounded-lg object-cover"
               />
               {item.size && (
@@ -494,7 +522,7 @@ export function ImageUploader({
                     variant="secondary"
                     className="bg-background/50 text-foreground hover:bg-background/50 h-10 w-10 rounded-full shadow-sm backdrop-blur focus-visible:ring-2 focus-visible:ring-white/70"
                     onClick={() => openReplacePicker(item.id)}
-                    aria-label="Replace image"
+                    aria-label={copy.replaceImage}
                   >
                     <RefreshCw className="h-5 w-5" />
                   </Button>
@@ -502,12 +530,12 @@ export function ImageUploader({
               )}
               {item.status === 'uploading' && (
                 <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 text-xs font-medium text-white">
-                  Uploading...
+                  {copy.uploading}
                 </div>
               )}
               {item.status === 'error' && (
                 <div className="absolute inset-0 z-10 flex items-center justify-center bg-red-500/70 text-xs font-medium text-white">
-                  Failed
+                  {copy.failed}
                 </div>
               )}
               <Button
@@ -516,7 +544,7 @@ export function ImageUploader({
                 variant="destructive"
                 className="absolute top-2 right-2 z-20 h-7 w-7"
                 onClick={() => handleRemove(item.id)}
-                aria-label="Remove image"
+                aria-label={copy.removeImage}
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -535,8 +563,10 @@ export function ImageUploader({
                 <div className="border-border flex h-10 w-10 items-center justify-center rounded-full border border-dashed">
                   <Upload className="h-5 w-5" />
                 </div>
-                <span className="text-xs font-medium">Upload</span>
-                <span className="text-primary text-xs">Max {maxSizeMB}MB</span>
+                <span className="text-xs font-medium">{copy.upload}</span>
+                <span className="text-primary text-xs">
+                  {copy.maxSize(maxSizeMB)}
+                </span>
               </button>
             </div>
           </div>

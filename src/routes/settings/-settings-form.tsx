@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { apiPatch } from '@/lib/api-client';
 import { m } from '@/paraglide/messages.js';
+import { getImageUploaderCopy } from '@/blocks/image-uploader-copy';
 import { TextField } from '@/components/form-field';
 import { ImageUploader, ImageUploaderValue } from '@/components/image-uploader';
 import { Button } from '@/components/ui/button';
@@ -87,6 +88,7 @@ export function SettingsForm({
           <div className="space-y-2">
             <Label>{m['settings.profile.avatar']()}</Label>
             <ImageUploader
+              copy={getImageUploaderCopy()}
               defaultPreviews={image ? [image] : []}
               onChange={handleAvatarChange}
               maxSizeMB={2}

@@ -1,27 +1,26 @@
 import { m } from '@/paraglide/messages.js';
 import { LivingCurve } from '@/components/living-curve';
 import { PixelRevealLink } from '@/components/pixel-reveal-link';
-import { Typewriter } from '@/components/typewriter';
 
 export function Hero() {
   const metrics = [
     {
-      value: 'ƒ(x)',
+      value: '01',
       label: m['landing.hero.metric_engine'](),
       borderClass: '',
     },
     {
-      value: 'SPEC',
+      value: '02',
       label: m['landing.hero.metric_precision'](),
       borderClass: 'border-t sm:border-t-0 sm:border-l',
     },
     {
-      value: 'PY',
+      value: '03',
       label: m['landing.hero.metric_formats'](),
       borderClass: 'border-t lg:border-t-0 lg:border-l',
     },
     {
-      value: 'ISO',
+      value: '04',
       label: m['landing.hero.metric_input'](),
       borderClass: 'border-t sm:border-l lg:border-t-0',
     },
@@ -46,7 +45,7 @@ export function Hero() {
               className="absolute inset-0 h-full w-full"
             />
             <p className="curvg-meta pointer-events-none absolute top-8 right-8">
-              fig. 01 — lissajous
+              01 / {m['landing.hero.preview_label']()}
             </p>
             <p className="curvg-success pointer-events-none absolute top-14 right-8 font-mono text-[11px]">
               ● {m['landing.hero.preview_status']()}
@@ -72,17 +71,8 @@ export function Hero() {
               <span className="block">
                 {m['landing.hero.headline_prefix']()}
               </span>
-              <span className="text-primary block min-h-[1em] whitespace-normal sm:whitespace-nowrap">
-                <Typewriter
-                  words={[
-                    m['landing.hero.headline_accent'](),
-                    m['landing.hero.headline_accent_2'](),
-                    m['landing.hero.headline_accent_3'](),
-                  ]}
-                  typeMs={62}
-                  deleteMs={34}
-                  holdMs={1800}
-                />
+              <span className="text-primary block whitespace-normal">
+                {m['landing.hero.headline_accent']()}
               </span>
               <span className="block">
                 {m['landing.hero.headline_suffix']()}

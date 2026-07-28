@@ -28,11 +28,21 @@ export function SiteHeader({
   navLinks,
   ctaHref = '/settings',
   ctaLabel,
+  openMenuLabel = 'Open menu',
+  closeMenuLabel = 'Close menu',
+  switchLanguageLabel = 'Switch language',
+  toggleThemeLabel = 'Toggle theme',
+  userFallback = 'User',
   framed = false,
 }: {
   navLinks?: NavLink[];
   ctaHref?: string;
   ctaLabel?: string;
+  openMenuLabel?: string;
+  closeMenuLabel?: string;
+  switchLanguageLabel?: string;
+  toggleThemeLabel?: string;
+  userFallback?: string;
   framed?: boolean;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -73,7 +83,7 @@ export function SiteHeader({
         </Link>
 
         {/* Desktop nav */}
-        <nav className="hidden items-center gap-1 md:flex">
+        <nav className="hidden items-center gap-1 lg:flex">
           {navLinks?.map((link) => {
             if (framed && !isExternalHref(link.href)) {
               return (
@@ -114,13 +124,13 @@ export function SiteHeader({
         </nav>
 
         {/* Desktop actions */}
-        <div className="hidden items-center gap-3 md:flex">
-          <LocaleSelector />
-          <ThemeToggle />
+        <div className="hidden items-center gap-3 lg:flex">
+          <LocaleSelector switchLabel={switchLanguageLabel} />
+          <ThemeToggle label={toggleThemeLabel} />
           <span className="bg-border h-5 w-px" aria-hidden />
           {user ? (
             <SiteUserMenu
-              name={user.name || 'User'}
+              name={user.name || userFallback}
               email={user.email}
               image={user.image}
             />
@@ -146,9 +156,9 @@ export function SiteHeader({
 
         {/* Mobile toggle */}
         <button
-          className="p-2 md:hidden"
+          className="p-2 lg:hidden"
           onClick={() => setMobileOpen(!mobileOpen)}
-          aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+          aria-label={mobileOpen ? closeMenuLabel : openMenuLabel}
           aria-expanded={mobileOpen}
         >
           {mobileOpen ? <X className="size-5" /> : <Menu className="size-5" />}
@@ -157,7 +167,7 @@ export function SiteHeader({
 
       {/* Mobile menu */}
       {mobileOpen && (
-        <div className="border-border border-t px-4 pt-2 pb-4 md:hidden">
+        <div className="border-border border-t px-4 pt-2 pb-4 lg:hidden">
           <nav className="flex flex-col gap-2">
             {navLinks?.map((link) =>
               isExternalHref(link.href) ? (
@@ -185,12 +195,12 @@ export function SiteHeader({
             )}
           </nav>
           <div className="border-border mt-3 flex items-center gap-2 border-t pt-3">
-            <LocaleSelector />
-            <ThemeToggle />
+            <LocaleSelector switchLabel={switchLanguageLabel} />
+            <ThemeToggle label={toggleThemeLabel} />
             <div className="flex-1" />
             {user ? (
               <SiteUserMenu
-                name={user.name || 'User'}
+                name={user.name || userFallback}
                 email={user.email}
                 image={user.image}
               />

@@ -3,7 +3,6 @@ import type { ComponentType, SVGProps } from 'react';
 import { Link } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
 import { cn } from '@/lib/utils';
-import { BuiltWithShipAny } from '@/components/built-with-shipany';
 import { LocaleSelector } from '@/components/locale-selector';
 
 export interface FooterColumn {
@@ -26,6 +25,7 @@ export function SiteFooter({
   columns,
   socials,
   copyright,
+  localeSwitchLabel,
   disclaimer,
   framed = false,
 }: {
@@ -33,6 +33,7 @@ export function SiteFooter({
   columns?: FooterColumn[];
   socials?: FooterSocial[];
   copyright?: string;
+  localeSwitchLabel?: string;
   disclaimer?: string;
   framed?: boolean;
 }) {
@@ -124,13 +125,13 @@ export function SiteFooter({
           )}
           <LocaleSelector
             variant="pill"
+            switchLabel={localeSwitchLabel}
             className="border-border text-foreground hover:bg-secondary hover:text-foreground"
           />
         </div>
 
         {/* Bottom bar */}
-        <div className="border-border mt-6 flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
-          <BuiltWithShipAny />
+        <div className="border-border mt-6 flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-end">
           <span className="text-muted-foreground text-sm">
             {copyright ||
               `© ${year} ${envConfigs.app_name}. All rights reserved.`}

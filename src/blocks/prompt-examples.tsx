@@ -28,7 +28,7 @@ export function PromptExamples() {
 
   return (
     <section id="prompt-examples">
-      <div className="curvg-stage curvg-frame curvg-section-field relative px-6 py-20 sm:px-10 sm:py-28">
+      <div className="curvg-stage curvg-frame curvg-section-field curvg-section-spacing relative">
         <span className="curvg-corner top-5 left-5" aria-hidden />
         <span className="curvg-corner top-5 right-5" aria-hidden />
         <div className="curvg-dotted-divider absolute inset-x-0 top-0" />
@@ -54,7 +54,7 @@ export function PromptExamples() {
           </p>
         </div>
 
-        <div className="mt-14 grid gap-4 lg:grid-cols-3">
+        <div className="mt-10 grid gap-4 sm:mt-12 lg:grid-cols-3">
           {examples.map((example) => (
             <InteractiveSurface
               key={example.number}
@@ -64,7 +64,11 @@ export function PromptExamples() {
                 <span className="bg-accent text-primary flex size-11 items-center justify-center rounded-lg border">
                   <Code2 className="size-5" strokeWidth={1.8} aria-hidden />
                 </span>
-                <span className="curvg-meta">prompt {example.number} / 03</span>
+                <span className="curvg-meta">
+                  {m['landing.prompts.example_index']({
+                    number: example.number,
+                  })}
+                </span>
               </div>
               <h3 className="mt-7 text-xl font-semibold tracking-tight">
                 {example.title}

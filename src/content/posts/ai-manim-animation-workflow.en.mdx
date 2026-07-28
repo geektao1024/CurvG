@@ -1,0 +1,225 @@
+export const meta = {
+  title: 'AI Manim Animation: Prompt to Reviewable Code',
+  description:
+    'Learn how AI Manim animation generation moves from a prompt to a reviewable scene plan, portable Manim Community code, and an optional render.',
+  created_at: '2026-07-28',
+  updated_at: '2026-07-28',
+  author_name: 'CurvG Team',
+  author_type: 'Organization',
+  image: '/og/curvg-social.png',
+};
+
+An AI Manim animation workflow should not be a black box that accepts one sentence and eventually returns a video. The useful part is everything you can inspect in between: whether the mathematics is sound, how the explanation is sequenced, where labels sit, how long each step lasts, and whether the final code can move into your own Manim workflow.
+
+**Key takeaway:** A dependable text-to-Manim process exposes at least five distinct artifacts: the creative brief, a scene plan, revision history, Manim Community code, and—when rendering is available—a video result. CurvG places a review gate before code generation and rendering, so you can correct the explanation before a visual mistake becomes a render-and-rewrite cycle.
+
+## What does an AI Manim animation generator actually generate?
+
+An AI Manim animation generator does not literally draw a finished video from natural language. It has to translate an explanation goal into a structured scene, translate that scene into Python, and then let Manim execute the code to produce frames.
+
+The [official Manim Community quickstart](https://docs.manim.community/en/stable/tutorials/quickstart.html) describes Manim as an engine for precise programmatic animations. A typical animation is organized as a `Scene`, with objects and animation calls defined in its `construct()` method. The official [Scene reference](https://docs.manim.community/en/stable/reference/manim.scene.scene.Scene.html) calls Scene the canvas of an animation and documents methods such as `add()`, `remove()`, and `play()` for managing what appears on screen.
+
+That means AI-assisted Manim generation has three layers:
+
+1. **Explanation:** What should the viewer understand, and which assumptions must remain explicit?
+2. **Scene design:** Which formulas, objects, labels, camera moves, and timings support that outcome?
+3. **Implementation:** Which Manim classes and methods turn the plan into executable Python?
+
+When a tool exposes only the final video, it is difficult to tell whether an error came from the mathematics, the narrative, or the implementation. CurvG is positioned around a different handoff: review the proposed scene first, then generate Manim Community code you can inspect, copy, and download. Video appears only when a rendering service is available.
+
+## Why should a prompt not jump straight to rendering?
+
+Because plausible language is not the same as a correct explanation. Without an intermediate review layer, small ambiguities become expensive revisions after rendering: a missing domain restriction, an axis range that hides the important behavior, a label crossing a curve, a proof step in the wrong order, or a camera move that finishes before the viewer can read the formula.
+
+A practical workflow separates description, scene planning, rendering, and iteration. The intermediate specification is not just extra ceremony. The real test is whether it exposes enough detail for a person to make a meaningful decision.
+
+A reviewable scene plan should make these risks visible:
+
+<table>
+  <thead>
+    <tr>
+      <th>Review area</th>
+      <th>Common failure</th>
+      <th>What the plan should expose</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Mathematics</td>
+      <td>Inconsistent notation, missing domain, skipped logic</td>
+      <td>Formulas, variable meanings, and assumptions</td>
+    </tr>
+    <tr>
+      <td>Sequence</td>
+      <td>Showing the conclusion before building the idea</td>
+      <td>Purpose and dependencies of every scene beat</td>
+    </tr>
+    <tr>
+      <td>Layout</td>
+      <td>Labels overlap or leave the safe frame</td>
+      <td>Coordinate ranges, screen regions, and label positions</td>
+    </tr>
+    <tr>
+      <td>Timing</td>
+      <td>Too many simultaneous changes</td>
+      <td>Actions, duration, pauses, and emphasis</td>
+    </tr>
+    <tr>
+      <td>Manim implementation</td>
+      <td>Unclear dependencies or unsuitable objects</td>
+      <td>Likely mobjects, transforms, camera use, and assets</td>
+    </tr>
+  </tbody>
+</table>
+
+This is the difference between something being previewable and reviewable. A preview shows what happened. A reviewable specification explains how the result will be constructed and where you can intervene.
+
+## How does CurvG turn a prompt into a reviewable Manim scene?
+
+CurvG's current core flow is: state the outcome, generate a scene plan, request revisions, approve the plan, and generate code. When a rendering environment is configured, that code can continue to a render job. Each stage produces a concrete artifact rather than hiding every decision in one model response.
+
+### Step 1: State what the viewer should understand
+
+A useful prompt begins with the learning outcome, then adds the mathematics and visual constraints. For example:
+
+> Explain why a derivative is the slope of the tangent line at a point. Show a function graph and a movable point, introduce a secant line, let the two points approach each other, and then turn the secant into a tangent. Keep the difference quotient visible and prevent labels from covering the curve.
+
+This brief names the concept, objects, sequence, formula, and layout constraint. It gives an AI Manim code generator more to work with than “make a derivative animation.” You can inspect the site's [prompt examples](/#prompt-examples) before adapting the same structure to your own topic.
+
+### Step 2: Review the scene plan, not just the wording
+
+The scene plan should answer practical questions: How many beats are there? What does each beat teach? Which formulas appear? How do the objects move? How is the frame divided? How long should each state remain visible? If those answers are absent, executable code can still fail to explain the relationship.
+
+In CurvG Creator, the original brief, proposed scene, conversation, and generated code remain in the same workspace. That keeps the reasoning traceable instead of asking you to remember the first prompt. The homepage [workflow overview](/#workflow) shows how those stages relate.
+
+### Step 3: Correct errors before code generation
+
+When a plan needs revision, identify the object and the stage that must change. “Keep the secant line visible for two seconds before starting the limit,” “place `h → 0` in the upper-right region,” or “do not move the camera while replacing the formula” are actionable instructions. “Make it clearer” is not.
+
+### Step 4: Approve and generate portable Manim code
+
+After approval, CurvG generates Manim Community Python. The current Creator can display, copy, and download that code, so it can move into your editor, source repository, or local Manim project. The Python is not a hidden implementation detail; it is part of the deliverable.
+
+### Step 5: Render when the environment supports it
+
+If the deployment has a rendering service configured, generated code can continue into a render queue. If it does not, the workflow stops honestly at “code ready” instead of presenting a missing video as a success. In either case, the result still needs a final review for mathematical accuracy, text readability, frame boundaries, and pacing.
+
+## How do you write a better text-to-Manim prompt?
+
+The answer is not more adjectives. It is more executable constraints. A prompt for AI math animation can follow this template:
+
+```text
+Outcome: What should the viewer understand by the end?
+Mathematics: Which formulas, variables, domains, assumptions, or data are required?
+Objects: Which axes, curves, points, vectors, labels, or shapes must appear?
+Sequence: What should appear first, and which relationship should be built next?
+Emphasis: What should color, labels, pauses, or camera movement highlight?
+Constraints: What frame, duration, exclusions, or required details must be respected?
+```
+
+Use three tests before submitting it:
+
+- **Verifiable:** You can independently check the equations and conclusion.
+- **Storyboardable:** Every action supports a specific cognitive step.
+- **Implementable:** The request maps to concrete objects, transforms, camera behavior, or timing.
+
+If you are not sure how to begin, [open CurvG Creator](/creator), select a nearby example, and replace its formula, objects, and learning objective.
+
+## What should you review before generating Manim code?
+
+Review the plan in five layers—mathematics, narrative, visuals, timing, and implementation—instead of asking only whether the scene looks attractive.
+
+### Mathematics review
+
+- Are variables, symbols, and units consistent from start to finish?
+- Are the domain, initial conditions, and special cases explicit?
+- Do positions and lengths actually correspond to the formula rather than merely suggesting it?
+- Does a visual proof preserve every necessary logical step?
+
+### Narrative review
+
+- Does each scene beat have one primary purpose?
+- Does the viewer know what a new object represents before it moves?
+- Does the key conclusion receive both visual and temporal emphasis?
+- Would removing a beat break the explanation chain?
+
+### Visual and timing review
+
+- Can labels collide or leave the frame while objects move?
+- Are too many elements changing at once?
+- Does each formula remain visible long enough to read?
+- Does a camera movement reveal information, or is it only decoration?
+
+### Code and environment review
+
+- Do the chosen Manim objects and animation methods match the target version?
+- Are font, LaTeX, image, and data-file dependencies available?
+- Should you make a quick low-quality render before the final output?
+- Are object names and scene structure readable enough for later editing?
+
+## Should you use online AI Manim or a local Manim setup?
+
+They solve different parts of the job. An online AI Manim tool is useful for turning an unclear idea into a first scene plan and code draft. A local Manim environment gives you direct control over implementation, dependencies, versioning, debugging, and final rendering.
+
+<table>
+  <thead>
+    <tr>
+      <th>Task</th>
+      <th>Online AI assistance</th>
+      <th>Local Manim</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Plan from a teaching goal</td>
+      <td>Produces a first draft and exposes structure</td>
+      <td>You design the scene manually</td>
+    </tr>
+    <tr>
+      <td>Revise formulas and sequence</td>
+      <td>Revise the specification through conversation</td>
+      <td>Edit Python directly</td>
+    </tr>
+    <tr>
+      <td>Control implementation details</td>
+      <td>Depends on the generated code and later edits</td>
+      <td>Full direct control</td>
+    </tr>
+    <tr>
+      <td>Installation and dependencies</td>
+      <td>No local setup during the browser stage</td>
+      <td>Requires Python, Manim, and related dependencies</td>
+    </tr>
+    <tr>
+      <td>Long-term maintenance</td>
+      <td>Export and retain the code</td>
+      <td>Commit the project to version control</td>
+    </tr>
+  </tbody>
+</table>
+
+To continue locally, follow the [official Manim installation guide](https://docs.manim.community/en/stable/installation.html), then use the quickstart to verify a minimal scene. To understand the range of available techniques, compare the [official Manim example gallery](https://docs.manim.community/en/stable/examples.html) with CurvG's own [animation examples](/#gallery).
+
+## Frequently asked questions
+
+### Can AI guarantee that a math animation is correct?
+
+No. AI can speed up scene planning and code drafting, but a knowledgeable person still needs to check formulas, assumptions, proof logic, and data. The value of a reviewable workflow is not that it eliminates mistakes; it exposes them earlier.
+
+### Can I use an AI Manim animation generator without knowing Python?
+
+You can create and revise a scene plan in natural language. Basic Python and Manim knowledge becomes useful when you want to make detailed local edits, diagnose rendering problems, or maintain a larger project.
+
+### Does CurvG always return a rendered video?
+
+No. The consistently visible outputs are the scene plan and the Manim code you can inspect, copy, and download. A video is produced only when the deployment has rendering configured and enabled, and the interface reports the actual state.
+
+### Does CurvG replace Manim Community?
+
+No. CurvG helps plan scenes and generate code. Manim Community is the underlying engine that executes Python and produces programmatic animation. They are closer to an authoring assistant and an animation engine than competing substitutes.
+
+## Start with a scene you can inspect
+
+A useful AI math animation is not judged only by how quickly it appears. It should be verifiable, revisable, and reusable. State the teaching goal, inspect the formulas, sequence, labels, and timing, then generate code you can keep. That is more controllable than waiting for a finished video before discovering what the system misunderstood.
+
+[Create your first reviewable Manim scene](/creator), or [compare model access and render availability](/pricing) before you begin.

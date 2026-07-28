@@ -28,6 +28,24 @@ function ensureCloudflareEnv(): Promise<void> {
 export default {
   async fetch(req: Request): Promise<Response> {
     await ensureCloudflareEnv();
-    return paraglideMiddleware(req, () => handler.fetch(req));
+    const response = await paraglideMiddleware(req, () => handler.fetch(req));
+    const headers = new Headers(response.headers);
+    headers.set('X-Content-Type-Options', 'nosniff');
+    headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    headers.set(
+      'Permissions-Policy',
+      'camera=(), microphone=(), geolocation=()'
+    );
+    if (new URL(req.url).protocol === 'https:') {
+      headers.set(
+        'Strict-Transport-Security',
+        'max-age=31536000; includeSubDomains'
+      );
+    }
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
   },
 };

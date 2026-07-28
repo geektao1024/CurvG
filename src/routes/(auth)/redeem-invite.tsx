@@ -37,7 +37,7 @@ function RedeemInvitePage() {
       .then((res) => {
         if (cancelled) return;
         if (res.code === 0 && !res.data?.needsInvite) {
-          router.push('/settings');
+          router.push('/creator');
         } else {
           setChecking(false);
         }
@@ -81,7 +81,7 @@ function RedeemInvitePage() {
       }
 
       // Hard navigation so the new plan/membership is reflected everywhere.
-      window.location.assign(localizeHref('/settings'));
+      window.location.assign(localizeHref('/creator'));
     } catch (err: any) {
       setError(err?.message || m['common.sign.invite_code_invalid']());
       setLoading(false);
@@ -138,7 +138,9 @@ function RedeemInvitePage() {
                 </Field>
                 <Field>
                   <Button type="submit" disabled={loading}>
-                    {loading ? '...' : m['common.sign.redeem_submit']()}
+                    {loading
+                      ? m['common.sign.redeeming']()
+                      : m['common.sign.redeem_submit']()}
                   </Button>
                   <FieldDescription className="text-center">
                     <button

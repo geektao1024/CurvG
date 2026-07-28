@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { getAllConfigs } from '@/modules/config/service';
 import { handlePaymentCallback } from '@/modules/payment/service';
+import { enforceMinIntervalRateLimit } from '@/lib/rate-limit';
 
 /**
  * GET /api/payment/callback?order_no=xxx&redirect=xxx
@@ -36,7 +37,16 @@ async function GET({ request }: { request: Request }) {
   const fallback = `${appUrl}/settings/billing`;
 
   try {
-    if (orderNo) {
+    // The return URL is unauthenticated by design, but it must not become an
+    // unbounded provider-status proxy. Order numbers are opaque and the limit
+    // is shared for the same supplied token across IPs/cookies.
+    if (orderNo && /^[A-Za-z0-9_-]{8,120}$/.test(orderNo)) {
+      const limited = enforceMinIntervalRateLimit(request, {
+        intervalMs: 5_000,
+        keyPrefix: 'payment-callback',
+        extraKey: orderNo,
+      });
+      if (limited) return limited;
       await handlePaymentCallback(orderNo);
     }
   } catch (error: any) {

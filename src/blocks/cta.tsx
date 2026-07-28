@@ -7,14 +7,14 @@ import { buttonVariants } from '@/components/ui/button';
 export function CTA() {
   return (
     <section>
-      <div className="curvg-stage curvg-frame relative px-6 py-20 sm:px-10 sm:py-24">
+      <div className="curvg-stage curvg-frame curvg-section-spacing relative">
         <span className="curvg-corner top-5 left-5" aria-hidden />
         <span className="curvg-corner top-5 right-5" aria-hidden />
         <span className="curvg-corner bottom-5 left-5" aria-hidden />
         <span className="curvg-corner right-5 bottom-5" aria-hidden />
         <div className="curvg-dotted-divider absolute inset-x-0 top-0" />
 
-        <div className="relative overflow-hidden rounded-2xl bg-[#201f32] px-6 py-14 text-center text-[#f3f3f9] sm:px-10 sm:py-20">
+        <div className="relative overflow-hidden rounded-2xl bg-[#201f32] px-6 py-12 text-center text-[#f3f3f9] sm:px-10 sm:py-16">
           <div className="curvg-cta-grid pointer-events-none absolute inset-0" />
           <p className="relative font-mono text-xs font-semibold tracking-[0.18em] text-[#f3f3f9]/60 uppercase">
             {m['landing.cta.eyebrow']()}

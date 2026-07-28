@@ -4,8 +4,15 @@ import { ArrowLeft, Calendar } from 'lucide-react';
 
 import { Link } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
+import {
+  absoluteUrl,
+  DEFAULT_SOCIAL_IMAGE_PATH,
+  localizedLinks,
+  serializeJsonLd,
+  socialMeta,
+} from '@/lib/seo';
 import { m } from '@/paraglide/messages.js';
-import { getLocale, localizeUrl } from '@/paraglide/runtime.js';
+import { getLocale } from '@/paraglide/runtime.js';
 import { Footer } from '@/blocks/footer';
 import { Header } from '@/blocks/header';
 import { MarkdownContent } from '@/components/markdown-content';
@@ -25,22 +32,73 @@ export const Route = createFileRoute('/blog/$slug')({
   head: ({ loaderData }) => {
     if (!loaderData) return {};
     const { locale, post } = loaderData;
-    const canonical = localizeUrl(`${envConfigs.app_url}/blog/${post.slug}`, {
-      locale: locale as any,
-    }).href;
+    const path = `/blog/${post.slug}`;
+    const seoLinks = localizedLinks({
+      path,
+      locale,
+      availableLocales: post.availableLocales,
+    });
+    const isLocalizedVariant = post.availableLocales.includes(locale);
+    const title = `${post.title} | ${envConfigs.app_name}`;
+    const image = post.image || DEFAULT_SOCIAL_IMAGE_PATH;
+    const structuredData = {
+      '@context': 'https://schema.org',
+      '@type': 'BlogPosting',
+      headline: post.title,
+      description: post.description,
+      image: [absoluteUrl(image)],
+      datePublished: post.createdAt,
+      dateModified: post.updatedAt || post.createdAt,
+      inLanguage: seoLinks.canonicalLocale,
+      mainEntityOfPage: {
+        '@type': 'WebPage',
+        '@id': seoLinks.canonical,
+      },
+      ...(post.authorName
+        ? {
+            author: {
+              '@type': post.authorType || 'Person',
+              name: post.authorName,
+            },
+          }
+        : {}),
+      publisher: {
+        '@type': 'Organization',
+        name: envConfigs.app_name,
+        logo: {
+          '@type': 'ImageObject',
+          url: absoluteUrl(envConfigs.app_logo),
+        },
+      },
+    };
     return {
       meta: [
-        { title: `${post.title} | ${envConfigs.app_name}` },
+        { title },
         { name: 'description', content: post.description },
-        { property: 'og:title', content: post.title },
-        { property: 'og:description', content: post.description },
-        { property: 'og:type', content: 'article' },
-        { property: 'og:url', content: canonical },
-        { name: 'twitter:card', content: 'summary' },
-        { name: 'twitter:title', content: post.title },
-        { name: 'twitter:description', content: post.description },
+        ...socialMeta({
+          title,
+          description: post.description,
+          url: seoLinks.canonical,
+          type: 'article',
+          image,
+          imageAlt: post.title,
+        }),
+        { property: 'article:published_time', content: post.createdAt },
+        {
+          property: 'article:modified_time',
+          content: post.updatedAt || post.createdAt,
+        },
+        ...(!isLocalizedVariant
+          ? [{ name: 'robots', content: 'noindex, follow' }]
+          : []),
       ],
-      links: [{ rel: 'canonical', href: canonical }],
+      links: seoLinks.links,
+      scripts: [
+        {
+          type: 'application/ld+json',
+          children: serializeJsonLd(structuredData),
+        },
+      ],
     };
   },
   component: BlogPostPage,
@@ -100,7 +158,10 @@ function BlogPostPage() {
             <img
               src={post.image}
               alt={post.title}
-              className="border-border mb-8 w-full rounded-2xl border object-cover"
+              width={1200}
+              height={630}
+              fetchPriority="high"
+              className="border-border mb-8 aspect-[40/21] w-full rounded-2xl border object-cover"
             />
           )}
 

@@ -13,9 +13,11 @@ import {
 export function LocaleSelector({
   variant = 'icon',
   className,
+  switchLabel = 'Switch language',
 }: {
   variant?: 'icon' | 'pill';
   className?: string;
+  switchLabel?: string;
 }) {
   const locale = getLocale();
 
@@ -38,7 +40,7 @@ export function LocaleSelector({
         {variant === 'icon' ? (
           <>
             <Languages className="size-4" />
-            <span className="sr-only">Switch language</span>
+            <span className="sr-only">{switchLabel}</span>
           </>
         ) : (
           <>

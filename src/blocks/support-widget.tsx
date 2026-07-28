@@ -7,6 +7,7 @@ import { Link } from '@/core/i18n/navigation';
 import { apiPost } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { m } from '@/paraglide/messages.js';
+import { getImageUploaderCopy } from '@/blocks/image-uploader-copy';
 import { ImageUploader } from '@/components/image-uploader';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
@@ -125,6 +126,7 @@ export function SupportWidget() {
                     key={uploaderKey}
                     allowMultiple
                     maxImages={9}
+                    copy={getImageUploaderCopy()}
                     onChange={(items) => {
                       setAttachments(
                         items

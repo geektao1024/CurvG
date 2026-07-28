@@ -70,16 +70,15 @@ const PAGE_SIZE = 10;
 const TABS = ['all', 'published', 'draft'] as const;
 type Tab = (typeof TABS)[number];
 
-const postSchema = z.object({
-  slug: z.string().min(1),
-  title: z.string().min(1),
-  description: z.string(),
-  content: z.string(),
-  categories: z.string(),
-  authorName: z.string(),
-  status: z.string(),
-});
-type PostForm = z.infer<typeof postSchema>;
+type PostForm = {
+  slug: string;
+  title: string;
+  description: string;
+  content: string;
+  categories: string;
+  authorName: string;
+  status: string;
+};
 const emptyForm: PostForm = {
   slug: '',
   title: '',
@@ -91,6 +90,16 @@ const emptyForm: PostForm = {
 };
 
 function PostsPage() {
+  const postSchema = z.object({
+    slug: z.string().min(1),
+    title: z.string().min(1),
+    description: z.string(),
+    content: z.string(),
+    categories: z.string(),
+    authorName: z.string(),
+    status: z.string(),
+  });
+
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [tab, setTab] = useState<Tab>('all');

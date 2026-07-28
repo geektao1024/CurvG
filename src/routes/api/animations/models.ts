@@ -4,18 +4,26 @@ import { getAuth } from '@/core/auth';
 import { getAllConfigs } from '@/modules/config/service';
 import { respData, respErr } from '@/lib/resp';
 
-import { listAnimationModels } from './-shared';
+import {
+  animationErrorInit,
+  animationErrorResponse,
+  listAnimationModels,
+} from './-shared';
 
 async function GET({ request }: { request: Request }) {
   try {
     const auth = getAuth();
     const session = await auth.api.getSession({ headers: request.headers });
-    if (!session?.user) return respErr('Unauthorized');
-    return respData(await listAnimationModels(await getAllConfigs()), {
-      headers: { 'Cache-Control': 'private, max-age=60' },
-    });
+    if (!session?.user) return respErr('Unauthorized', { status: 401 });
+    return respData(
+      await listAnimationModels(await getAllConfigs(), session.user.id),
+      {
+        headers: { 'Cache-Control': 'private, no-store' },
+      }
+    );
   } catch (error) {
-    return respErr(error instanceof Error ? error.message : 'Internal error');
+    const failure = animationErrorResponse(error);
+    return respErr(failure.message, animationErrorInit(failure));
   }
 }
 

@@ -27,7 +27,21 @@ export type PricingProduct = {
   credits: number;
   creditsValidDays?: number;
   plan?: PricingPlanInfo;
+  tier: 'starter' | 'pro' | 'enterprise';
 };
+
+export const PUBLIC_PRO_PRODUCT_IDS = ['pro_monthly', 'pro_yearly'] as const;
+
+export type PublicProProductId = (typeof PUBLIC_PRO_PRODUCT_IDS)[number];
+
+export interface SubscriptionProductDescriptor {
+  providerProductId?: string | null;
+  amount?: number | null;
+  currency?: string | null;
+  interval?: PaymentInterval | null;
+  intervalCount?: number | null;
+  providerProductMapping?: Readonly<Record<string, string>> | null;
+}
 
 /**
  * Default demo catalog. Replace with your real products when launching.
@@ -43,6 +57,7 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     priceInCents: 900,
     currency: 'usd',
     credits: 5000,
+    tier: 'starter',
     plan: {
       name: 'Starter',
       interval: PaymentInterval.MONTH,
@@ -58,6 +73,7 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     priceInCents: 2900,
     currency: 'usd',
     credits: 50000,
+    tier: 'pro',
     plan: { name: 'Pro', interval: PaymentInterval.MONTH, intervalCount: 1 },
   },
   enterprise_monthly: {
@@ -69,6 +85,7 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     priceInCents: 9900,
     currency: 'usd',
     credits: 500000,
+    tier: 'enterprise',
     plan: {
       name: 'Enterprise',
       interval: PaymentInterval.MONTH,
@@ -84,6 +101,7 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     priceInCents: 8600,
     currency: 'usd',
     credits: 60000,
+    tier: 'starter',
     plan: { name: 'Starter', interval: PaymentInterval.YEAR, intervalCount: 1 },
   },
   pro_yearly: {
@@ -95,6 +113,7 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     priceInCents: 27800,
     currency: 'usd',
     credits: 600000,
+    tier: 'pro',
     plan: { name: 'Pro', interval: PaymentInterval.YEAR, intervalCount: 1 },
   },
   enterprise_yearly: {
@@ -106,6 +125,7 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     priceInCents: 95000,
     currency: 'usd',
     credits: 6000000,
+    tier: 'enterprise',
     plan: {
       name: 'Enterprise',
       interval: PaymentInterval.YEAR,
@@ -121,6 +141,7 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     priceInCents: 14900,
     currency: 'usd',
     credits: 100000,
+    tier: 'starter',
   },
   pro_lifetime: {
     productId: 'pro_lifetime',
@@ -131,6 +152,7 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     priceInCents: 49900,
     currency: 'usd',
     credits: 1000000,
+    tier: 'pro',
   },
   enterprise_lifetime: {
     productId: 'enterprise_lifetime',
@@ -141,6 +163,7 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     priceInCents: 199900,
     currency: 'usd',
     credits: 10000000,
+    tier: 'enterprise',
   },
 };
 
@@ -151,4 +174,65 @@ export function getPricingProduct(productId: string): PricingProduct | null {
 
 export function listPricingProducts(): PricingProduct[] {
   return Object.values(pricingCatalog);
+}
+
+export function isPublicProProductId(
+  productId: string
+): productId is PublicProProductId {
+  return (PUBLIC_PRO_PRODUCT_IDS as readonly string[]).includes(productId);
+}
+
+/**
+ * Resolve a provider-signed subscription description to one internal product.
+ * Ambiguous, incomplete, and unknown descriptions deliberately fail closed.
+ */
+export function resolveSubscriptionPricingProduct(
+  descriptor: SubscriptionProductDescriptor
+): PricingProduct | null {
+  const subscriptionProducts = listPricingProducts().filter(
+    (product) => product.type === PaymentType.SUBSCRIPTION && product.plan
+  );
+
+  if (descriptor.providerProductId && descriptor.providerProductMapping) {
+    const mappedProducts = subscriptionProducts.filter(
+      (product) =>
+        descriptor.providerProductMapping?.[product.productId] ===
+        descriptor.providerProductId
+    );
+    if (mappedProducts.length === 1) return mappedProducts[0];
+    if (mappedProducts.length > 1) return null;
+  }
+
+  if (
+    descriptor.amount === null ||
+    descriptor.amount === undefined ||
+    !Number.isInteger(descriptor.amount) ||
+    descriptor.currency === null ||
+    descriptor.currency === undefined ||
+    !descriptor.currency.trim() ||
+    descriptor.interval === null ||
+    descriptor.interval === undefined
+  ) {
+    return null;
+  }
+
+  const intervalCount = descriptor.intervalCount ?? 1;
+  if (!Number.isInteger(intervalCount) || intervalCount <= 0) return null;
+
+  const currency = descriptor.currency.toLowerCase();
+  const matches = subscriptionProducts.filter(
+    (product) =>
+      product.priceInCents === descriptor.amount &&
+      product.currency.toLowerCase() === currency &&
+      product.plan?.interval === descriptor.interval &&
+      product.plan?.intervalCount === intervalCount
+  );
+
+  return matches.length === 1 ? matches[0] : null;
+}
+
+export function productIncludesProModels(productId: string | null | undefined) {
+  if (!productId) return false;
+  const product = getPricingProduct(productId);
+  return product?.tier === 'pro' || product?.tier === 'enterprise';
 }

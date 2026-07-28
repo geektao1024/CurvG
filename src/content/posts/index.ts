@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
 
-import { baseLocale } from '@/paraglide/runtime.js';
+import { baseLocale, locales } from '@/paraglide/runtime.js';
 
 /**
  * Local blog posts written as MDX files in this directory.
@@ -11,13 +11,17 @@ import { baseLocale } from '@/paraglide/runtime.js';
  * fetched through the server functions in ./server.ts and merged with the
  * local posts via the pure helpers below.
  */
-export const BLOG_POST_SLUGS: readonly string[] = [];
+export const BLOG_POST_SLUGS: readonly string[] = [
+  'ai-manim-animation-workflow',
+];
 
 export type BlogPostMeta = {
   title: string;
   description: string;
   created_at: string;
+  updated_at?: string;
   author_name?: string;
+  author_type?: 'Person' | 'Organization';
   author_image?: string;
   image?: string;
 };
@@ -34,8 +38,12 @@ export type BlogPost = {
   image?: string;
   /** ISO date string — serializable across loader/server-fn boundaries */
   createdAt: string;
+  updatedAt?: string;
   authorName?: string;
+  authorType?: 'Person' | 'Organization';
   authorImage?: string;
+  /** Locales with real content for this post; fallback copies are excluded. */
+  availableLocales: string[];
   source: 'local' | 'db';
 };
 
@@ -61,6 +69,14 @@ export function loadLocalPost(slug: string, locale: string): PostModule | null {
   );
 }
 
+export function getLocalPostLocales(slug: string): string[] {
+  if (!BLOG_POST_SLUGS.includes(slug)) return [];
+  return locales.filter(
+    (locale) =>
+      postModules[`/src/content/posts/${slug}.${locale}.mdx`] !== undefined
+  );
+}
+
 function localPostToItem(slug: string, meta: BlogPostMeta): BlogPost {
   return {
     slug,
@@ -68,8 +84,13 @@ function localPostToItem(slug: string, meta: BlogPostMeta): BlogPost {
     description: meta.description,
     image: meta.image,
     createdAt: new Date(meta.created_at).toISOString(),
+    updatedAt: meta.updated_at
+      ? new Date(meta.updated_at).toISOString()
+      : undefined,
     authorName: meta.author_name,
+    authorType: meta.author_type,
     authorImage: meta.author_image,
+    availableLocales: getLocalPostLocales(slug),
     source: 'local',
   };
 }
@@ -92,10 +113,24 @@ export function mergePosts(
   localPosts: BlogPost[],
   options: { limit?: number } = {}
 ): BlogPost[] {
-  const dbSlugs = new Set(dbPosts.map((p) => p.slug));
+  const localBySlug = new Map(localPosts.map((post) => [post.slug, post]));
+  const dbSlugs = new Set(dbPosts.map((post) => post.slug));
   const merged = [
-    ...dbPosts,
-    ...localPosts.filter((p) => !dbSlugs.has(p.slug)),
+    ...dbPosts.map((post) => {
+      const localPost = localBySlug.get(post.slug);
+      return localPost
+        ? {
+            ...post,
+            availableLocales: [
+              ...new Set([
+                ...post.availableLocales,
+                ...localPost.availableLocales,
+              ]),
+            ],
+          }
+        : post;
+    }),
+    ...localPosts.filter((post) => !dbSlugs.has(post.slug)),
   ].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );

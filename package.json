@@ -24,6 +24,8 @@
     "rbac:assign": "tsx scripts/with-env.ts tsx scripts/assign-role.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "test": "node --import tsx --test tests/core-ai-chat.test.ts tests/animation-models.test.ts tests/animation-resilience.test.ts tests/animation-ir.test.ts tests/credit-revocation.test.ts tests/request-body.test.ts tests/subscription-access.test.ts tests/payment-policy.test.ts tests/payment-provider-events.test.ts",
+    "seo:check": "node scripts/seo-check.mjs",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -58,6 +60,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.0",
     "drizzle-orm": "^0.45.2",
+    "katex": "^0.18.1",
     "lucide-react": "^0.511.0",
     "markdown-it": "^14.3.0",
     "motion": "^12.38.0",
@@ -87,6 +90,7 @@
     "@mdx-js/rollup": "^3.1.1",
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/react-query-devtools": "^5.101.0",
+    "@types/katex": "^0.16.8",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.1.0",
@@ -109,6 +113,7 @@
   "pnpm": {
     "overrides": {
       "brace-expansion": "5.0.7",
+      "postcss": "8.5.18",
       "fast-uri": "3.1.4",
       "@esbuild-kit/core-utils>esbuild": "0.25.12",
       "@hono/node-server": "2.0.11",

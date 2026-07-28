@@ -1,6 +1,16 @@
 import { createFileRoute } from '@tanstack/react-router';
 
-import { handleWebhook } from '@/modules/payment/service';
+import {
+  handleWebhook,
+  PaymentWebhookVerificationBusyError,
+} from '@/modules/payment/service';
+import { enforceMinIntervalRateLimit } from '@/lib/rate-limit';
+import {
+  isRequestBodyTooLargeError,
+  readRequestBodyCapped,
+  REQUEST_BODY_LIMITS,
+  requestWithRawBody,
+} from '@/lib/request-body';
 import { respErr, respOk } from '@/lib/resp';
 
 export const Route = createFileRoute('/api/payment/notify/$provider')({
@@ -12,7 +22,22 @@ export const Route = createFileRoute('/api/payment/notify/$provider')({
         const { provider } = params;
 
         try {
-          const event = await handleWebhook({ req: request, provider });
+          if (provider === 'paypal') {
+            const limited = enforceMinIntervalRateLimit(request, {
+              intervalMs: 100,
+              keyPrefix: 'paypal-webhook-verification',
+              includeCookie: false,
+            });
+            if (limited) return limited;
+          }
+          const rawBody = await readRequestBodyCapped(
+            request,
+            REQUEST_BODY_LIMITS.paymentWebhook
+          );
+          const event = await handleWebhook({
+            req: requestWithRawBody(request, rawBody),
+            provider,
+          });
 
           console.log(`Payment event [${provider}]: ${event.eventType}`);
 
@@ -30,8 +55,19 @@ export const Route = createFileRoute('/api/payment/notify/$provider')({
           }
 
           return respOk();
-        } catch (error: any) {
-          console.error('webhook error:', error);
+        } catch (error: unknown) {
+          if (isRequestBodyTooLargeError(error)) {
+            return respErr('Request body is too large', { status: 413 });
+          }
+          if (error instanceof PaymentWebhookVerificationBusyError) {
+            return respErr('Webhook verification is busy', {
+              status: error.status,
+              headers: { 'Retry-After': '2' },
+            });
+          }
+          const message =
+            error instanceof Error ? error.message : 'Webhook handling failed';
+          console.error('webhook error:', message);
 
           if (provider === 'alipay') {
             return new Response('fail', {
@@ -40,7 +76,16 @@ export const Route = createFileRoute('/api/payment/notify/$provider')({
             });
           }
 
-          return respErr(error.message || 'Webhook handling failed');
+          if (provider === 'wechat') {
+            return Response.json(
+              { code: 'FAIL', message: 'Webhook handling failed' },
+              { status: 500 }
+            );
+          }
+
+          // Stripe, Creem, and PayPal retry only when the endpoint returns a
+          // non-2xx response. A JSON error envelope with HTTP 200 loses events.
+          return respErr('Webhook handling failed', { status: 500 });
         }
       },
     },

@@ -51,15 +51,16 @@ interface Permission {
 
 const PAGE_SIZE = 10;
 
-const roleSchema = z.object({
-  name: z.string().min(1),
-  title: z.string().min(1),
-  description: z.string(),
-});
-type RoleForm = z.infer<typeof roleSchema>;
+type RoleForm = { name: string; title: string; description: string };
 const emptyForm: RoleForm = { name: '', title: '', description: '' };
 
 function RolesPage() {
+  const roleSchema = z.object({
+    name: z.string().min(1),
+    title: z.string().min(1),
+    description: z.string(),
+  });
+
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');

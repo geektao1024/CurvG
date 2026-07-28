@@ -15,9 +15,11 @@ export function Blog({ posts }: { posts: BlogPost[] }) {
   if (posts.length === 0) return null;
 
   return (
-    <section id="blog" className="px-4 py-24 sm:py-32">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-20 text-center">
+    <section id="blog">
+      <div className="curvg-stage curvg-frame curvg-section-spacing relative">
+        <span className="curvg-corner top-5 left-5" aria-hidden />
+        <span className="curvg-corner top-5 right-5" aria-hidden />
+        <div className="mb-10 text-center sm:mb-12">
           <h2 className="font-serif text-4xl font-normal tracking-tight sm:text-5xl">
             {m['landing.blog.title']()}
           </h2>

@@ -12,6 +12,7 @@ import { tDynamic } from '@/core/i18n/dynamic';
 import { apiGet, apiPatch, apiPost, type PageResult } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { m } from '@/paraglide/messages.js';
+import { getImageUploaderCopy } from '@/blocks/image-uploader-copy';
 import { DataTable, type Column } from '@/components/data-table';
 import {
   ImageUploader,
@@ -393,6 +394,7 @@ function AdminTicketsPage() {
                   key={replyUploaderKey}
                   allowMultiple
                   maxImages={9}
+                  copy={getImageUploaderCopy()}
                   onChange={(items) => {
                     const { urls, uploading: busy } = uploaderState(items);
                     setReplyAttachments(urls);

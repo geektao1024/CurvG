@@ -45,6 +45,8 @@ export class StripeProvider implements PaymentProvider {
     this.configs = configs;
     this.client = new Stripe(configs.secretKey, {
       httpClient: Stripe.createFetchHttpClient(),
+      timeout: 30_000,
+      maxNetworkRetries: 1,
     });
   }
 
@@ -179,6 +181,20 @@ export class StripeProvider implements PaymentProvider {
         sessionParams.metadata = order.metadata;
       }
 
+      // Checkout Session metadata is not automatically copied to the objects
+      // delivered by every later webhook. Keep the server-generated orderNo on
+      // the durable payment object as well, so async payment and invoice
+      // events can always be linked back to the local order.
+      if (order.type === PaymentType.SUBSCRIPTION) {
+        sessionParams.subscription_data = {
+          metadata: order.metadata || {},
+        };
+      } else {
+        sessionParams.payment_intent_data = {
+          metadata: order.metadata || {},
+        };
+      }
+
       if (order.successUrl) {
         sessionParams.success_url = order.successUrl;
       }
@@ -187,7 +203,12 @@ export class StripeProvider implements PaymentProvider {
         sessionParams.cancel_url = order.cancelUrl;
       }
 
-      const session = await this.client.checkout.sessions.create(sessionParams);
+      const session = await this.client.checkout.sessions.create(
+        sessionParams,
+        order.requestId || order.orderNo
+          ? { idempotencyKey: order.requestId || order.orderNo }
+          : undefined
+      );
       if (!session.id || !session.url) {
         throw new Error('create payment failed');
       }
@@ -252,16 +273,51 @@ export class StripeProvider implements PaymentProvider {
 
       let paymentSession: PaymentSession | undefined = undefined;
 
-      const eventType = this.mapStripeEventType(event.type);
+      let eventType = mapStripeWebhookEventType(event.type);
 
       if (eventType === PaymentEventType.CHECKOUT_SUCCESS) {
         paymentSession = await this.buildPaymentSessionFromCheckoutSession(
           event.data.object as Stripe.Response<Stripe.Checkout.Session>
         );
       } else if (eventType === PaymentEventType.PAYMENT_SUCCESS) {
-        paymentSession = await this.buildPaymentSessionFromInvoice(
-          event.data.object as Stripe.Response<Stripe.Invoice>
-        );
+        if (event.type === 'checkout.session.async_payment_succeeded') {
+          paymentSession = await this.buildPaymentSessionFromCheckoutSession(
+            event.data.object as Stripe.Response<Stripe.Checkout.Session>
+          );
+          // This event is the delayed settlement of the original Checkout
+          // Session, not a renewal invoice. Mark it as the initial cycle so
+          // the service applies the checkout exactly once.
+          if (paymentSession.paymentInfo && paymentSession.subscriptionId) {
+            paymentSession.paymentInfo.subscriptionCycleType =
+              SubscriptionCycleType.CREATE;
+          }
+        } else {
+          paymentSession = await this.buildPaymentSessionFromInvoice(
+            event.data.object as Stripe.Response<Stripe.Invoice>
+          );
+        }
+      } else if (eventType === PaymentEventType.PAYMENT_FAILED) {
+        if (event.type === 'checkout.session.async_payment_failed') {
+          paymentSession = await this.buildPaymentSessionFromCheckoutSession(
+            event.data.object as Stripe.Response<Stripe.Checkout.Session>
+          );
+          paymentSession.paymentStatus = PaymentStatus.FAILED;
+        } else {
+          paymentSession = await this.buildPaymentSessionFromInvoice(
+            event.data.object as Stripe.Response<Stripe.Invoice>,
+            PaymentStatus.FAILED
+          );
+        }
+      } else if (eventType === PaymentEventType.PAYMENT_REFUNDED) {
+        const charge = event.data.object as Stripe.Response<Stripe.Charge>;
+        // A partial refund does not cancel the subscription product. Only a
+        // fully refunded charge revokes entitlement and remaining credits.
+        if (!charge.refunded || charge.amount_refunded < charge.amount) {
+          eventType = PaymentEventType.IGNORED;
+        } else {
+          paymentSession =
+            await this.buildPaymentSessionFromRefundedCharge(charge);
+        }
       } else if (eventType === PaymentEventType.SUBSCRIBE_UPDATED) {
         paymentSession = await this.buildPaymentSessionFromSubscription(
           event.data.object as Stripe.Response<Stripe.Subscription>
@@ -272,7 +328,7 @@ export class StripeProvider implements PaymentProvider {
         );
       }
 
-      if (!paymentSession) {
+      if (eventType !== PaymentEventType.IGNORED && !paymentSession) {
         throw new Error('Invalid webhook event');
       }
 
@@ -353,23 +409,6 @@ export class StripeProvider implements PaymentProvider {
       return await this.buildPaymentSessionFromSubscription(subscription);
     } catch (error) {
       throw error;
-    }
-  }
-
-  private mapStripeEventType(eventType: string): PaymentEventType {
-    switch (eventType) {
-      case 'checkout.session.completed':
-        return PaymentEventType.CHECKOUT_SUCCESS;
-      case 'invoice.payment_succeeded':
-        return PaymentEventType.PAYMENT_SUCCESS;
-      case 'invoice.payment_failed':
-        return PaymentEventType.PAYMENT_FAILED;
-      case 'customer.subscription.updated':
-        return PaymentEventType.SUBSCRIBE_UPDATED;
-      case 'customer.subscription.deleted':
-        return PaymentEventType.SUBSCRIBE_CANCELED;
-      default:
-        throw new Error(`Unknown Stripe event type: ${eventType}`);
     }
   }
 
@@ -457,7 +496,8 @@ export class StripeProvider implements PaymentProvider {
 
   // build payment session from invoice
   private async buildPaymentSessionFromInvoice(
-    invoice: Stripe.Response<Stripe.Invoice>
+    invoice: Stripe.Invoice,
+    paymentStatus: PaymentStatus = PaymentStatus.SUCCESS
   ): Promise<PaymentSession> {
     let subscription: Stripe.Response<Stripe.Subscription> | undefined =
       undefined;
@@ -487,7 +527,7 @@ export class StripeProvider implements PaymentProvider {
     const result: PaymentSession = {
       provider: this.name,
 
-      paymentStatus: PaymentStatus.SUCCESS,
+      paymentStatus,
       paymentInfo: {
         transactionId: invoice.id,
         discountCode: '',
@@ -515,16 +555,87 @@ export class StripeProvider implements PaymentProvider {
               : undefined,
       },
       paymentResult: invoice,
-      metadata: invoice.metadata,
+      // Invoice metadata is not guaranteed to inherit Checkout Session
+      // metadata. Subscription metadata is explicitly set at creation and is
+      // the durable source for the local order link.
+      metadata: {
+        ...(subscription?.metadata || {}),
+        ...(invoice.metadata || {}),
+      },
     };
 
     if (subscription) {
       result.subscriptionId = subscription.id;
       result.subscriptionInfo = await this.buildSubscriptionInfo(subscription);
+      const invoicePeriod = invoice.lines.data[0]?.period;
+      if (
+        invoicePeriod &&
+        Number.isFinite(invoicePeriod.start) &&
+        Number.isFinite(invoicePeriod.end) &&
+        invoicePeriod.start < invoicePeriod.end
+      ) {
+        // The invoice's own period is the event version. A delayed webhook
+        // must not borrow the subscription's newer current period.
+        result.subscriptionInfo.currentPeriodStart = new Date(
+          invoicePeriod.start * 1000
+        );
+        result.subscriptionInfo.currentPeriodEnd = new Date(
+          invoicePeriod.end * 1000
+        );
+      }
       result.subscriptionResult = subscription;
     }
 
     return result;
+  }
+
+  private async buildPaymentSessionFromRefundedCharge(
+    charge: Stripe.Response<Stripe.Charge>
+  ): Promise<PaymentSession> {
+    const paymentIntentId =
+      typeof charge.payment_intent === 'string'
+        ? charge.payment_intent
+        : charge.payment_intent?.id;
+    if (paymentIntentId) {
+      const invoicePayments = await this.client.invoicePayments.list({
+        payment: {
+          type: 'payment_intent',
+          payment_intent: paymentIntentId,
+        },
+        limit: 1,
+        expand: ['data.invoice'],
+      });
+      const invoiceReference = invoicePayments.data[0]?.invoice;
+      const invoice =
+        typeof invoiceReference === 'string'
+          ? await this.client.invoices.retrieve(invoiceReference)
+          : invoiceReference && !('deleted' in invoiceReference)
+            ? invoiceReference
+            : undefined;
+      if (invoice) {
+        const session = await this.buildPaymentSessionFromInvoice(
+          invoice,
+          PaymentStatus.FAILED
+        );
+        session.paymentResult = charge;
+        return session;
+      }
+    }
+
+    // One-time payments have no subscription invoice. The server-generated
+    // orderNo on PaymentIntent/Charge metadata remains a signed lookup key for
+    // revoking that order's unspent credits.
+    return {
+      provider: this.name,
+      paymentStatus: PaymentStatus.FAILED,
+      paymentInfo: {
+        transactionId: charge.id,
+        paymentAmount: charge.amount,
+        paymentCurrency: charge.currency,
+      },
+      paymentResult: charge,
+      metadata: charge.metadata,
+    };
   }
 
   // build payment session from invoice
@@ -565,7 +676,10 @@ export class StripeProvider implements PaymentProvider {
       metadata: subscription.metadata,
     };
 
-    if (subscription.status === 'active') {
+    if (
+      subscription.status === 'active' ||
+      subscription.status === 'trialing'
+    ) {
       if (subscription.cancel_at) {
         subscriptionInfo.status = SubscriptionStatus.PENDING_CANCEL;
         // cancel apply at
@@ -580,6 +694,8 @@ export class StripeProvider implements PaymentProvider {
           subscription.cancellation_details?.comment || '';
         subscriptionInfo.canceledReasonType =
           subscription.cancellation_details?.feedback || '';
+      } else if (subscription.status === 'trialing') {
+        subscriptionInfo.status = SubscriptionStatus.TRIALING;
       } else {
         subscriptionInfo.status = SubscriptionStatus.ACTIVE;
       }
@@ -593,10 +709,12 @@ export class StripeProvider implements PaymentProvider {
         subscription.cancellation_details?.comment || '';
       subscriptionInfo.canceledReasonType =
         subscription.cancellation_details?.feedback || '';
+    } else if (subscription.status === 'incomplete_expired') {
+      subscriptionInfo.status = SubscriptionStatus.EXPIRED;
     } else {
-      throw new Error(
-        `Unknown Stripe subscription status: ${subscription.status}`
-      );
+      // incomplete, past_due, unpaid, and paused are all non-entitled. New
+      // Stripe statuses also fail closed instead of leaving local Pro active.
+      subscriptionInfo.status = SubscriptionStatus.PAUSED;
     }
 
     return subscriptionInfo;
@@ -608,4 +726,27 @@ export class StripeProvider implements PaymentProvider {
  */
 export function createStripeProvider(configs: StripeConfigs): StripeProvider {
   return new StripeProvider(configs);
+}
+
+/** Maps a verified Stripe event to an application action. Unknown event types
+ * are intentionally acknowledged instead of retried forever. */
+export function mapStripeWebhookEventType(eventType: string): PaymentEventType {
+  switch (eventType) {
+    case 'checkout.session.completed':
+      return PaymentEventType.CHECKOUT_SUCCESS;
+    case 'checkout.session.async_payment_succeeded':
+    case 'invoice.payment_succeeded':
+      return PaymentEventType.PAYMENT_SUCCESS;
+    case 'checkout.session.async_payment_failed':
+    case 'invoice.payment_failed':
+      return PaymentEventType.PAYMENT_FAILED;
+    case 'charge.refunded':
+      return PaymentEventType.PAYMENT_REFUNDED;
+    case 'customer.subscription.updated':
+      return PaymentEventType.SUBSCRIBE_UPDATED;
+    case 'customer.subscription.deleted':
+      return PaymentEventType.SUBSCRIBE_CANCELED;
+    default:
+      return PaymentEventType.IGNORED;
+  }
 }

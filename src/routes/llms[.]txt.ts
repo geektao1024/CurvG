@@ -7,21 +7,21 @@ import { getLocalPosts, mergePosts } from '@/content/posts';
 const STATIC_PAGES: { path: string; title: string; description: string }[] = [
   {
     path: '',
-    title: 'Math Curve Animation Gallery and Generator',
+    title: 'AI-assisted Manim Scene and Code Generator',
     description:
-      "Formula-driven curve previews and an overview of CurvG's reviewable Manim workflow.",
+      'Plan a mathematical explanation, review the scene sequence, and generate portable Manim Community code.',
   },
   {
     path: '/creator',
     title: 'CurvG Creator',
     description:
-      'An early-access AI Manim workspace for reviewing equations, scene specifications, generated code, and render output.',
+      'An early-access workspace for reviewing mathematical assumptions, scene plans, generated code, and available render output.',
   },
   {
     path: '/pricing',
-    title: 'Pricing and Early Access',
+    title: 'Early Access',
     description:
-      'Current pricing status and the production render-cost validation required before paid plans launch.',
+      'What users can create today and the current status of paid plans and remote rendering.',
   },
   {
     path: '/privacy-policy',
@@ -36,13 +36,13 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
 ];
 
 const PRODUCT_DESCRIPTION =
-  'CurvG is a formula-first Manim math animation generator and curve gallery that separates equations, scene specifications, code, and isolated rendering into reviewable stages.';
+  'CurvG is an AI-assisted Manim creation tool that turns a written explanation goal into a reviewable scene plan and portable Manim Community code.';
 
 const PRODUCT_FACTS = [
   'CurvG does not claim that AI output is automatically mathematically correct.',
-  'The Creator review workflow and Manim code generation are implemented.',
-  'A local Queue-to-Sandbox-to-Manim-to-R2 render path has produced and read back a real MP4 and thumbnail.',
-  'A complete real-model request and production Cloudflare deployment are not yet verified.',
+  'The Creator can generate a scene plan and Manim code that users can review, copy, and download.',
+  'Direct code editing and compilation in the browser are not currently available.',
+  'Remote rendering is not currently offered as a generally available production service.',
 ];
 
 export const Route = createFileRoute('/llms.txt')({
@@ -61,6 +61,7 @@ export const Route = createFileRoute('/llms.txt')({
             title: row.title || row.slug,
             description: row.description || '',
             createdAt: new Date(row.createdAt).toISOString(),
+            availableLocales: [baseLocale],
             source: 'db' as const,
           }));
           posts = mergePosts(dbPosts, posts);

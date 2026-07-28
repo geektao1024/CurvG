@@ -780,15 +780,6 @@ export function getSettings(): Setting[] {
       group: 'openai',
       tab: 'ai',
     },
-    {
-      name: 'openai_model',
-      title: 'Animation Model',
-      type: 'text',
-      placeholder: 'gpt-4.1-mini',
-      group: 'openai',
-      tab: 'ai',
-    },
-
     // ─── AI / Yunwu ─────────────────────────────────────────────────
     {
       name: 'yunwu_base_url',
@@ -807,15 +798,6 @@ export function getSettings(): Setting[] {
       group: 'yunwu',
       tab: 'ai',
     },
-    {
-      name: 'yunwu_model',
-      title: 'Animation Model',
-      type: 'text',
-      placeholder: 'gpt-4.1-mini',
-      group: 'yunwu',
-      tab: 'ai',
-    },
-
     // ─── AI / Anthropic ──────────────────────────────────────────────
     {
       name: 'anthropic_base_url',
@@ -834,15 +816,6 @@ export function getSettings(): Setting[] {
       tab: 'ai',
     },
     {
-      name: 'anthropic_model',
-      title: 'Animation Model',
-      type: 'text',
-      placeholder: 'claude-sonnet-4-5',
-      group: 'anthropic',
-      tab: 'ai',
-    },
-
-    {
       name: 'animation_renderer_url',
       title: 'Renderer URL',
       type: 'text',
@@ -855,6 +828,16 @@ export function getSettings(): Setting[] {
       title: 'Renderer Token',
       type: 'password',
       placeholder: '',
+      group: 'animation_renderer',
+      tab: 'ai',
+    },
+    {
+      name: 'animation_render_credits',
+      title: 'Credits per render',
+      type: 'number',
+      placeholder: '20',
+      tip: 'Credits are reserved before renderer dispatch and restored on failure or cancellation.',
+      defaultValue: '20',
       group: 'animation_renderer',
       tab: 'ai',
     },

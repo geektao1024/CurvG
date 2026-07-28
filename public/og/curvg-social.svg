@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" fill="none">
+  <defs>
+    <linearGradient id="brand" x1="88" y1="54" x2="168" y2="152" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8589FF"/>
+      <stop offset="0.56" stop-color="#6268FA"/>
+      <stop offset="1" stop-color="#4650F5"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="680" y1="78" x2="1090" y2="556" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F0F1FF"/>
+    </linearGradient>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M28 0H0V28" stroke="#1B1C23" stroke-opacity="0.045"/>
+    </pattern>
+    <filter id="shadow" x="622" y="39" width="548" height="552" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#262A54" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="630" fill="#F7F7F4"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <circle cx="1035" cy="20" r="270" fill="#7378FF" fill-opacity="0.08"/>
+  <circle cx="-20" cy="652" r="300" fill="#7378FF" fill-opacity="0.06"/>
+
+  <g transform="translate(72 62)">
+    <rect width="64" height="64" rx="16" fill="url(#brand)"/>
+    <path d="M46 18C40 13 32 12 26 14C17 16 13 23 13 32C13 42 20 49 30 50C38 51 44 47 48 43" stroke="#F7F7FC" stroke-width="7" stroke-linecap="round"/>
+    <rect x="37" y="32" width="5" height="5" rx="1" fill="#F7F7FC"/>
+    <rect x="44" y="35" width="5" height="5" rx="1" fill="#F7F7FC"/>
+    <text x="82" y="44" fill="#18191E" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="700" letter-spacing="-1">CurvG</text>
+  </g>
+
+  <g transform="translate(72 196)">
+    <rect width="224" height="34" rx="17" fill="#ECECFF" stroke="#D9DAFF"/>
+    <circle cx="19" cy="17" r="4" fill="#6268FA"/>
+    <text x="34" y="22" fill="#4B50D6" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700" letter-spacing="1.1">REVIEWABLE AI WORKFLOW</text>
+  </g>
+
+  <text x="72" y="292" fill="#16171C" font-family="Inter, Arial, sans-serif" font-size="55" font-weight="700" letter-spacing="-2.6">From a math idea to</text>
+  <text x="72" y="358" fill="#16171C" font-family="Inter, Arial, sans-serif" font-size="55" font-weight="700" letter-spacing="-2.6">a scene you can inspect.</text>
+  <text x="72" y="439" fill="#5E606B" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="400">Check formulas, sequence, labels, and timing.</text>
+  <text x="72" y="471" fill="#5E606B" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="400">Then generate portable Manim Community code.</text>
+
+  <g transform="translate(72 548)">
+    <text x="0" y="0" fill="#73757F" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="600">IDEA</text>
+    <path d="M50 -5H92" stroke="#B8BAC4" stroke-width="1.5"/>
+    <path d="M88 -9L92 -5L88 -1" stroke="#B8BAC4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="110" y="0" fill="#73757F" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="600">SCENE PLAN</text>
+    <path d="M216 -5H258" stroke="#B8BAC4" stroke-width="1.5"/>
+    <path d="M254 -9L258 -5L254 -1" stroke="#B8BAC4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="276" y="0" fill="#4B50D6" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700">MANIM CODE</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="660" y="70" width="466" height="464" rx="30" fill="url(#panel)" stroke="#DADBEE"/>
+  </g>
+  <g transform="translate(700 110)">
+    <circle cx="7" cy="7" r="7" fill="#6268FA"/>
+    <text x="24" y="13" fill="#24252C" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="700">Scene plan</text>
+    <rect x="330" y="-4" width="56" height="28" rx="14" fill="#EEF8F0" stroke="#D2EAD7"/>
+    <text x="344" y="15" fill="#39734A" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700">READY</text>
+
+    <rect x="0" y="54" width="386" height="194" rx="18" fill="#14151B"/>
+    <path d="M32 208H354M65 80V222" stroke="#444753" stroke-width="1"/>
+    <path d="M66 174C103 85 145 83 181 174C217 265 259 263 296 174C315 129 333 106 354 106" stroke="#7E83FF" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="181" cy="174" r="6" fill="#14151B" stroke="#AEB1FF" stroke-width="3"/>
+    <text x="78" y="105" fill="#F4F4FA" font-family="Georgia, serif" font-size="24" font-style="italic">y = sin(x)</text>
+    <text x="315" y="231" fill="#8D909D" font-family="Inter, Arial, sans-serif" font-size="11">x</text>
+    <text x="48" y="92" fill="#8D909D" font-family="Inter, Arial, sans-serif" font-size="11">y</text>
+
+    <g transform="translate(0 278)">
+      <circle cx="14" cy="14" r="14" fill="#ECECFF"/>
+      <text x="10" y="19" fill="#555BE0" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700">1</text>
+      <text x="42" y="12" fill="#26272E" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700">Establish axes and formula</text>
+      <text x="42" y="32" fill="#777985" font-family="Inter, Arial, sans-serif" font-size="12">Keep labels within the safe frame</text>
+    </g>
+    <g transform="translate(0 340)">
+      <circle cx="14" cy="14" r="14" fill="#ECECFF"/>
+      <text x="10" y="19" fill="#555BE0" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700">2</text>
+      <text x="42" y="12" fill="#26272E" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700">Trace one period of the curve</text>
+      <text x="42" y="32" fill="#777985" font-family="Inter, Arial, sans-serif" font-size="12">Review pacing before code generation</text>
+    </g>
+  </g>
+</svg>

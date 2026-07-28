@@ -1,8 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router';
 
 import { envConfigs } from '@/config';
+import { localizedLinks, socialMeta } from '@/lib/seo';
 import { m } from '@/paraglide/messages.js';
-import { getLocale, locales, localizeUrl } from '@/paraglide/runtime.js';
+import { getLocale } from '@/paraglide/runtime.js';
 import { Footer } from '@/blocks/footer';
 import { Header } from '@/blocks/header';
 import { BlogCard } from '@/components/blog-card';
@@ -19,32 +20,29 @@ export const Route = createFileRoute('/blog/')({
     const locale = loaderData?.locale;
     const title = `${m['blog.title']({}, { locale: locale as any })} | ${envConfigs.app_name}`;
     const description = m['blog.description']({}, { locale: locale as any });
-    const urlFor = (loc: string) =>
-      localizeUrl(`${envConfigs.app_url}/blog`, { locale: loc as any }).href;
+    const currentLocale = locale ?? 'en';
+    const availableLocales = loaderData?.posts.length
+      ? [...new Set(loaderData.posts.flatMap((post) => post.availableLocales))]
+      : [currentLocale];
+    const seoLinks = localizedLinks({
+      path: '/blog',
+      locale: currentLocale,
+      availableLocales,
+    });
     return {
       meta: [
         { title },
         { name: 'description', content: description },
-        { property: 'og:title', content: title },
-        { property: 'og:description', content: description },
-        { property: 'og:type', content: 'website' },
-        { property: 'og:url', content: urlFor(locale ?? 'en') },
-        { name: 'twitter:card', content: 'summary' },
-        { name: 'twitter:title', content: title },
-        { name: 'twitter:description', content: description },
+        ...socialMeta({
+          title,
+          description,
+          url: seoLinks.canonical,
+        }),
         ...(loaderData?.posts.length === 0
           ? [{ name: 'robots', content: 'noindex, follow' }]
           : []),
       ],
-      links: [
-        { rel: 'canonical', href: urlFor(locale ?? 'en') },
-        ...locales.map((loc) => ({
-          rel: 'alternate',
-          hrefLang: loc,
-          href: urlFor(loc),
-        })),
-        { rel: 'alternate', hrefLang: 'x-default', href: urlFor('en') },
-      ],
+      links: seoLinks.links,
     };
   },
   component: BlogPage,

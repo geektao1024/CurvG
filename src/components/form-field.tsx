@@ -3,7 +3,7 @@ import type { AnyFieldApi } from '@tanstack/react-form';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 
-function fieldError(field: AnyFieldApi): string | null {
+export function fieldError(field: AnyFieldApi): string | null {
   if (!field.state.meta.isTouched) return null;
   const errs = field.state.meta.errors;
   if (!errs?.length) return null;
@@ -25,6 +25,7 @@ export function TextField({
   autoComplete,
   required,
   disabled,
+  className,
 }: {
   field: AnyFieldApi;
   label: string;
@@ -33,6 +34,7 @@ export function TextField({
   autoComplete?: string;
   required?: boolean;
   disabled?: boolean;
+  className?: string;
 }) {
   const error = fieldError(field);
 
@@ -50,6 +52,7 @@ export function TextField({
         autoComplete={autoComplete}
         required={required}
         disabled={disabled}
+        className={className}
         aria-invalid={error ? true : undefined}
       />
       {error && <p className="text-destructive text-sm">{error}</p>}

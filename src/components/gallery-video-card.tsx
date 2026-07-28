@@ -8,13 +8,14 @@ const GALLERY_PLAY_EVENT = 'curvg:gallery-play';
 
 type GalleryVideoCardProps = {
   index: number;
+  total?: number;
   tag: string;
   title: string;
   description: string;
   scene: string;
   sceneLabel: string;
   src: string;
-  poster: string;
+  poster?: string;
   duration: string;
   ariaLabel: string;
   playLabel: string;
@@ -24,6 +25,7 @@ type GalleryVideoCardProps = {
 
 export function GalleryVideoCard({
   index,
+  total = 6,
   tag,
   title,
   description,
@@ -155,7 +157,7 @@ export function GalleryVideoCard({
             muted
             loop
             playsInline
-            preload="metadata"
+            preload="none"
             aria-label={ariaLabel}
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
@@ -189,7 +191,7 @@ export function GalleryVideoCard({
         <div className="flex items-baseline justify-between gap-5">
           <h3 className="text-xl font-semibold tracking-tight">{title}</h3>
           <span className="text-muted-foreground font-mono text-[10px] tabular-nums">
-            {String(index).padStart(2, '0')} / 06
+            {String(index).padStart(2, '0')} / {String(total).padStart(2, '0')}
           </span>
         </div>
         <p className="text-muted-foreground mt-2 text-sm leading-6">

@@ -1,10 +1,24 @@
 import { createFileRoute } from '@tanstack/react-router';
 
 import { getAuth } from '@/core/auth';
-import { getPricingProduct } from '@/config/pricing';
+import {
+  getPricingProduct,
+  isPublicProProductId,
+  productIncludesProModels,
+} from '@/config/pricing';
 import { getAllConfigs } from '@/modules/config/service';
-import { createCheckout } from '@/modules/payment/service';
+import {
+  createCheckout,
+  getProCheckoutProviderNames,
+  PaymentCheckoutBusyError,
+} from '@/modules/payment/service';
+import { getAnimationAccessTier } from '@/modules/subscriptions/service';
 import { enforceMinIntervalRateLimit } from '@/lib/rate-limit';
+import {
+  isRequestBodyTooLargeError,
+  readJsonBodyCapped,
+  REQUEST_BODY_LIMITS,
+} from '@/lib/request-body';
 import { respData, respErr } from '@/lib/resp';
 
 function safeSameOriginPath(
@@ -24,45 +38,72 @@ function safeSameOriginPath(
 }
 
 async function POST({ request }: { request: Request }) {
-  const limited = enforceMinIntervalRateLimit(request, {
-    intervalMs: 1000,
-    keyPrefix: 'checkout',
-  });
-  if (limited) return limited;
-
   try {
     const auth = getAuth();
     const session = await auth.api.getSession({ headers: request.headers });
 
     if (!session?.user) {
-      return respErr('Unauthorized');
+      return respErr('Unauthorized', { status: 401 });
     }
+    // Use the verified session identity. IP/cookie-only keys can be rotated
+    // by an authenticated caller and allow duplicate remote checkout sessions.
+    const limited = enforceMinIntervalRateLimit(request, {
+      intervalMs: 1_000,
+      keyPrefix: 'checkout',
+      extraKey: session.user.id,
+    });
+    if (limited) return limited;
 
-    const body = await request.json().catch(() => ({}));
-    const { product_id, payment_provider, redirect } = body;
+    const body = await readJsonBodyCapped<Record<string, unknown>>(
+      request,
+      REQUEST_BODY_LIMITS.paymentCheckout
+    ).catch((error: unknown) => {
+      if (isRequestBodyTooLargeError(error)) throw error;
+      return {} as Record<string, unknown>;
+    });
+    const product_id =
+      typeof body.product_id === 'string' ? body.product_id : undefined;
+    const payment_provider =
+      typeof body.payment_provider === 'string'
+        ? body.payment_provider.trim() || undefined
+        : undefined;
+    const redirect =
+      typeof body.redirect === 'string' ? body.redirect : undefined;
+    const cancel_redirect =
+      typeof body.cancel_redirect === 'string'
+        ? body.cancel_redirect
+        : undefined;
 
     if (!product_id || typeof product_id !== 'string') {
-      return respErr('Missing product_id');
+      return respErr('Missing product_id', { status: 400 });
     }
 
     // Look up product in the authoritative server-side catalog.
     // We DO NOT trust price / credits / plan from the request body.
     const product = getPricingProduct(product_id);
-    if (!product) {
-      return respErr('Unknown product');
+    if (!product || !isPublicProProductId(product.productId)) {
+      return respErr('Unknown product', { status: 400 });
+    }
+    if (
+      productIncludesProModels(product.productId) &&
+      (await getAnimationAccessTier(session.user.id)) === 'pro'
+    ) {
+      return respErr('Pro access is already active', { status: 409 });
     }
 
-    // Optional per-provider "test amount" override (admin-configured).
-    // Only the charged amount is overridden — credits granted and order
-    // amount stored both come from the authoritative catalog.
     const configs = await getAllConfigs();
-    const providerKey = payment_provider || configs.default_payment_provider;
-    const testAmountRaw = providerKey
-      ? configs[`${providerKey}_test_amount`]
-      : undefined;
-    const testAmount = testAmountRaw ? parseInt(testAmountRaw) : 0;
-    const chargeAmount = testAmount > 0 ? testAmount : product.priceInCents;
-
+    const availableProviders = getProCheckoutProviderNames(configs);
+    const configuredDefault = configs.default_payment_provider?.trim();
+    const providerKey =
+      payment_provider || configuredDefault || availableProviders[0];
+    if (!providerKey || !availableProviders.includes(providerKey)) {
+      return respErr(
+        payment_provider
+          ? 'Payment provider is not available for this product'
+          : 'No payment provider is available for this product',
+        { status: payment_provider ? 400 : 503 }
+      );
+    }
     // Build success/cancel URLs — only accept same-origin redirects.
     const baseUrl = configs.app_url || 'http://localhost:3000';
     const safeRedirectPath = safeSameOriginPath(
@@ -70,11 +111,15 @@ async function POST({ request }: { request: Request }) {
       '/settings/billing',
       baseUrl
     );
-    const finalRedirect = redirect
-      ? `${baseUrl}/auth-callback?redirect=${encodeURIComponent(`${baseUrl}${safeRedirectPath}`)}`
-      : `${baseUrl}/settings/billing`;
-    const successUrl = `${baseUrl}/api/payment/callback?redirect=${encodeURIComponent(finalRedirect)}`;
-    const cancelUrl = `${baseUrl}/pricing`;
+    const safeCancelPath = safeSameOriginPath(
+      cancel_redirect,
+      '/pricing',
+      baseUrl
+    );
+    // createCheckout adds the payment callback exactly once. This value is the
+    // final same-origin destination after that callback completes.
+    const successUrl = new URL(safeRedirectPath, baseUrl).toString();
+    const cancelUrl = new URL(safeCancelPath, baseUrl).toString();
 
     const checkout = await createCheckout({
       userId: session.user.id,
@@ -85,7 +130,7 @@ async function POST({ request }: { request: Request }) {
       creditsValidDays: product.creditsValidDays,
       paymentOrder: {
         productId: product.productId,
-        price: { amount: chargeAmount, currency: product.currency },
+        price: { amount: product.priceInCents, currency: product.currency },
         type: product.type,
         description: product.description,
         successUrl,
@@ -102,13 +147,21 @@ async function POST({ request }: { request: Request }) {
             }
           : undefined,
       },
-      provider: payment_provider,
+      provider: providerKey,
     });
 
     return respData({ checkout_url: checkout.checkoutInfo.checkoutUrl });
-  } catch (error: any) {
-    console.error('checkout error:', error);
-    return respErr(error.message || 'Checkout failed');
+  } catch (error: unknown) {
+    if (isRequestBodyTooLargeError(error)) {
+      return respErr('Request body is too large', { status: 413 });
+    }
+    if (error instanceof PaymentCheckoutBusyError) {
+      return respErr(error.message, { status: error.status });
+    }
+    console.error('[payment-checkout] failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return respErr('Checkout failed', { status: 500 });
   }
 }
 

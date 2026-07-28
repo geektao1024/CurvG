@@ -6,20 +6,43 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-import { tDynamic } from '@/core/i18n/dynamic';
 import { m } from '@/paraglide/messages.js';
 import { InteractiveSurface } from '@/components/interactive-surface';
 
-const STEPS: { key: string; icon: LucideIcon; number: string }[] = [
-  { key: 'describe', icon: Braces, number: '01' },
-  { key: 'direct', icon: Clapperboard, number: '02' },
-  { key: 'render', icon: Container, number: '03' },
-];
-
 export function Features() {
+  const steps: {
+    key: string;
+    icon: LucideIcon;
+    number: string;
+    title: string;
+    description: string;
+  }[] = [
+    {
+      key: 'describe',
+      icon: Braces,
+      number: '01',
+      title: m['landing.workflow.describe.title'](),
+      description: m['landing.workflow.describe.description'](),
+    },
+    {
+      key: 'direct',
+      icon: Clapperboard,
+      number: '02',
+      title: m['landing.workflow.direct.title'](),
+      description: m['landing.workflow.direct.description'](),
+    },
+    {
+      key: 'render',
+      icon: Container,
+      number: '03',
+      title: m['landing.workflow.render.title'](),
+      description: m['landing.workflow.render.description'](),
+    },
+  ];
+
   return (
     <section id="workflow">
-      <div className="curvg-stage curvg-frame curvg-section-field relative px-6 py-20 sm:px-10 sm:py-28">
+      <div className="curvg-stage curvg-frame curvg-section-field curvg-section-spacing relative">
         <span className="curvg-corner top-5 left-5" aria-hidden />
         <span className="curvg-corner top-5 right-5" aria-hidden />
         <div className="curvg-dotted-divider absolute inset-x-0 top-0" />
@@ -47,8 +70,8 @@ export function Features() {
           {m['landing.workflow.description']()}
         </p>
 
-        <div className="mt-14 grid gap-4 lg:grid-cols-3">
-          {STEPS.map(({ key, icon: Icon, number }) => (
+        <div className="mt-10 grid gap-4 sm:mt-12 lg:grid-cols-3">
+          {steps.map(({ key, icon: Icon, number, title, description }) => (
             <InteractiveSurface
               key={key}
               className="group border-border bg-card hover:border-primary/20 relative overflow-hidden rounded-lg border p-7 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_46px_-40px_rgba(38,46,242,0.4)] sm:p-8"
@@ -57,13 +80,15 @@ export function Features() {
                 <div className="bg-accent text-accent-foreground flex size-11 items-center justify-center rounded-lg">
                   <Icon className="size-5" strokeWidth={2} />
                 </div>
-                <span className="curvg-meta">step {number} / 03</span>
+                <span className="curvg-meta">
+                  {m['landing.workflow.step_index']({ number })}
+                </span>
               </div>
               <h3 className="mt-6 text-xl font-semibold tracking-tight">
-                {tDynamic(`landing.workflow.${key}.title`)}
+                {title}
               </h3>
               <p className="text-muted-foreground mt-3 text-sm leading-relaxed">
-                {tDynamic(`landing.workflow.${key}.description`)}
+                {description}
               </p>
             </InteractiveSurface>
           ))}

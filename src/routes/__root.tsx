@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import type { ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import {
@@ -15,16 +15,22 @@ import { ThemeProvider } from 'next-themes';
 import { usePathname } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
 import { getQueryClient } from '@/lib/query-client';
+import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
 import { GoogleAnalytics } from '@/components/analytics/google-analytics';
 import { Plausible } from '@/components/analytics/plausible';
 import { CustomerService } from '@/components/customer-service';
 import { GoogleOneTap } from '@/components/google-one-tap';
-import { Toaster } from '@/components/ui/sonner';
 
 import '@fontsource-variable/inter';
 import '@fontsource-variable/space-grotesk';
 import '@/styles/globals.css';
+
+const Toaster = lazy(() =>
+  import('@/components/ui/sonner').then((module) => ({
+    default: module.Toaster,
+  }))
+);
 
 // Analytics IDs live in the DB config (1h-cached service). Fetched via a
 // server function so drizzle/db code never reaches the client bundle.
@@ -86,7 +92,7 @@ function RootComponent() {
         disableTransitionOnChange
       >
         <Outlet />
-        <Toaster position="top-center" richColors />
+        <DeferredToaster />
         <GoogleOneTap />
         {analytics?.gaId ? (
           <GoogleAnalytics measurementId={analytics.gaId} />
@@ -110,6 +116,20 @@ function RootComponent() {
   );
 }
 
+function DeferredToaster() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  if (!mounted) return null;
+
+  return (
+    <Suspense fallback={null}>
+      <Toaster position="top-center" richColors />
+    </Suspense>
+  );
+}
+
 function RootDocument({ children }: { children: ReactNode }) {
   return (
     <html lang={getLocale()} className="bg-background" suppressHydrationWarning>
@@ -128,9 +148,9 @@ function NotFound() {
   return (
     <div className="bg-background text-foreground flex min-h-screen flex-col items-center justify-center gap-4">
       <h1 className="text-6xl font-bold">404</h1>
-      <p className="text-muted-foreground">Page not found</p>
+      <p className="text-muted-foreground">{m['common.not_found.message']()}</p>
       <a href="/" className="text-sm underline underline-offset-4">
-        Back to home
+        {m['common.not_found.back_home']()}
       </a>
     </div>
   );
@@ -139,10 +159,8 @@ function NotFound() {
 function RootError({ error, reset }: ErrorComponentProps) {
   return (
     <div className="bg-background text-foreground flex min-h-screen flex-col items-center justify-center gap-4">
-      <h1 className="text-4xl font-bold">Oops</h1>
-      <p className="text-muted-foreground">
-        Something went wrong. Please try again.
-      </p>
+      <h1 className="text-4xl font-bold">{m['common.error.title']()}</h1>
+      <p className="text-muted-foreground">{m['common.error.message']()}</p>
       {import.meta.env.DEV && error instanceof Error && (
         <pre className="bg-muted mt-2 max-w-lg overflow-auto rounded p-4 text-xs">
           {error.message}
@@ -153,7 +171,7 @@ function RootError({ error, reset }: ErrorComponentProps) {
         onClick={reset}
         className="text-sm underline underline-offset-4"
       >
-        Try again
+        {m['common.error.retry']()}
       </button>
     </div>
   );

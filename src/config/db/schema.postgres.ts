@@ -13,6 +13,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
 const table = pgTable;
@@ -277,9 +278,9 @@ export const subscription = table(
       table.status,
       table.interval
     ),
-    index('idx_subscription_provider_id').on(
-      table.subscriptionId,
-      table.paymentProvider
+    uniqueIndex('uidx_subscription_provider_id').on(
+      table.paymentProvider,
+      table.subscriptionId
     ),
     index('idx_subscription_created_at').on(table.createdAt),
   ]
@@ -485,6 +486,55 @@ export const chat = table(
   (table) => [index('idx_chat_user_status').on(table.userId, table.status)]
 );
 
+// Parameterized, human-verified scenes. Kept separate from AI animation chats.
+export const animationTemplate = table(
+  'animation_template',
+  {
+    id: text('id').primaryKey(),
+    slug: text('slug').notNull().unique(),
+    status: text('status').notNull().default('active'),
+    titleEn: text('title_en').notNull(),
+    titleZh: text('title_zh').notNull(),
+    descriptionEn: text('description_en').notNull(),
+    descriptionZh: text('description_zh').notNull(),
+    mathObjectType: text('math_object_type').notNull(),
+    previewFormula: text('preview_formula').notNull(),
+    parameterSchema: text('parameter_schema').notNull(),
+    spec: text('spec').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index('idx_animation_template_status').on(table.status)]
+);
+
+export const animationGenerationLease = table(
+  'animation_generation_lease',
+  {
+    slotId: text('slot_id').primaryKey(),
+    leaseToken: text('lease_token'),
+    userId: text('user_id').unique(),
+    expiresAt: timestamp('expires_at'),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index('idx_animation_lease_expires').on(table.expiresAt)]
+);
+
+export const paymentCheckoutLease = table('payment_checkout_lease', {
+  userId: text('user_id').primaryKey(),
+  leaseToken: text('lease_token').notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
+  updatedAt: timestamp('updated_at')
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
 export const chatMessage = table(
   'chat_message',
   {
@@ -543,6 +593,11 @@ export type AiTask = typeof aiTask.$inferSelect;
 export type NewAiTask = typeof aiTask.$inferInsert;
 export type Chat = typeof chat.$inferSelect;
 export type NewChat = typeof chat.$inferInsert;
+export type AnimationTemplate = typeof animationTemplate.$inferSelect;
+export type NewAnimationTemplate = typeof animationTemplate.$inferInsert;
+export type AnimationGenerationLease =
+  typeof animationGenerationLease.$inferSelect;
+export type PaymentCheckoutLease = typeof paymentCheckoutLease.$inferSelect;
 export type ChatMessage = typeof chatMessage.$inferSelect;
 export type NewChatMessage = typeof chatMessage.$inferInsert;
 

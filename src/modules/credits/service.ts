@@ -218,24 +218,74 @@ export async function consume(params: {
 
 // --- Revoke (restore credits from a consumed record) ---
 
+export function affectedRowCount(result: any): number {
+  const candidates = [
+    result?.rowsAffected,
+    result?.changes,
+    result?.rowCount,
+    result?.count,
+    result?.meta?.changes,
+    result?.[0]?.affectedRows,
+    result?.[0]?.changes,
+    result?.[0]?.rowCount,
+    result?.[0]?.count,
+  ];
+  const value = candidates.find(
+    (candidate) => typeof candidate === 'number' && Number.isFinite(candidate)
+  );
+  if (value === undefined) {
+    throw new Error('Unable to confirm credit revocation');
+  }
+  return value;
+}
+
 export async function revoke(consumeCreditId: string) {
-  const [consumeRecord] = await db()
-    .select()
-    .from(credit)
-    .where(
-      and(
-        eq(credit.id, consumeCreditId),
-        eq(credit.transactionType, CreditTransactionType.CONSUME),
-        eq(credit.status, CreditStatus.ACTIVE)
+  return db().transaction(async (tx: any) => {
+    const [consumeRecord] = await tx
+      .select()
+      .from(credit)
+      .where(
+        and(
+          eq(credit.id, consumeCreditId),
+          eq(credit.transactionType, CreditTransactionType.CONSUME),
+          eq(credit.status, CreditStatus.ACTIVE)
+        )
       )
-    )
-    .limit(1);
+      .limit(1);
+    if (!consumeRecord || !consumeRecord.consumedDetail) return false;
 
-  if (!consumeRecord || !consumeRecord.consumedDetail) return;
+    const items = JSON.parse(consumeRecord.consumedDetail) as Array<{
+      creditId: string;
+      creditsConsumed: number;
+    }>;
+    if (
+      !Array.isArray(items) ||
+      items.some(
+        (item) =>
+          !item ||
+          typeof item.creditId !== 'string' ||
+          !Number.isFinite(item.creditsConsumed) ||
+          item.creditsConsumed <= 0
+      )
+    ) {
+      throw new Error('Consumed credit detail is invalid');
+    }
 
-  const items = JSON.parse(consumeRecord.consumedDetail);
+    // Claim the active consumption before restoring any grants. Concurrent
+    // failure/cancel callbacks can both observe the record, but only one can
+    // transition ACTIVE -> DELETED and therefore only one can refund it.
+    const claimed = await tx
+      .update(credit)
+      .set({ status: CreditStatus.DELETED })
+      .where(
+        and(
+          eq(credit.id, consumeCreditId),
+          eq(credit.transactionType, CreditTransactionType.CONSUME),
+          eq(credit.status, CreditStatus.ACTIVE)
+        )
+      );
+    if (affectedRowCount(claimed) !== 1) return false;
 
-  await db().transaction(async (tx: any) => {
     // Atomic increment per source grant — no read-modify-write race.
     for (const item of items) {
       await tx
@@ -245,12 +295,7 @@ export async function revoke(consumeCreditId: string) {
         })
         .where(eq(credit.id, item.creditId));
     }
-
-    // Mark consumption record as deleted
-    await tx
-      .update(credit)
-      .set({ status: CreditStatus.DELETED })
-      .where(eq(credit.id, consumeCreditId));
+    return true;
   });
 }
 

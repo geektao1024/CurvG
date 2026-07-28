@@ -2,6 +2,7 @@ export interface AnimationRenderRequest {
   animationId: string;
   code: string;
   callbackUrl: string;
+  signal?: AbortSignal;
 }
 
 export interface AnimationRenderResult {
@@ -46,7 +47,9 @@ export class HttpAnimationRenderer implements AnimationRenderer {
         format: 'mp4',
         quality: 'medium',
       }),
-      signal: AbortSignal.timeout(30_000),
+      signal: request.signal
+        ? AbortSignal.any([request.signal, AbortSignal.timeout(30_000)])
+        : AbortSignal.timeout(30_000),
     });
     const data = (await response.json().catch(() => ({}))) as Record<
       string,
@@ -60,10 +63,16 @@ export class HttpAnimationRenderer implements AnimationRenderer {
       throw new Error(message);
     }
     const jobId = typeof data.jobId === 'string' ? data.jobId : '';
-    if (!jobId) throw new Error('Renderer did not return a job ID');
+    if (!/^[A-Za-z0-9-]{1,80}$/.test(jobId)) {
+      throw new Error('Renderer returned an invalid job ID');
+    }
+    const status = typeof data.status === 'string' ? data.status : 'queued';
+    if (!['queued', 'rendering'].includes(status)) {
+      throw new Error('Renderer returned an invalid job status');
+    }
     return {
       jobId,
-      status: typeof data.status === 'string' ? data.status : 'queued',
+      status,
       provider: this.name,
     };
   }

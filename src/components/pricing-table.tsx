@@ -1,5 +1,3 @@
-'use client';
-
 import { useState, type ComponentType, type SVGProps } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
@@ -49,9 +47,13 @@ export interface PricingGroup {
 export function PricingTable({
   groups,
   onCheckout,
+  loadingPlanId,
+  disabledPlanIds = [],
 }: {
   groups: PricingGroup[];
   onCheckout?: (plan: PricingPlan) => void;
+  loadingPlanId?: string | null;
+  disabledPlanIds?: string[];
 }) {
   const [activeGroup, setActiveGroup] = useState(groups[0]?.key || '');
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -140,6 +142,11 @@ export function PricingTable({
                 : 'bg-background hover:border-foreground/30'
             )}
           >
+            {plan.badge && (
+              <span className="bg-primary text-primary-foreground absolute -top-3 right-5 rounded-full px-3 py-1 text-[10px] font-semibold tracking-wide uppercase">
+                {plan.badge}
+              </span>
+            )}
             {/* Plan name */}
             {plan.name && (
               <p className="text-foreground mb-2 text-sm font-medium">
@@ -176,9 +183,13 @@ export function PricingTable({
               variant={plan.featured ? 'default' : 'outline'}
               className="h-10 w-full rounded-full text-sm font-medium"
               onClick={() => handleCheckout(plan)}
-              disabled={loadingId === plan.id}
+              disabled={
+                loadingId === plan.id ||
+                loadingPlanId === plan.id ||
+                disabledPlanIds.includes(plan.id)
+              }
             >
-              {loadingId === plan.id
+              {loadingId === plan.id || loadingPlanId === plan.id
                 ? m['common.pricing.processing']()
                 : plan.buttonText || m['common.pricing.get_started']()}
             </Button>

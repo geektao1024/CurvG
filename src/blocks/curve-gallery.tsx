@@ -1,10 +1,19 @@
+import { useQuery } from '@tanstack/react-query';
 import { Film } from 'lucide-react';
 
+import type { AnimationSummary } from '@/lib/animation';
+import { apiGet } from '@/lib/api-client';
 import { m } from '@/paraglide/messages.js';
 import { GalleryVideoCard } from '@/components/gallery-video-card';
 
 export function CurveGallery() {
-  const videos = [
+  const publishedQuery = useQuery({
+    queryKey: ['published-animations'],
+    queryFn: () => apiGet<AnimationSummary[]>('/api/gallery/animations'),
+    staleTime: 60_000,
+    retry: 1,
+  });
+  const examples = [
     {
       key: 'hello',
       src: '/videos/gallery/hello-world.mp4',
@@ -72,10 +81,25 @@ export function CurveGallery() {
       ariaLabel: m['landing.gallery.orbit.aria'](),
     },
   ] as const;
+  const published = (publishedQuery.data || [])
+    .filter((item) => item.videoUrl)
+    .slice(0, 6)
+    .map((item) => ({
+      key: `published-${item.id}`,
+      src: item.videoUrl!,
+      poster: item.thumbnailUrl,
+      duration: '--:--',
+      scene: item.prompt,
+      title: item.title,
+      description: item.prompt,
+      tag: m['landing.gallery.community.tag'](),
+      ariaLabel: item.title,
+    }));
+  const videos = [...published, ...examples].slice(0, 6);
 
   return (
     <section id="gallery">
-      <div className="curvg-stage curvg-frame curvg-section-field relative px-6 py-20 sm:px-10 sm:py-28">
+      <div className="curvg-stage curvg-frame curvg-section-field curvg-section-spacing relative">
         <span className="curvg-corner top-5 left-5" aria-hidden />
         <span className="curvg-corner top-5 right-5" aria-hidden />
         <div className="curvg-dotted-divider absolute inset-x-0 top-0" />
@@ -103,11 +127,12 @@ export function CurveGallery() {
           {m['landing.gallery.description']()}
         </p>
 
-        <div className="mt-12 grid gap-5 md:grid-cols-2">
-          {videos.map((video, index) => (
+        <div className="mt-10 grid gap-5 sm:mt-12 md:grid-cols-2">
+          {videos.map(({ key, ...video }, index) => (
             <GalleryVideoCard
-              key={video.key}
+              key={key}
               index={index + 1}
+              total={videos.length}
               {...video}
               sceneLabel={m['landing.gallery.scene_label']()}
               playLabel={m['landing.gallery.play']({ title: video.title })}

@@ -20,11 +20,11 @@ import {
 } from '@/components/ui/card';
 import { Field, FieldDescription, FieldGroup } from '@/components/ui/field';
 
-const forgotSchema = z.object({
-  email: z.string().email(m['common.sign.email_placeholder']()),
-});
-
 function ForgotPasswordPage() {
+  const forgotSchema = z.object({
+    email: z.string().email(m['common.sign.email_placeholder']()),
+  });
+
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
   const [sentEmail, setSentEmail] = useState('');

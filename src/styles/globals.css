@@ -196,6 +196,17 @@
     border-inline: 1px solid var(--border);
   }
 
+  /* 首页区块共用纵向节奏，避免相邻 section 的大间距叠加。 */
+  .curvg-section-spacing {
+    padding: 4rem 1.5rem;
+  }
+
+  @media (min-width: 640px) {
+    .curvg-section-spacing {
+      padding: 5rem 2.5rem;
+    }
+  }
+
   .curvg-section-field {
     position: relative;
     overflow: hidden;

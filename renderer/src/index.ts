@@ -18,6 +18,7 @@ interface Env {
 }
 
 class NonRetryableRenderError extends Error {}
+class CanceledRenderError extends Error {}
 
 const animationIdPattern = /^[A-Za-z0-9-]{1,80}$/;
 
@@ -101,6 +102,22 @@ async function notify(
         ? result.message
         : `Callback failed (${response.status})`
     );
+  }
+  const data =
+    result.data && typeof result.data === 'object'
+      ? (result.data as Record<string, unknown>)
+      : undefined;
+  return data?.cancelRequested === true;
+}
+
+async function notifyStage(
+  job: RenderJob,
+  env: Env,
+  stage: 'validating' | 'compiling' | 'transcoding' | 'uploading',
+  progress: number
+) {
+  if (await notify(job, env, { status: 'rendering', stage, progress })) {
+    throw new CanceledRenderError(`Render canceled during ${stage}`);
   }
 }
 
@@ -248,7 +265,7 @@ async function processJob(job: RenderJob, env: Env) {
     return;
   }
 
-  await notify(job, env, { status: 'rendering' });
+  await notifyStage(job, env, 'validating', 18);
   const sandbox = getSandbox(env.Sandbox, job.jobId, {
     sleepAfter: '10m',
     labels: { workload: 'curvg-manim', animationId: job.animationId },
@@ -264,6 +281,7 @@ async function processJob(job: RenderJob, env: Env) {
         commandError(validation.stderr, 'Generated code failed validation')
       );
     }
+    await notifyStage(job, env, 'compiling', 42);
     const render = await sandbox.exec(
       'manim -qm --format=mp4 --disable_caching scene.py CurvGScene --media_dir /workspace/media',
       { timeout: 600_000, cwd: '/workspace' }
@@ -273,6 +291,7 @@ async function processJob(job: RenderJob, env: Env) {
         commandError(render.stderr, 'Manim render failed')
       );
     }
+    await notifyStage(job, env, 'transcoding', 72);
     const locate = await sandbox.exec(
       "find /workspace/media -type f -name 'CurvGScene.mp4' -print -quit",
       { timeout: 10_000 }
@@ -301,6 +320,7 @@ async function processJob(job: RenderJob, env: Env) {
         commandError(thumbnail.stderr, 'Thumbnail generation failed')
       );
     }
+    await notifyStage(job, env, 'uploading', 88);
     await uploadBinaryFile(sandbox, env.ARTIFACTS, videoKey, playbackPath, {
       httpMetadata: { contentType: 'video/mp4' },
       customMetadata: { animationId: job.animationId, jobId: job.jobId },
@@ -369,6 +389,10 @@ const worker: ExportedHandler<Env, RenderJob> = {
         await processJob(message.body, env);
         message.ack();
       } catch (error) {
+        if (error instanceof CanceledRenderError) {
+          message.ack();
+          continue;
+        }
         if (
           !(error instanceof NonRetryableRenderError) &&
           message.attempts < 3

@@ -45,14 +45,13 @@ interface InviteCodeRow {
 
 const PAGE_SIZE = 20;
 
-const inviteCodeSchema = z.object({
-  count: z.coerce.number().min(1),
-  maxUses: z.coerce.number().min(1),
-  trialDays: z.coerce.number().min(1),
-  note: z.string(),
-  expiresAt: z.string(),
-});
-type InviteCodeForm = z.input<typeof inviteCodeSchema>;
+type InviteCodeForm = {
+  count: string;
+  maxUses: string;
+  trialDays: string;
+  note: string;
+  expiresAt: string;
+};
 const emptyForm: InviteCodeForm = {
   count: '1',
   maxUses: '1',
@@ -62,6 +61,14 @@ const emptyForm: InviteCodeForm = {
 };
 
 function InviteCodesPage() {
+  const inviteCodeSchema = z.object({
+    count: z.coerce.number<string>().min(1),
+    maxUses: z.coerce.number<string>().min(1),
+    trialDays: z.coerce.number<string>().min(1),
+    note: z.string(),
+    expiresAt: z.string(),
+  });
+
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [tab, setTab] = useState<Tab>('all');

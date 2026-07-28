@@ -21,7 +21,7 @@ export function FormulaWorkspacePreview() {
 
   return (
     <section id="workspace">
-      <div className="curvg-stage curvg-frame curvg-section-field relative px-6 py-20 sm:px-10 sm:py-28">
+      <div className="curvg-stage curvg-frame curvg-section-field curvg-section-spacing relative">
         <span className="curvg-corner top-5 left-5" aria-hidden />
         <span className="curvg-corner top-5 right-5" aria-hidden />
         <div className="curvg-dotted-divider absolute inset-x-0 top-0" />
@@ -47,7 +47,7 @@ export function FormulaWorkspacePreview() {
           </p>
         </div>
 
-        <div className="bg-card mt-12 overflow-hidden rounded-lg border">
+        <div className="bg-card mt-10 overflow-hidden rounded-lg border sm:mt-12">
           <div className="text-muted-foreground flex items-center justify-between border-b px-5 py-3 font-mono text-[11px] tracking-[0.12em] uppercase sm:px-6">
             <span>{m['landing.workspace.window_label']()}</span>
             <span className="flex items-center gap-2">
@@ -68,7 +68,7 @@ export function FormulaWorkspacePreview() {
               <h3 className="mt-3 text-lg font-semibold tracking-tight">
                 {m['landing.workspace.input_title']()}
               </h3>
-              <div className="bg-secondary mt-5 rounded-md border px-4 py-4 font-mono text-sm leading-7 text-[#201f32]">
+              <div className="bg-secondary text-foreground mt-5 rounded-md border px-4 py-4 font-mono text-sm leading-7">
                 {m['landing.workspace.sample_prompt']()}
               </div>
               <p className="text-muted-foreground mt-4 text-sm leading-6">
@@ -119,7 +119,7 @@ export function FormulaWorkspacePreview() {
               <div className="bg-secondary relative mt-5 aspect-[16/9] overflow-hidden rounded-md border">
                 <svg
                   viewBox="0 0 320 180"
-                  className="absolute inset-0 size-full"
+                  className="text-foreground absolute inset-0 size-full"
                   role="img"
                   aria-label={m['landing.workspace.preview_aria']()}
                 >
@@ -133,7 +133,8 @@ export function FormulaWorkspacePreview() {
                       <path
                         d="M24 0H0V24"
                         fill="none"
-                        stroke="rgba(32,31,50,0.08)"
+                        stroke="currentColor"
+                        strokeOpacity="0.08"
                         strokeWidth="1"
                       />
                     </pattern>
@@ -146,18 +147,19 @@ export function FormulaWorkspacePreview() {
                   <path
                     d="M24 90H296M160 18V162"
                     fill="none"
-                    stroke="rgba(32,31,50,0.22)"
+                    stroke="currentColor"
+                    strokeOpacity="0.22"
                     strokeDasharray="3 4"
                   />
                   <path
                     d="M160 90C185 70 208 41 222 39C239 36 234 68 212 92C190 116 167 135 141 133C113 131 101 107 116 84C128 65 145 62 160 90C179 125 203 141 220 129C235 119 225 95 202 90C180 85 163 87 160 90Z"
                     fill="none"
-                    stroke="#262ef2"
+                    stroke="var(--primary)"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth="2"
                   />
-                  <circle cx="222" cy="39" r="3.5" fill="#201f32" />
+                  <circle cx="222" cy="39" r="3.5" fill="currentColor" />
                 </svg>
                 <span className="text-primary absolute right-3 bottom-2 font-mono text-[10px]">
                   f(t) → scene

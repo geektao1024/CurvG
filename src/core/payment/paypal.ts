@@ -16,6 +16,24 @@ import {
   type PaymentSession,
 } from './types';
 
+const PAYMENT_REQUEST_TIMEOUT_MS = 30_000;
+
+function paypalRequestId(
+  order: PaymentOrder,
+  operation: 'order' | 'product' | 'plan' | 'subscription'
+) {
+  const source = order.requestId || order.orderNo;
+  if (!source) return undefined;
+  const suffix = source.replace(/[^A-Za-z0-9_-]/g, '').slice(-32);
+  const prefixes = {
+    order: 'PPO',
+    product: 'PPR',
+    plan: 'PPL',
+    subscription: 'PPS',
+  } as const;
+  return `${prefixes[operation]}_${suffix}`;
+}
+
 /**
  * PayPal payment provider configs
  * @docs https://developer.paypal.com/docs/
@@ -142,7 +160,8 @@ export class PayPalProvider implements PaymentProvider {
     const result = await this.makeRequest(
       '/v2/checkout/orders',
       'POST',
-      payload
+      payload,
+      paypalRequestId(order, 'order')
     );
 
     const approvalUrl = result.links?.find(
@@ -182,7 +201,8 @@ export class PayPalProvider implements PaymentProvider {
     const productResponse = await this.makeRequest(
       '/v1/catalogs/products',
       'POST',
-      productPayload
+      productPayload,
+      paypalRequestId(order, 'product')
     );
 
     // Create a billing plan
@@ -238,7 +258,8 @@ export class PayPalProvider implements PaymentProvider {
     const planResponse = await this.makeRequest(
       '/v1/billing/plans',
       'POST',
-      planPayload
+      planPayload,
+      paypalRequestId(order, 'plan')
     );
 
     // Create subscription
@@ -275,7 +296,8 @@ export class PayPalProvider implements PaymentProvider {
     const subscriptionResponse = await this.makeRequest(
       '/v1/billing/subscriptions',
       'POST',
-      subscriptionPayload
+      subscriptionPayload,
+      paypalRequestId(order, 'subscription')
     );
 
     const approvalUrl = subscriptionResponse.links?.find(
@@ -345,41 +367,6 @@ export class PayPalProvider implements PaymentProvider {
             'GET'
           );
 
-          // If subscription status is APPROVED, wait for it to become ACTIVE
-          // PayPal automatically activates subscription after user approval
-          if (subscriptionResult.status === 'APPROVED') {
-            console.log(
-              'PayPal subscription is APPROVED, waiting for activation...',
-              sessionId
-            );
-
-            // Poll for up to 10 seconds (5 attempts, 2 seconds apart)
-            for (let i = 0; i < 5; i++) {
-              await new Promise((resolve) => setTimeout(resolve, 2000));
-              subscriptionResult = await this.makeRequest(
-                `/v1/billing/subscriptions/${sessionId}`,
-                'GET'
-              );
-              console.log(
-                `PayPal subscription poll ${i + 1}/5, status:`,
-                subscriptionResult.status
-              );
-
-              if (subscriptionResult.status === 'ACTIVE') {
-                console.log('PayPal subscription activated successfully');
-                break;
-              }
-            }
-
-            // If still APPROVED after polling, treat it as success
-            // PayPal will activate it shortly
-            if (subscriptionResult.status === 'APPROVED') {
-              console.log(
-                'PayPal subscription still APPROVED after polling, treating as success'
-              );
-            }
-          }
-
           return await this.buildPaymentSessionFromSubscription(
             subscriptionResult
           );
@@ -407,9 +394,6 @@ export class PayPalProvider implements PaymentProvider {
         throw new Error('Invalid webhook payload');
       }
 
-      // verify webhook with PayPal
-      await this.ensureAccessToken();
-
       // Get headers (handle case-insensitivity)
       const getHeader = (name: string): string => {
         return (
@@ -429,6 +413,7 @@ export class PayPalProvider implements PaymentProvider {
 
       const hasSignatureHeaders = !!(
         authAlgo &&
+        certUrl &&
         transmissionId &&
         transmissionSig &&
         transmissionTime
@@ -440,6 +425,26 @@ export class PayPalProvider implements PaymentProvider {
           'Missing PayPal webhook signature headers — rejecting event'
         );
       }
+      let certificateUrl: URL;
+      try {
+        certificateUrl = new URL(certUrl);
+      } catch {
+        throw new Error('Invalid PayPal certificate URL');
+      }
+      if (
+        certificateUrl.protocol !== 'https:' ||
+        !(
+          certificateUrl.hostname === 'paypal.com' ||
+          certificateUrl.hostname.endsWith('.paypal.com')
+        )
+      ) {
+        throw new Error('Invalid PayPal certificate URL');
+      }
+
+      // Do not turn a headerless anonymous request into an OAuth call. A
+      // request that passes the cheap structural checks is still verified by
+      // PayPal below before any business action is constructed.
+      await this.ensureAccessToken();
 
       const verifyPayload = {
         auth_algo: authAlgo,
@@ -466,7 +471,7 @@ export class PayPalProvider implements PaymentProvider {
       // console.log('paypal webhook event', JSON.stringify(event, null, 2));
 
       // Map PayPal event type to internal event type
-      const eventType = this.mapPayPalEventType(event.event_type);
+      let eventType = mapPayPalWebhookEventType(event.event_type);
       let paymentSession: PaymentSession | undefined = undefined;
 
       // Build payment session based on event type
@@ -506,12 +511,70 @@ export class PayPalProvider implements PaymentProvider {
         paymentSession = await this.buildPaymentSessionFromSubscription(
           event.resource
         );
+      } else if (eventType === PaymentEventType.PAYMENT_REFUNDED) {
+        const originalPayment = await this.getFullyRefundedOriginalPayment(
+          event.resource,
+          event.event_type
+        );
+        if (!originalPayment) {
+          eventType = PaymentEventType.IGNORED;
+        } else {
+          const subscriptionId =
+            event.resource.billing_agreement_id ||
+            event.resource.subscription_id ||
+            originalPayment.billing_agreement_id ||
+            originalPayment.subscription_id;
+          if (subscriptionId) {
+            const subscription = await this.makeRequest(
+              `/v1/billing/subscriptions/${subscriptionId}`,
+              'GET'
+            );
+            paymentSession = await this.buildPaymentSessionFromSubscription(
+              subscription,
+              originalPayment
+            );
+          } else {
+            paymentSession = await this.buildPaymentSessionFromCapture(
+              originalPayment,
+              { requireOrderMetadata: true }
+            );
+          }
+          paymentSession.paymentStatus = PaymentStatus.FAILED;
+          paymentSession.paymentResult = event.resource;
+          if (paymentSession.paymentInfo) {
+            paymentSession.paymentInfo.transactionId = originalPayment.id;
+            paymentSession.paymentInfo.invoiceId = originalPayment.id;
+          }
+        }
       } else if (eventType === PaymentEventType.PAYMENT_FAILED) {
-        paymentSession = {
-          provider: this.name,
-          paymentStatus: PaymentStatus.FAILED,
-          paymentResult: event.resource,
-        };
+        const isBillingFailure =
+          event.event_type === 'BILLING.SUBSCRIPTION.PAYMENT.FAILED';
+        const subscriptionId =
+          event.resource.billing_agreement_id ||
+          event.resource.subscription_id ||
+          (isBillingFailure ? event.resource.id : '');
+        if (subscriptionId) {
+          const subscription = await this.makeRequest(
+            `/v1/billing/subscriptions/${subscriptionId}`,
+            'GET'
+          );
+          paymentSession = await this.buildPaymentSessionFromSubscription(
+            subscription,
+            isBillingFailure ? undefined : event.resource
+          );
+          paymentSession.paymentStatus = PaymentStatus.FAILED;
+          if (paymentSession.paymentInfo) {
+            paymentSession.paymentInfo.transactionId =
+              event.resource.sale_id ||
+              event.resource.capture_id ||
+              event.resource.id;
+          }
+        } else {
+          paymentSession = await this.buildPaymentSessionFromCapture(
+            event.resource
+          );
+          paymentSession.paymentStatus = PaymentStatus.FAILED;
+        }
       }
 
       return {
@@ -670,6 +733,7 @@ export class PayPalProvider implements PaymentProvider {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: 'grant_type=client_credentials',
+      signal: AbortSignal.timeout(PAYMENT_REQUEST_TIMEOUT_MS),
     });
 
     const data = await response.json();
@@ -684,16 +748,23 @@ export class PayPalProvider implements PaymentProvider {
     this.tokenExpiry = Date.now() + data.expires_in * 1000;
   }
 
-  private async makeRequest(endpoint: string, method: string, data?: any) {
+  private async makeRequest(
+    endpoint: string,
+    method: string,
+    data?: any,
+    requestId?: string
+  ) {
     const url = `${this.baseUrl}${endpoint}`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.accessToken}`,
       'Content-Type': 'application/json',
     };
+    if (requestId) headers['PayPal-Request-Id'] = requestId;
 
     const config: RequestInit = {
       method,
       headers,
+      signal: AbortSignal.timeout(PAYMENT_REQUEST_TIMEOUT_MS),
     };
 
     if (data) {
@@ -722,47 +793,6 @@ export class PayPalProvider implements PaymentProvider {
     }
 
     return await response.json();
-  }
-
-  private mapPayPalEventType(eventType: string): PaymentEventType {
-    switch (eventType) {
-      // Order events
-      case 'CHECKOUT.ORDER.APPROVED':
-      case 'CHECKOUT.ORDER.COMPLETED':
-        return PaymentEventType.CHECKOUT_SUCCESS;
-
-      // Payment capture events
-      case 'PAYMENT.CAPTURE.COMPLETED':
-      case 'PAYMENT.SALE.COMPLETED':
-        return PaymentEventType.PAYMENT_SUCCESS;
-
-      case 'PAYMENT.CAPTURE.DENIED':
-      case 'PAYMENT.CAPTURE.DECLINED':
-      case 'PAYMENT.SALE.DENIED':
-        return PaymentEventType.PAYMENT_FAILED;
-
-      case 'PAYMENT.CAPTURE.REFUNDED':
-      case 'PAYMENT.SALE.REFUNDED':
-        return PaymentEventType.PAYMENT_REFUNDED;
-
-      // Subscription events
-      case 'BILLING.SUBSCRIPTION.ACTIVATED':
-      case 'BILLING.SUBSCRIPTION.UPDATED':
-      case 'BILLING.SUBSCRIPTION.RE-ACTIVATED':
-        return PaymentEventType.SUBSCRIBE_UPDATED;
-
-      case 'BILLING.SUBSCRIPTION.CANCELLED':
-      case 'BILLING.SUBSCRIPTION.SUSPENDED':
-      case 'BILLING.SUBSCRIPTION.EXPIRED':
-        return PaymentEventType.SUBSCRIBE_CANCELED;
-
-      // Subscription payment events
-      case 'PAYMENT.SALE.COMPLETED':
-        return PaymentEventType.PAYMENT_SUCCESS;
-
-      default:
-        throw new Error(`Unknown PayPal event type: ${eventType}`);
-    }
   }
 
   private mapPayPalStatus(status: string): PaymentStatus {
@@ -800,7 +830,7 @@ export class PayPalProvider implements PaymentProvider {
         return SubscriptionStatus.ACTIVE;
       case 'APPROVAL_PENDING':
       case 'APPROVED':
-        return SubscriptionStatus.ACTIVE;
+        return SubscriptionStatus.PAUSED;
       case 'CANCELLED':
         return SubscriptionStatus.CANCELED;
       case 'SUSPENDED':
@@ -808,7 +838,7 @@ export class PayPalProvider implements PaymentProvider {
       case 'EXPIRED':
         return SubscriptionStatus.EXPIRED;
       default:
-        return SubscriptionStatus.ACTIVE;
+        return SubscriptionStatus.PAUSED;
     }
   }
 
@@ -917,9 +947,99 @@ export class PayPalProvider implements PaymentProvider {
     return result;
   }
 
+  private async getFullyRefundedOriginalPayment(
+    refund: any,
+    eventType: string
+  ): Promise<any | undefined> {
+    const refundStatus = String(
+      refund?.status || refund?.state || ''
+    ).toUpperCase();
+    if (!['COMPLETED', 'REFUNDED'].includes(refundStatus)) {
+      if (['PENDING', 'CREATED'].includes(refundStatus)) return undefined;
+      throw new Error('Invalid PayPal refund status');
+    }
+
+    const isSale = eventType === 'PAYMENT.SALE.REFUNDED';
+    let originalId = isSale ? refund?.sale_id : refund?.capture_id;
+    if (!originalId && Array.isArray(refund?.links)) {
+      const up = refund.links.find((link: any) => link?.rel === 'up');
+      if (typeof up?.href === 'string') {
+        try {
+          const path = new URL(up.href).pathname;
+          const match = path.match(
+            isSale
+              ? /\/v1\/payments\/sale\/([^/?]+)$/
+              : /\/v2\/payments\/captures\/([^/?]+)$/
+          );
+          originalId = match?.[1];
+        } catch {
+          originalId = undefined;
+        }
+      }
+    }
+    if (
+      typeof originalId !== 'string' ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(originalId)
+    ) {
+      throw new Error('PayPal refund has no valid original payment reference');
+    }
+
+    const originalPayment = await this.makeRequest(
+      isSale
+        ? `/v1/payments/sale/${originalId}`
+        : `/v2/payments/captures/${originalId}`,
+      'GET'
+    );
+    if (!originalPayment || originalPayment.id !== originalId) {
+      throw new Error('PayPal refund original payment mismatch');
+    }
+
+    const originalStatus = String(
+      originalPayment.status || originalPayment.state || ''
+    ).toUpperCase();
+    if (originalStatus === 'PARTIALLY_REFUNDED') return undefined;
+    if (originalStatus === 'REFUNDED') return originalPayment;
+
+    const amountValue = Number.parseFloat(
+      String(
+        originalPayment.amount?.value ??
+          originalPayment.amount?.total ??
+          originalPayment.amount ??
+          ''
+      )
+    );
+    const refundedValue = Number.parseFloat(
+      String(
+        originalPayment.seller_receivable_breakdown?.total_refunded_amount
+          ?.value ??
+          originalPayment.total_refunded_amount?.value ??
+          originalPayment.refunded_amount?.value ??
+          ''
+      )
+    );
+    if (
+      Number.isFinite(amountValue) &&
+      amountValue > 0 &&
+      Number.isFinite(refundedValue) &&
+      refundedValue >= amountValue
+    ) {
+      return originalPayment;
+    }
+    if (
+      Number.isFinite(amountValue) &&
+      Number.isFinite(refundedValue) &&
+      refundedValue > 0 &&
+      refundedValue < amountValue
+    ) {
+      return undefined;
+    }
+    throw new Error('Unable to confirm a full PayPal refund');
+  }
+
   // Build payment session from capture event
   private async buildPaymentSessionFromCapture(
-    capture: any
+    capture: any,
+    opts: { requireOrderMetadata?: boolean } = {}
   ): Promise<PaymentSession> {
     // Get breakdown info from seller_receivable_breakdown
     const breakdown = capture.seller_receivable_breakdown;
@@ -949,7 +1069,10 @@ export class PayPalProvider implements PaymentProvider {
 
     // Try to get order_id from supplementary_data for fetching full order info
     const orderId = capture.supplementary_data?.related_ids?.order_id;
-    if (orderId && !metadata.order_no) {
+    const hasOrderNo = () =>
+      typeof metadata.orderNo === 'string' ||
+      typeof metadata.order_no === 'string';
+    if (orderId && !hasOrderNo()) {
       try {
         const order = await this.makeRequest(
           `/v2/checkout/orders/${orderId}`,
@@ -964,8 +1087,12 @@ export class PayPalProvider implements PaymentProvider {
           }
         }
       } catch (e) {
+        if (opts.requireOrderMetadata) throw e;
         console.log('Failed to fetch order for metadata:', e);
       }
+    }
+    if (opts.requireOrderMetadata && !hasOrderNo()) {
+      throw new Error('PayPal refund has no application order metadata');
     }
 
     const result: PaymentSession = {
@@ -1044,12 +1171,45 @@ export class PayPalProvider implements PaymentProvider {
       paidAt = lastPayment.time ? new Date(lastPayment.time) : undefined;
     }
 
-    // For subscriptions, APPROVED means user has authorized, treat as SUCCESS
-    // PayPal will automatically activate the subscription
-    const subscriptionPaymentStatus =
-      subscription.status === 'APPROVED' || subscription.status === 'ACTIVE'
-        ? PaymentStatus.SUCCESS
-        : this.mapPayPalStatus(subscription.status);
+    // APPROVED only means the payer authorized the agreement. It is not a
+    // settled subscription and must never be used to grant an entitlement.
+    const subscriptionPaymentStatus = this.mapPayPalStatus(subscription.status);
+
+    const subscriptionInfo = await this.buildSubscriptionInfo(subscription);
+    const transactionStartedAt = saleEvent?.create_time
+      ? new Date(saleEvent.create_time)
+      : undefined;
+    if (
+      transactionStartedAt &&
+      Number.isFinite(transactionStartedAt.getTime()) &&
+      saleEvent?.billing_agreement_id
+    ) {
+      const transactionPeriodEnd = new Date(transactionStartedAt);
+      const count = Math.max(1, subscriptionInfo.intervalCount || 1);
+      switch (subscriptionInfo.interval) {
+        case PaymentInterval.DAY:
+          transactionPeriodEnd.setUTCDate(
+            transactionPeriodEnd.getUTCDate() + count
+          );
+          break;
+        case PaymentInterval.WEEK:
+          transactionPeriodEnd.setUTCDate(
+            transactionPeriodEnd.getUTCDate() + count * 7
+          );
+          break;
+        case PaymentInterval.YEAR:
+          transactionPeriodEnd.setUTCFullYear(
+            transactionPeriodEnd.getUTCFullYear() + count
+          );
+          break;
+        default:
+          transactionPeriodEnd.setUTCMonth(
+            transactionPeriodEnd.getUTCMonth() + count
+          );
+      }
+      subscriptionInfo.currentPeriodStart = transactionStartedAt;
+      subscriptionInfo.currentPeriodEnd = transactionPeriodEnd;
+    }
 
     const result: PaymentSession = {
       provider: this.name,
@@ -1076,7 +1236,7 @@ export class PayPalProvider implements PaymentProvider {
       },
       paymentResult: saleEvent || subscription,
       subscriptionId: subscription.id,
-      subscriptionInfo: await this.buildSubscriptionInfo(subscription),
+      subscriptionInfo,
       subscriptionResult: subscription,
       metadata: metadata,
     };
@@ -1200,4 +1360,36 @@ export class PayPalProvider implements PaymentProvider {
  */
 export function createPayPalProvider(configs: PayPalConfigs): PayPalProvider {
   return new PayPalProvider(configs);
+}
+
+/**
+ * Maps verified PayPal events. In particular, APPROVED means authorization,
+ * not a captured payment or an active subscription, so it is safely ignored.
+ */
+export function mapPayPalWebhookEventType(eventType: string): PaymentEventType {
+  switch (eventType) {
+    case 'CHECKOUT.ORDER.COMPLETED':
+      return PaymentEventType.CHECKOUT_SUCCESS;
+    case 'PAYMENT.CAPTURE.COMPLETED':
+    case 'PAYMENT.SALE.COMPLETED':
+      return PaymentEventType.PAYMENT_SUCCESS;
+    case 'PAYMENT.CAPTURE.DENIED':
+    case 'PAYMENT.CAPTURE.DECLINED':
+    case 'PAYMENT.SALE.DENIED':
+    case 'BILLING.SUBSCRIPTION.PAYMENT.FAILED':
+      return PaymentEventType.PAYMENT_FAILED;
+    case 'PAYMENT.CAPTURE.REFUNDED':
+    case 'PAYMENT.SALE.REFUNDED':
+      return PaymentEventType.PAYMENT_REFUNDED;
+    case 'BILLING.SUBSCRIPTION.ACTIVATED':
+    case 'BILLING.SUBSCRIPTION.UPDATED':
+    case 'BILLING.SUBSCRIPTION.RE-ACTIVATED':
+      return PaymentEventType.SUBSCRIBE_UPDATED;
+    case 'BILLING.SUBSCRIPTION.CANCELLED':
+    case 'BILLING.SUBSCRIPTION.SUSPENDED':
+    case 'BILLING.SUBSCRIPTION.EXPIRED':
+      return PaymentEventType.SUBSCRIBE_CANCELED;
+    default:
+      return PaymentEventType.IGNORED;
+  }
 }

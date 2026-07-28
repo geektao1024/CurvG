@@ -50,7 +50,7 @@ export function WhyCurvG() {
 
   return (
     <section id="features">
-      <div className="curvg-stage curvg-frame relative border-t px-6 py-20 sm:px-10 sm:py-28">
+      <div className="curvg-stage curvg-frame curvg-section-spacing relative border-t">
         <span className="curvg-corner top-5 left-5" aria-hidden />
         <span className="curvg-corner top-5 right-5" aria-hidden />
 

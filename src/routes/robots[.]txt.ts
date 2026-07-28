@@ -6,6 +6,7 @@ export const Route = createFileRoute('/robots.txt')({
   server: {
     handlers: {
       GET: () => {
+        const appUrl = envConfigs.app_url.replace(/\/+$/, '');
         const body = [
           'User-Agent: *',
           'Allow: /',
@@ -13,11 +14,11 @@ export const Route = createFileRoute('/robots.txt')({
           'Disallow: /settings',
           'Disallow: /api/',
           '',
-          `Sitemap: ${envConfigs.app_url}/sitemap.xml`,
+          `Sitemap: ${appUrl}/sitemap.xml`,
           '',
         ].join('\n');
         return new Response(body, {
-          headers: { 'Content-Type': 'text/plain' },
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
         });
       },
     },

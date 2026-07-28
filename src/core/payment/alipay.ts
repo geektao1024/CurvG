@@ -15,6 +15,8 @@ import {
   SubscriptionStatus,
 } from './types';
 
+const PAYMENT_REQUEST_TIMEOUT_MS = 30_000;
+
 /**
  * Alipay payment provider configs
  * @docs https://opendocs.alipay.com/open/
@@ -222,6 +224,7 @@ export class AlipayProvider implements PaymentProvider {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams(signedParams).toString(),
+      signal: AbortSignal.timeout(PAYMENT_REQUEST_TIMEOUT_MS),
     });
 
     return await response.json();

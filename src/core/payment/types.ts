@@ -195,6 +195,12 @@ export interface PaymentSession {
 }
 
 export enum PaymentEventType {
+  /**
+   * A verified provider event that this application does not act on.  This is
+   * deliberately distinct from a verification or processing failure: webhook
+   * providers should receive 2xx for these events so they do not retry them.
+   */
+  IGNORED = 'event.ignored',
   CHECKOUT_SUCCESS = 'checkout.success', // checkout success
   PAYMENT_SUCCESS = 'payment.success', // payment success
   PAYMENT_FAILED = 'payment.failed', // payment failed

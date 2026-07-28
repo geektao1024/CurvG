@@ -1,8 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router';
 
-import { envConfigs } from '@/config';
+import { localizedLinks, socialMeta } from '@/lib/seo';
 import { m } from '@/paraglide/messages.js';
-import { getLocale, locales, localizeUrl } from '@/paraglide/runtime.js';
+import { getLocale } from '@/paraglide/runtime.js';
 import { CreatorWorkspace } from '@/blocks/creator-workspace';
 
 function CreatorPage() {
@@ -30,34 +30,18 @@ export const Route = createFileRoute('/creator')({
       {},
       { locale: locale as any }
     );
-    const url = localizeUrl(`${envConfigs.app_url}/creator`, {
-      locale: locale as any,
-    }).href;
-    const urlFor = (loc: string) =>
-      localizeUrl(`${envConfigs.app_url}/creator`, {
-        locale: loc as any,
-      }).href;
+    const seoLinks = localizedLinks({ path: '/creator', locale });
     return {
       meta: [
         { title },
         { name: 'description', content: description },
-        { property: 'og:title', content: title },
-        { property: 'og:description', content: description },
-        { property: 'og:type', content: 'website' },
-        { property: 'og:url', content: url },
-        { name: 'twitter:card', content: 'summary' },
-        { name: 'twitter:title', content: title },
-        { name: 'twitter:description', content: description },
+        ...socialMeta({
+          title,
+          description,
+          url: seoLinks.canonical,
+        }),
       ],
-      links: [
-        { rel: 'canonical', href: url },
-        ...locales.map((loc) => ({
-          rel: 'alternate',
-          hrefLang: loc,
-          href: urlFor(loc),
-        })),
-        { rel: 'alternate', hrefLang: 'x-default', href: urlFor('en') },
-      ],
+      links: seoLinks.links,
     };
   },
   component: CreatorPage,

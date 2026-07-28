@@ -17,6 +17,9 @@ import {
   SubscriptionStatus,
 } from './types';
 
+const PAYMENT_REQUEST_TIMEOUT_MS = 30_000;
+const CREEM_INITIAL_PERIOD_TOLERANCE_MS = 5 * 60_000;
+
 /**
  * Creem payment provider configs
  * @docs https://docs.creem.io/
@@ -173,27 +176,66 @@ export class CreemProvider implements PaymentProvider {
 
       let paymentSession: PaymentSession | undefined = undefined;
 
-      const eventType = this.mapCreemEventType(event.eventType);
+      let eventType = mapCreemWebhookEventType(event.eventType);
 
       if (eventType === PaymentEventType.CHECKOUT_SUCCESS) {
         paymentSession = await this.buildPaymentSessionFromCheckoutSession(
           event.object as any
         );
       } else if (eventType === PaymentEventType.PAYMENT_SUCCESS) {
-        paymentSession = await this.buildPaymentSessionFromInvoice(
+        paymentSession = await this.buildPaymentSessionFromPaidSubscription(
           event.object as any
         );
       } else if (eventType === PaymentEventType.SUBSCRIBE_UPDATED) {
+        const statusByEvent: Record<string, string> = {
+          'subscription.active': 'active',
+          'subscription.trialing': 'trialing',
+          'subscription.paused': 'paused',
+          'subscription.scheduled_cancel': 'scheduled_cancel',
+          'subscription.past_due': 'past_due',
+          'subscription.expired': 'expired',
+        };
         paymentSession = await this.buildPaymentSessionFromSubscription(
-          event.object as any
+          statusByEvent[event.eventType]
+            ? {
+                ...(event.object as any),
+                status: statusByEvent[event.eventType],
+              }
+            : (event.object as any)
         );
+        if (
+          event.eventType === 'subscription.active' &&
+          (!paymentSession.subscriptionInfo ||
+            !Number.isFinite(
+              paymentSession.subscriptionInfo.currentPeriodStart.getTime()
+            ) ||
+            !Number.isFinite(
+              paymentSession.subscriptionInfo.currentPeriodEnd.getTime()
+            ) ||
+            paymentSession.subscriptionInfo.currentPeriodStart >=
+              paymentSession.subscriptionInfo.currentPeriodEnd)
+        ) {
+          // Creem documents subscription.active as synchronization-only and
+          // its sample omits the period. subscription.paid is authoritative for
+          // activation, so acknowledge this incomplete event without retrying.
+          eventType = PaymentEventType.IGNORED;
+          paymentSession = undefined;
+        }
       } else if (eventType === PaymentEventType.SUBSCRIBE_CANCELED) {
         paymentSession = await this.buildPaymentSessionFromSubscription(
           event.object as any
         );
+      } else if (eventType === PaymentEventType.PAYMENT_REFUNDED) {
+        paymentSession = await this.buildPaymentSessionFromRefund(
+          event.object as any
+        );
+        // Creem emits refund.created for partial refunds too. Only a completed
+        // full refund revokes the order's remaining grant and subscription
+        // entitlement; partial/pending refunds are acknowledged without acting.
+        if (!paymentSession) eventType = PaymentEventType.IGNORED;
       }
 
-      if (!paymentSession) {
+      if (eventType !== PaymentEventType.IGNORED && !paymentSession) {
         throw new Error('Invalid webhook event');
       }
 
@@ -290,6 +332,7 @@ export class CreemProvider implements PaymentProvider {
     const config: RequestInit = {
       method,
       headers,
+      signal: AbortSignal.timeout(PAYMENT_REQUEST_TIMEOUT_MS),
     };
 
     if (data) {
@@ -304,30 +347,6 @@ export class CreemProvider implements PaymentProvider {
     }
 
     return await response.json();
-  }
-
-  private mapCreemEventType(eventType: string): PaymentEventType {
-    switch (eventType) {
-      case 'checkout.completed':
-        return PaymentEventType.CHECKOUT_SUCCESS;
-      case 'subscription.paid':
-        return PaymentEventType.PAYMENT_SUCCESS;
-      case 'subscription.update':
-        return PaymentEventType.SUBSCRIBE_UPDATED;
-      case 'subscription.paused':
-        return PaymentEventType.SUBSCRIBE_UPDATED;
-      case 'subscription.active':
-        return PaymentEventType.SUBSCRIBE_UPDATED;
-      case 'subscription.canceled':
-        return PaymentEventType.SUBSCRIBE_CANCELED;
-      default:
-        // not handle other event type
-        // subscription.expired
-        // subscription.trialing
-        // refund.created
-        // dispute.created
-        throw new Error(`Not handle creem event type: ${eventType}`);
-    }
   }
 
   private mapCreemStatus(session: any): PaymentStatus {
@@ -381,17 +400,91 @@ export class CreemProvider implements PaymentProvider {
 
     if (subscription) {
       result.subscriptionId = subscription.id;
-      result.subscriptionInfo = await this.buildSubscriptionInfo(
-        subscription,
-        session.product
-      );
       result.subscriptionResult = subscription;
+      const periodStart = new Date(subscription.current_period_start_date);
+      const periodEnd = new Date(subscription.current_period_end_date);
+      if (
+        Number.isFinite(periodStart.getTime()) &&
+        Number.isFinite(periodEnd.getTime()) &&
+        periodStart < periodEnd
+      ) {
+        result.subscriptionInfo = await this.buildSubscriptionInfo(
+          subscription,
+          session.product
+        );
+      } else {
+        // Creem's documented checkout.completed subscription deliberately has
+        // no billing period and must not activate recurring access. Persist the
+        // provider subscription link and wait for subscription.paid, which has
+        // a stable transaction ID and complete signed period.
+        result.paymentStatus = PaymentStatus.PROCESSING;
+      }
     }
 
     return result;
   }
 
   // build payment session from subscription session
+  private async buildPaymentSessionFromPaidSubscription(
+    subscription: any
+  ): Promise<PaymentSession> {
+    const product = subscription?.product;
+    const transactionId = subscription?.last_transaction_id;
+    if (
+      !subscription?.id ||
+      !product ||
+      typeof transactionId !== 'string' ||
+      !transactionId
+    ) {
+      throw new Error('Invalid Creem subscription.paid payload');
+    }
+
+    const createdAt = new Date(subscription.created_at);
+    const currentPeriodStart = new Date(subscription.current_period_start_date);
+    if (
+      !Number.isFinite(createdAt.getTime()) ||
+      !Number.isFinite(currentPeriodStart.getTime())
+    ) {
+      throw new Error('Invalid Creem subscription.paid dates');
+    }
+    const cycleType =
+      Math.abs(currentPeriodStart.getTime() - createdAt.getTime()) <=
+      CREEM_INITIAL_PERIOD_TOLERANCE_MS
+        ? SubscriptionCycleType.CREATE
+        : SubscriptionCycleType.RENEWAL;
+    const amount = Number(product.price);
+    const currency = String(product.currency || '');
+    if (!Number.isFinite(amount) || amount <= 0 || !currency) {
+      throw new Error('Invalid Creem subscription.paid amount');
+    }
+
+    return {
+      provider: this.name,
+      paymentStatus: PaymentStatus.SUCCESS,
+      paymentInfo: {
+        description: product.description,
+        amount,
+        currency,
+        transactionId,
+        paymentAmount: amount,
+        paymentCurrency: currency,
+        paymentEmail: subscription.customer?.email,
+        paymentUserName: subscription.customer?.name,
+        paymentUserId: subscription.customer?.id,
+        paidAt: subscription.last_transaction_date
+          ? new Date(subscription.last_transaction_date)
+          : undefined,
+        subscriptionCycleType: cycleType,
+      },
+      paymentResult: subscription,
+      metadata: subscription.metadata,
+      subscriptionId: subscription.id,
+      subscriptionInfo: await this.buildSubscriptionInfo(subscription, product),
+      subscriptionResult: subscription,
+    };
+  }
+
+  // Kept for checkout lookup responses that include an invoice/order object.
   private async buildPaymentSessionFromInvoice(
     invoice: any
   ): Promise<PaymentSession> {
@@ -407,7 +500,7 @@ export class CreemProvider implements PaymentProvider {
       currentPeriodStartAt.getTime() - subscriptionCreatedAt.getTime();
 
     const cycleType =
-      timeDiff < 5000 // 5s
+      Math.abs(timeDiff) <= CREEM_INITIAL_PERIOD_TOLERANCE_MS
         ? SubscriptionCycleType.CREATE
         : SubscriptionCycleType.RENEWAL;
 
@@ -468,11 +561,127 @@ export class CreemProvider implements PaymentProvider {
     return result;
   }
 
+  /** Build a session only for a completed, cumulative full refund. */
+  private async buildPaymentSessionFromRefund(
+    refund: any
+  ): Promise<PaymentSession | undefined> {
+    if (!refund || refund.status !== 'succeeded') return undefined;
+
+    const transaction = refund.transaction;
+    if (!transaction || typeof transaction.id !== 'string') {
+      throw new Error('Invalid Creem refund transaction');
+    }
+
+    const paidAmount = Number(
+      transaction.amount_paid ?? transaction.amount ?? 0
+    );
+    const cumulativeRefundedAmount = Number(
+      transaction.refunded_amount ?? refund.refund_amount ?? 0
+    );
+    if (
+      !Number.isFinite(paidAmount) ||
+      !Number.isFinite(cumulativeRefundedAmount) ||
+      paidAmount <= 0 ||
+      cumulativeRefundedAmount <= 0
+    ) {
+      throw new Error('Invalid Creem refund amount');
+    }
+    if (cumulativeRefundedAmount < paidAmount) return undefined;
+
+    const subscription = refund.subscription;
+    const transactionSubscriptionId =
+      typeof transaction.subscription === 'string'
+        ? transaction.subscription
+        : transaction.subscription?.id;
+    const subscriptionId =
+      typeof subscription === 'string'
+        ? subscription
+        : subscription?.id || transactionSubscriptionId;
+    const checkoutMetadata =
+      refund.checkout?.metadata &&
+      typeof refund.checkout.metadata === 'object' &&
+      !Array.isArray(refund.checkout.metadata)
+        ? refund.checkout.metadata
+        : {};
+    const subscriptionMetadata =
+      subscription?.metadata &&
+      typeof subscription.metadata === 'object' &&
+      !Array.isArray(subscription.metadata)
+        ? subscription.metadata
+        : {};
+    const requestId =
+      typeof refund.checkout?.request_id === 'string'
+        ? refund.checkout.request_id
+        : '';
+    const metadata = {
+      ...subscriptionMetadata,
+      ...checkoutMetadata,
+      ...(requestId && !checkoutMetadata.orderNo ? { orderNo: requestId } : {}),
+    };
+
+    let subscriptionInfo: SubscriptionInfo | undefined;
+    if (subscriptionId) {
+      const currentPeriodStart = new Date(
+        transaction.period_start ?? subscription?.current_period_start_date
+      );
+      const currentPeriodEnd = new Date(
+        transaction.period_end ?? subscription?.current_period_end_date
+      );
+      if (
+        !Number.isFinite(currentPeriodStart.getTime()) ||
+        !Number.isFinite(currentPeriodEnd.getTime()) ||
+        currentPeriodStart >= currentPeriodEnd
+      ) {
+        throw new Error('Invalid Creem refund billing period');
+      }
+      const productId =
+        typeof subscription?.product === 'string'
+          ? subscription.product
+          : subscription?.product?.id;
+      subscriptionInfo = {
+        subscriptionId,
+        productId,
+        currentPeriodStart,
+        currentPeriodEnd,
+        status: SubscriptionStatus.PAUSED,
+        metadata,
+      };
+    }
+
+    const paymentCurrency = String(
+      refund.refund_currency || transaction.currency || ''
+    );
+    const refundAmount = Number(
+      refund.refund_amount ?? cumulativeRefundedAmount
+    );
+    return {
+      provider: this.name,
+      paymentInfo: {
+        transactionId: transaction.id,
+        amount: paidAmount,
+        currency: String(transaction.currency || paymentCurrency),
+        paymentAmount: Number.isFinite(refundAmount)
+          ? refundAmount
+          : cumulativeRefundedAmount,
+        paymentCurrency,
+        paidAt: transaction.created_at
+          ? new Date(transaction.created_at)
+          : undefined,
+      },
+      paymentResult: refund,
+      metadata,
+      subscriptionId,
+      subscriptionInfo,
+      subscriptionResult: subscription,
+    };
+  }
+
   // build subscription info from subscription
   private async buildSubscriptionInfo(
     subscription: any,
     product?: any
   ): Promise<SubscriptionInfo> {
+    product = product || subscription?.product;
     const { interval, count: intervalCount } = this.mapCreemInterval(product);
 
     const subscriptionInfo: SubscriptionInfo = {
@@ -503,12 +712,19 @@ export class CreemProvider implements PaymentProvider {
       subscriptionInfo.canceledAt = new Date(subscription.canceled_at);
     } else if (subscription.status === 'trialing') {
       subscriptionInfo.status = SubscriptionStatus.TRIALING;
-    } else if (subscription.status === 'paused') {
+    } else if (
+      subscription.status === 'paused' ||
+      subscription.status === 'past_due'
+    ) {
       subscriptionInfo.status = SubscriptionStatus.PAUSED;
+    } else if (subscription.status === 'scheduled_cancel') {
+      subscriptionInfo.status = SubscriptionStatus.PENDING_CANCEL;
+      subscriptionInfo.canceledEndAt = subscriptionInfo.currentPeriodEnd;
+    } else if (subscription.status === 'expired') {
+      subscriptionInfo.status = SubscriptionStatus.EXPIRED;
     } else {
-      throw new Error(
-        `Unknown Creem subscription status: ${subscription.status}`
-      );
+      // Provider status additions must never preserve Pro by accident.
+      subscriptionInfo.status = SubscriptionStatus.PAUSED;
     }
 
     return subscriptionInfo;
@@ -561,4 +777,28 @@ export class CreemProvider implements PaymentProvider {
  */
 export function createCreemProvider(configs: CreemConfigs): CreemProvider {
   return new CreemProvider(configs);
+}
+
+/** Maps verified Creem events. Non-business events are accepted as ignored. */
+export function mapCreemWebhookEventType(eventType: string): PaymentEventType {
+  switch (eventType) {
+    case 'checkout.completed':
+      return PaymentEventType.CHECKOUT_SUCCESS;
+    case 'subscription.paid':
+      return PaymentEventType.PAYMENT_SUCCESS;
+    case 'subscription.update':
+    case 'subscription.paused':
+    case 'subscription.active':
+    case 'subscription.trialing':
+    case 'subscription.scheduled_cancel':
+    case 'subscription.past_due':
+    case 'subscription.expired':
+      return PaymentEventType.SUBSCRIBE_UPDATED;
+    case 'subscription.canceled':
+      return PaymentEventType.SUBSCRIBE_CANCELED;
+    case 'refund.created':
+      return PaymentEventType.PAYMENT_REFUNDED;
+    default:
+      return PaymentEventType.IGNORED;
+  }
 }

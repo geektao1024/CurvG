@@ -30,6 +30,7 @@ export type PublishedArticleItem = Pick<
   | 'authorName'
   | 'authorImage'
   | 'createdAt'
+  | 'updatedAt'
 >;
 
 export async function list(params: {
@@ -95,6 +96,7 @@ export async function listPublishedArticles(
       authorName: post.authorName,
       authorImage: post.authorImage,
       createdAt: post.createdAt,
+      updatedAt: post.updatedAt,
     })
     .from(post)
     .where(

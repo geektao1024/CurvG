@@ -3,9 +3,9 @@ import { SiteHeader } from '@/components/site-header';
 
 export function Header() {
   const navLinks = [
-    { href: '/#features', label: m['landing.nav.features']() },
-    { href: '/#prompt-examples', label: m['landing.nav.prompt_examples']() },
-    { href: '/#workflow', label: m['landing.nav.workflow']() },
+    { href: '/#gallery', label: m['landing.nav.gallery']() },
+    { href: '/pricing', label: m['landing.nav.pricing']() },
+    { href: '/blog', label: m['landing.nav.blog']() },
     { href: '/creator', label: m['landing.nav.playground']() },
     { href: '/#faq', label: m['landing.nav.faq']() },
   ];
@@ -13,8 +13,13 @@ export function Header() {
   return (
     <SiteHeader
       navLinks={navLinks}
-      ctaHref="/creator"
-      ctaLabel={m['landing.nav.start']()}
+      ctaHref="/sign-in"
+      ctaLabel={m['common.nav.sign_in']()}
+      openMenuLabel={m['common.nav.open_menu']()}
+      closeMenuLabel={m['common.nav.close_menu']()}
+      switchLanguageLabel={m['common.nav.switch_language']()}
+      toggleThemeLabel={m['common.nav.toggle_theme']()}
+      userFallback={m['common.nav.user']()}
       framed
     />
   );

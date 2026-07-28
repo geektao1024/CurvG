@@ -99,15 +99,17 @@ export async function updateTask(params: {
 
   await db().update(aiTask).set(updateData).where(eq(aiTask.id, taskId));
 
-  // Revoke credits on failure
-  if (status === AITaskStatus.FAILED && task.taskInfo) {
-    try {
-      const info = JSON.parse(task.taskInfo as string);
-      if (info.creditId) {
-        await revoke(info.creditId);
-      }
-    } catch {
-      // Ignore parse errors
+  // Failed and user-canceled renders do not consume credits. Revoke is
+  // idempotent because it only accepts an active consumption record.
+  if (
+    [AITaskStatus.FAILED, AITaskStatus.CANCELED].includes(status) &&
+    task.taskInfo
+  ) {
+    const info = JSON.parse(task.taskInfo as string) as {
+      creditId?: unknown;
+    };
+    if (typeof info.creditId === 'string' && info.creditId) {
+      await revoke(info.creditId);
     }
   }
 }
