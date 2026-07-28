@@ -78,6 +78,12 @@ export const envConfigs: Record<string, string> = {
   // OPENAI_API_KEY / ANTHROPIC_API_KEY are common ambient vars, and falling back
   // to them would let the admin "Test" silently pass on the machine's own key.
   replicate_api_token: procEnv.REPLICATE_API_TOKEN ?? '',
+  // Renderer credentials normally live in admin settings. These server-only
+  // fallbacks let an infrastructure deploy wire two Workers together without
+  // storing the shared token in D1 or exposing it to the client bundle.
+  animation_renderer_url: procEnv.ANIMATION_RENDERER_URL ?? '',
+  animation_renderer_token: procEnv.ANIMATION_RENDERER_TOKEN ?? '',
+  animation_render_credits: procEnv.ANIMATION_RENDER_CREDITS ?? '20',
 
   // Locale (public)
   locale: publicEnv('VITE_DEFAULT_LOCALE') ?? 'en',
