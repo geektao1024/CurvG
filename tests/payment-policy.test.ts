@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  isPublicProProductId,
+  getPricingProduct,
+  isPublicSubscriptionProductId,
   resolveSubscriptionPricingProduct,
 } from '../src/config/pricing';
 import { PaymentManager } from '../src/core/payment/index';
@@ -16,8 +17,8 @@ import {
   classifyPaymentSuccess,
   classifyRefundedOrderAction,
   decideSubscriptionWebhookPeriod,
+  getCheckoutProviderNames,
   getConfiguredPaymentProviderNames,
-  getProCheckoutProviderNames,
   isStaleCheckoutClaim,
   isStaleRenewalClaim,
   isStrictlyNewerSubscriptionPeriod,
@@ -66,6 +67,8 @@ test('registration requires enabled=true and complete signed-webhook credentials
     creem_api_key: 'creem_test',
     creem_signing_secret: 'creem_signing_test',
     creem_product_ids_mapping: JSON.stringify({
+      starter_monthly: 'creem_starter_month',
+      starter_yearly: 'creem_starter_year',
       pro_monthly: 'creem_pro_month',
       pro_yearly: 'creem_pro_year',
     }),
@@ -93,7 +96,7 @@ test('registration requires enabled=true and complete signed-webhook credentials
     'alipay',
     'wechat',
   ]);
-  assert.deepEqual(getProCheckoutProviderNames(complete), [
+  assert.deepEqual(getCheckoutProviderNames(complete), [
     'stripe',
     'creem',
     'paypal',
@@ -108,7 +111,7 @@ test('registration requires enabled=true and complete signed-webhook credentials
     ['creem', 'paypal']
   );
   assert.deepEqual(
-    getProCheckoutProviderNames({
+    getCheckoutProviderNames({
       ...complete,
       creem_product_ids_mapping: JSON.stringify({
         pro_monthly: 'creem_pro_month',
@@ -117,9 +120,11 @@ test('registration requires enabled=true and complete signed-webhook credentials
     ['stripe', 'paypal']
   );
   assert.deepEqual(
-    getProCheckoutProviderNames({
+    getCheckoutProviderNames({
       ...complete,
       creem_product_ids_mapping: JSON.stringify({
+        starter_monthly: 'creem_starter_month',
+        starter_yearly: 'creem_starter_year',
         pro_monthly: 'duplicate',
         pro_yearly: 'duplicate',
       }),
@@ -148,11 +153,37 @@ test('PayPal live and production config values both select the production API', 
   }
 });
 
-test('only the two public recurring Pro products are checkout-eligible', () => {
-  assert.equal(isPublicProProductId('pro_monthly'), true);
-  assert.equal(isPublicProProductId('pro_yearly'), true);
-  assert.equal(isPublicProProductId('pro_lifetime'), false);
-  assert.equal(isPublicProProductId('enterprise_monthly'), false);
+test('only the four public recurring products are checkout-eligible', () => {
+  assert.equal(isPublicSubscriptionProductId('starter_monthly'), true);
+  assert.equal(isPublicSubscriptionProductId('starter_yearly'), true);
+  assert.equal(isPublicSubscriptionProductId('pro_monthly'), true);
+  assert.equal(isPublicSubscriptionProductId('pro_yearly'), true);
+  assert.equal(isPublicSubscriptionProductId('pro_lifetime'), false);
+  assert.equal(isPublicSubscriptionProductId('enterprise_monthly'), false);
+});
+
+test('the public catalog keeps the advertised prices and render allowances', () => {
+  assert.deepEqual(
+    ['starter_monthly', 'starter_yearly', 'pro_monthly', 'pro_yearly'].map(
+      (productId) => {
+        const product = getPricingProduct(productId);
+        return product
+          ? [
+              product.productId,
+              product.priceInCents,
+              product.credits,
+              product.creditsValidDays,
+            ]
+          : null;
+      }
+    ),
+    [
+      ['starter_monthly', 990, 300, 31],
+      ['starter_yearly', 9500, 3600, 366],
+      ['pro_monthly', 1890, 1000, 31],
+      ['pro_yearly', 18100, 12000, 366],
+    ]
+  );
 });
 
 test('provider test amounts can never discount a production checkout', () => {
@@ -180,7 +211,7 @@ test('provider test amounts can never discount a production checkout', () => {
 test('signed subscription attributes resolve exactly and unknown changes fail closed', () => {
   assert.equal(
     resolveSubscriptionPricingProduct({
-      amount: 2900,
+      amount: 1890,
       currency: 'USD',
       interval: PaymentInterval.MONTH,
       intervalCount: 1,
@@ -189,7 +220,16 @@ test('signed subscription attributes resolve exactly and unknown changes fail cl
   );
   assert.equal(
     resolveSubscriptionPricingProduct({
-      amount: 2901,
+      amount: 990,
+      currency: 'USD',
+      interval: PaymentInterval.MONTH,
+      intervalCount: 1,
+    })?.productId,
+    'starter_monthly'
+  );
+  assert.equal(
+    resolveSubscriptionPricingProduct({
+      amount: 1891,
       currency: 'usd',
       interval: PaymentInterval.MONTH,
       intervalCount: 1,

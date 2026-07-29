@@ -96,6 +96,7 @@ interface CreatorModelOption {
   description: string;
   presetKey?: CreatorCuratedModelKey;
   badge?: string;
+  requiredTier?: 'free' | 'starter' | 'pro';
   disabled?: boolean;
   locked?: boolean;
 }
@@ -125,43 +126,44 @@ export type CreatorCuratedModelKey =
 interface CreatorCuratedModelPreset {
   key: CreatorCuratedModelKey;
   models: string[];
-  pro?: boolean;
+  tier: 'free' | 'starter' | 'pro';
 }
 
 const CURATED_MODEL_PRESETS: CreatorCuratedModelPreset[] = [
   {
     key: 'deepseekV4Pro',
     models: ['deepseek-v4-pro'],
+    tier: 'free',
   },
   {
     key: 'deepseekV4Flash',
     models: ['deepseek-v4-flash'],
-    pro: true,
+    tier: 'starter',
   },
   {
     key: 'qwen3Coder',
     models: ['qwen3-coder-plus'],
-    pro: true,
+    tier: 'starter',
   },
   {
     key: 'gpt5',
     models: ['gpt-5'],
-    pro: true,
+    tier: 'pro',
   },
   {
     key: 'gpt55',
     models: ['gpt-5.5'],
-    pro: true,
+    tier: 'pro',
   },
   {
     key: 'claudeSonnet46',
     models: ['claude-sonnet-4-6'],
-    pro: true,
+    tier: 'pro',
   },
   {
     key: 'claudeOpus47',
     models: ['claude-opus-4-7'],
-    pro: true,
+    tier: 'pro',
   },
 ];
 
@@ -257,7 +259,9 @@ export interface CreatorWorkspaceCopy {
   modelAuto: string;
   modelAutoDescription: string;
   modelFree: string;
+  modelStarter: string;
   modelPro: string;
+  modelStarterRequired: string;
   modelProRequired: string;
   modelUpgrade: string;
   modelLoading: string;
@@ -360,13 +364,15 @@ function requestFailureMessage(copy: CreatorWorkspaceCopy, error: unknown) {
   const failure = thrownAnimationFailure(error);
   if (failure) return localizedFailure(copy, failure);
   if (error instanceof ApiError && error.status === 403) {
-    return copy.modelProRequired;
+    return copy.failureMessages.PRO_REQUIRED;
   }
   if (
     error instanceof Error &&
-    /Pro plan|required for this model/i.test(error.message)
+    /current plan|not include this model|required for this model/i.test(
+      error.message
+    )
   ) {
-    return copy.modelProRequired;
+    return copy.failureMessages.PRO_REQUIRED;
   }
   return copy.requestFailed;
 }
@@ -795,7 +801,7 @@ function PromptComposer({
   modelOptions: CreatorModelOption[];
   modelsLoading: boolean;
   modelsError: boolean;
-  viewerTier?: 'free' | 'pro';
+  viewerTier?: 'free' | 'starter' | 'pro';
   onRetryModels: () => void;
   onModelChange: (value: string) => void;
   processing: boolean;
@@ -975,7 +981,9 @@ function PromptComposer({
                         )}
                         {option.locked && !modelsLoading && (
                           <span className="shrink-0 text-[9px] font-medium text-amber-600 dark:text-amber-400">
-                            {copy.modelProRequired}
+                            {option.requiredTier === 'starter'
+                              ? copy.modelStarterRequired
+                              : copy.modelProRequired}
                           </span>
                         )}
                         {option.disabled &&
@@ -1015,7 +1023,7 @@ function PromptComposer({
                   </button>
                 </div>
               )}
-              {viewerTier === 'free' &&
+              {viewerTier !== 'pro' &&
                 modelOptions.some((option) => option.locked) && (
                   <div className="border-border mt-1 border-t px-2.5 py-2">
                     <Link
@@ -1121,7 +1129,7 @@ function Welcome({
   modelOptions: CreatorModelOption[];
   modelsLoading: boolean;
   modelsError: boolean;
-  viewerTier?: 'free' | 'pro';
+  viewerTier?: 'free' | 'starter' | 'pro';
   onRetryModels: () => void;
   onModelChange: (value: string) => void;
   processing: boolean;
@@ -3164,7 +3172,13 @@ export function CreatorWorkspace({
         label: content.label,
         description: content.description,
         presetKey: preset.key,
-        badge: preset.pro ? copy.modelPro : copy.modelFree,
+        badge:
+          preset.tier === 'free'
+            ? copy.modelFree
+            : preset.tier === 'starter'
+              ? copy.modelStarter
+              : copy.modelPro,
+        requiredTier: match?.requiredTier || preset.tier,
         locked: !!match && !match.entitled,
         disabled: !match || !match.entitled,
       };

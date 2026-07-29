@@ -28,8 +28,8 @@ import {
 } from '@/config/db/schema';
 import {
   getPricingProduct,
-  isPublicProProductId,
-  PUBLIC_PRO_PRODUCT_IDS,
+  isPublicSubscriptionProductId,
+  PUBLIC_SUBSCRIPTION_PRODUCT_IDS,
   resolveSubscriptionPricingProduct,
   type PricingProduct,
 } from '@/config/pricing';
@@ -344,10 +344,10 @@ export function buildPaymentManager(configs: ConfigMap): PaymentManager {
   return paymentManager;
 }
 
-function hasCompleteCreemProMapping(configs: ConfigMap): boolean {
+function hasCompleteCreemPublicMapping(configs: ConfigMap): boolean {
   const mapping = parseProviderProductMapping(configs, 'creem');
   if (!mapping) return false;
-  const mappedIds = PUBLIC_PRO_PRODUCT_IDS.map(
+  const mappedIds = PUBLIC_SUBSCRIPTION_PRODUCT_IDS.map(
     (productId) => mapping[productId]?.trim() || ''
   );
   return (
@@ -355,12 +355,12 @@ function hasCompleteCreemProMapping(configs: ConfigMap): boolean {
   );
 }
 
-export function getProCheckoutProviderNames(configs: ConfigMap): string[] {
+export function getCheckoutProviderNames(configs: ConfigMap): string[] {
   const registered = new Set(getConfiguredPaymentProviderNames(configs));
   return ['stripe', 'creem', 'paypal'].filter(
     (provider) =>
       registered.has(provider) &&
-      (provider !== 'creem' || hasCompleteCreemProMapping(configs))
+      (provider !== 'creem' || hasCompleteCreemPublicMapping(configs))
   );
 }
 
@@ -383,7 +383,7 @@ export async function getPaymentProviderAvailability() {
   const configs = await getAllConfigs();
   const paymentManager = await getPaymentManager();
   const registeredProviders = paymentManager.getProviderNames();
-  const providers = getProCheckoutProviderNames(configs).filter((provider) =>
+  const providers = getCheckoutProviderNames(configs).filter((provider) =>
     registeredProviders.includes(provider)
   );
   const configuredDefault = configs.default_payment_provider?.trim();
@@ -422,7 +422,10 @@ export async function createCheckout(params: {
   const catalogProduct = internalProductId
     ? getPricingProduct(internalProductId)
     : null;
-  if (!catalogProduct || !isPublicProProductId(catalogProduct.productId)) {
+  if (
+    !catalogProduct ||
+    !isPublicSubscriptionProductId(catalogProduct.productId)
+  ) {
     throw new Error('Product is not publicly sellable');
   }
 
@@ -500,7 +503,7 @@ export async function createCheckout(params: {
       .where(
         and(
           eq(order.userId, userId),
-          inArray(order.productId, [...PUBLIC_PRO_PRODUCT_IDS]),
+          inArray(order.productId, [...PUBLIC_SUBSCRIPTION_PRODUCT_IDS]),
           inArray(order.status, [OrderStatus.PENDING, OrderStatus.CREATED]),
           isNull(order.deletedAt)
         )

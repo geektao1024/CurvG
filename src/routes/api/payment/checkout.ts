@@ -3,16 +3,15 @@ import { createFileRoute } from '@tanstack/react-router';
 import { getAuth } from '@/core/auth';
 import {
   getPricingProduct,
-  isPublicProProductId,
-  productIncludesProModels,
+  isPublicSubscriptionProductId,
 } from '@/config/pricing';
 import { getAllConfigs } from '@/modules/config/service';
 import {
   createCheckout,
-  getProCheckoutProviderNames,
+  getCheckoutProviderNames,
   PaymentCheckoutBusyError,
 } from '@/modules/payment/service';
-import { getAnimationAccessTier } from '@/modules/subscriptions/service';
+import { getCurrentSubscription } from '@/modules/subscriptions/service';
 import { enforceMinIntervalRateLimit } from '@/lib/rate-limit';
 import {
   isRequestBodyTooLargeError,
@@ -81,18 +80,18 @@ async function POST({ request }: { request: Request }) {
     // Look up product in the authoritative server-side catalog.
     // We DO NOT trust price / credits / plan from the request body.
     const product = getPricingProduct(product_id);
-    if (!product || !isPublicProProductId(product.productId)) {
+    if (!product || !isPublicSubscriptionProductId(product.productId)) {
       return respErr('Unknown product', { status: 400 });
     }
-    if (
-      productIncludesProModels(product.productId) &&
-      (await getAnimationAccessTier(session.user.id)) === 'pro'
-    ) {
-      return respErr('Pro access is already active', { status: 409 });
+    if (await getCurrentSubscription(session.user.id)) {
+      return respErr(
+        'A paid plan is already active. Manage it before switching plans.',
+        { status: 409 }
+      );
     }
 
     const configs = await getAllConfigs();
-    const availableProviders = getProCheckoutProviderNames(configs);
+    const availableProviders = getCheckoutProviderNames(configs);
     const configuredDefault = configs.default_payment_provider?.trim();
     const providerKey =
       payment_provider || configuredDefault || availableProviders[0];

@@ -472,8 +472,9 @@ export function getSettings(): Setting[] {
       name: 'creem_product_ids_mapping',
       title: 'Product IDs Mapping',
       type: 'textarea',
-      placeholder: '{"starter_monthly": "prod_xxx"}',
-      tip: 'Map the product_id in pricing catalog to the product ID created in Creem. Must be a valid JSON object.',
+      placeholder:
+        '{"starter_monthly":"prod_xxx","starter_yearly":"prod_xxx","pro_monthly":"prod_xxx","pro_yearly":"prod_xxx"}',
+      tip: 'Map all four public subscription product IDs to distinct Creem product IDs. Must be a valid JSON object.',
       group: 'creem',
       tab: 'payment',
     },

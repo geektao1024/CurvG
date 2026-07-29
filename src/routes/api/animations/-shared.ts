@@ -404,7 +404,7 @@ export async function resolveChatProvider(
         status: 400,
       },
       PRO_REQUIRED: {
-        message: 'A Pro plan is required for this model',
+        message: 'Your current plan does not include this model',
         status: 403,
       },
     } as const;

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Check, Code2, RefreshCw, Sparkles } from 'lucide-react';
+import { Check, Code2, Film, RefreshCw, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useSession } from '@/core/auth/client';
@@ -17,6 +17,7 @@ import {
 } from '@/components/payment-provider-modal';
 import {
   PricingTable,
+  type PricingComparisonSection,
   type PricingGroup,
   type PricingPlan,
 } from '@/components/pricing-table';
@@ -28,12 +29,16 @@ interface PaymentProviderAvailability {
   defaultProvider: string | null;
 }
 
-function displayPrice(product: PricingProduct, locale: string) {
+function displayCents(amount: number, currency: string, locale: string) {
   return new Intl.NumberFormat(locale === 'zh' ? 'zh-CN' : 'en-US', {
     style: 'currency',
-    currency: product.currency,
-    maximumFractionDigits: product.priceInCents % 100 === 0 ? 0 : 2,
-  }).format(product.priceInCents / 100);
+    currency,
+    maximumFractionDigits: amount % 100 === 0 ? 0 : 2,
+  }).format(amount / 100);
+}
+
+function displayPrice(product: PricingProduct, locale: string) {
+  return displayCents(product.priceInCents, product.currency, locale);
 }
 
 export function Pricing({ title }: { title?: string } = {}) {
@@ -57,7 +62,7 @@ export function Pricing({ title }: { title?: string } = {}) {
   const viewerTier = tierQuery.data?.viewerTier ?? 'free';
   const tierLoading = !!session?.user && tierQuery.isLoading;
   // Model discovery is an informational surface, not a prerequisite for
-  // purchasing Pro. If Yunwu's catalog is temporarily unavailable, the
+  // purchasing a paid plan. If Yunwu's catalog is temporarily unavailable, the
   // checkout endpoint still performs the authoritative entitlement check.
 
   const providerQuery = useQuery({
@@ -76,18 +81,32 @@ export function Pricing({ title }: { title?: string } = {}) {
   );
   const paymentsAvailable =
     providerQuery.isSuccess && enabledProviders.length > 0;
+  const starterMonthly = getPricingProduct('starter_monthly')!;
+  const starterYearly = getPricingProduct('starter_yearly')!;
   const proMonthly = getPricingProduct('pro_monthly')!;
   const proYearly = getPricingProduct('pro_yearly')!;
+  const renderCreditCost = Math.max(
+    1,
+    Number.parseInt(configs.animation_render_credits || '20', 10) || 20
+  );
+
+  function renderEstimate(product: PricingProduct) {
+    return Math.floor(product.credits / renderCreditCost);
+  }
 
   const freeFeatures = [
     { icon: Sparkles, label: m['landing.pricing.feature_free_model']() },
     { icon: Check, label: m['landing.pricing.feature_scene_plans']() },
     { icon: Code2, label: m['landing.pricing.feature_code_export']() },
   ];
+  const starterFeatures = [
+    { icon: Sparkles, label: m['landing.pricing.feature_starter_models']() },
+    { icon: Check, label: m['landing.pricing.feature_everything_free']() },
+  ];
   const proFeatures = [
     { icon: Sparkles, label: m['landing.pricing.feature_pro_models']() },
     { icon: RefreshCw, label: m['landing.pricing.feature_auto_failover']() },
-    { icon: Check, label: m['landing.pricing.feature_everything_free']() },
+    { icon: Check, label: m['landing.pricing.feature_everything_starter']() },
   ];
 
   function freePlan(group: string): PricingPlan {
@@ -97,6 +116,32 @@ export function Pricing({ title }: { title?: string } = {}) {
       description: m['landing.pricing.free_desc'](),
       price: '$0',
       features: freeFeatures,
+      featureGroups: [
+        {
+          label: m['landing.pricing.group.creation'](),
+          features: freeFeatures,
+        },
+        {
+          label: m['landing.pricing.group.rendering'](),
+          features: [
+            {
+              icon: Film,
+              label: m['landing.pricing.feature_no_render_credits'](),
+            },
+          ],
+        },
+      ],
+      comparison: {
+        models: m['landing.pricing.comparison.one_model'](),
+        fallback: false,
+        credits: '—',
+        renders: '—',
+        previews: true,
+        review: true,
+        python: true,
+        video: false,
+        expiration: '—',
+      },
       buttonText: !session?.user
         ? m['common.pricing.start_free']()
         : viewerTier === 'free'
@@ -105,32 +150,87 @@ export function Pricing({ title }: { title?: string } = {}) {
     };
   }
 
-  function proPlan(params: {
+  function paidPlan(params: {
+    tier: 'starter' | 'pro';
     group: string;
-    productId: string;
-    price: string;
+    product: PricingProduct;
     originalPrice?: string;
     interval?: string;
   }): PricingPlan {
+    const isStarter = params.tier === 'starter';
+    const isCurrent = viewerTier === params.tier;
+    const hasPaidPlan = viewerTier !== 'free';
+    const estimate = renderEstimate(params.product);
     return {
-      id: `pro-${params.group}`,
-      name: m['landing.pricing.pro'](),
-      description: m['landing.pricing.pro_desc'](),
-      price: params.price,
+      id: `${params.tier}-${params.group}`,
+      name: isStarter
+        ? m['landing.pricing.starter']()
+        : m['landing.pricing.pro'](),
+      description: isStarter
+        ? m['landing.pricing.starter_desc']()
+        : m['landing.pricing.pro_desc'](),
+      price: displayPrice(params.product, locale),
       originalPrice: params.originalPrice,
       interval: params.interval,
-      featured: true,
-      badge: m['landing.pricing.popular'](),
-      features: proFeatures,
-      productId: params.productId,
+      featured: isStarter,
+      badge: isStarter
+        ? m['landing.pricing.popular']()
+        : m['landing.pricing.full_power'](),
+      features: isStarter ? starterFeatures : proFeatures,
+      featureGroups: [
+        {
+          label: m['landing.pricing.group.models'](),
+          features: isStarter ? starterFeatures : proFeatures,
+        },
+        {
+          label: m['landing.pricing.group.rendering'](),
+          features: [
+            {
+              icon: Film,
+              label: m['landing.pricing.feature_render_credits']({
+                credits: params.product.credits,
+              }),
+            },
+            {
+              icon: Check,
+              label: m['landing.pricing.feature_render_estimate']({
+                renders: estimate,
+                cost: renderCreditCost,
+              }),
+            },
+            {
+              icon: Code2,
+              label: m['landing.pricing.feature_video_export'](),
+            },
+          ],
+        },
+      ],
+      comparison: {
+        models: isStarter
+          ? m['landing.pricing.comparison.three_models']()
+          : m['landing.pricing.comparison.all_models'](),
+        fallback: !isStarter,
+        credits: new Intl.NumberFormat(locale).format(params.product.credits),
+        renders: m['landing.pricing.comparison.about_renders']({
+          renders: estimate,
+        }),
+        previews: true,
+        review: true,
+        python: true,
+        video: true,
+        expiration: m['landing.pricing.comparison.period_end'](),
+      },
+      productId: params.product.productId,
       buttonText:
-        viewerTier === 'pro'
+        isCurrent || hasPaidPlan
           ? m['common.pricing.manage_plan']()
           : providerQuery.isLoading
             ? m['common.loading']()
             : !paymentsAvailable
               ? m['common.pricing.payments_unavailable']()
-              : m['common.pricing.upgrade_pro'](),
+              : isStarter
+                ? m['common.pricing.upgrade_starter']()
+                : m['common.pricing.upgrade_pro'](),
     };
   }
 
@@ -140,10 +240,16 @@ export function Pricing({ title }: { title?: string } = {}) {
       label: m['landing.pricing.monthly'](),
       plans: [
         freePlan('monthly'),
-        proPlan({
+        paidPlan({
+          tier: 'starter',
           group: 'monthly',
-          productId: proMonthly.productId,
-          price: displayPrice(proMonthly, locale),
+          product: starterMonthly,
+          interval: m['common.pricing.per_month'](),
+        }),
+        paidPlan({
+          tier: 'pro',
+          group: 'monthly',
+          product: proMonthly,
           interval: m['common.pricing.per_month'](),
         }),
       ],
@@ -151,14 +257,62 @@ export function Pricing({ title }: { title?: string } = {}) {
     {
       key: 'yearly',
       label: m['landing.pricing.yearly'](),
+      note: m['landing.pricing.save_20'](),
       plans: [
         freePlan('yearly'),
-        proPlan({
+        paidPlan({
+          tier: 'starter',
           group: 'yearly',
-          productId: proYearly.productId,
-          price: displayPrice(proYearly, locale),
+          product: starterYearly,
+          originalPrice: displayCents(
+            starterMonthly.priceInCents * 12,
+            starterMonthly.currency,
+            locale
+          ),
           interval: m['common.pricing.per_year'](),
         }),
+        paidPlan({
+          tier: 'pro',
+          group: 'yearly',
+          product: proYearly,
+          originalPrice: displayCents(
+            proMonthly.priceInCents * 12,
+            proMonthly.currency,
+            locale
+          ),
+          interval: m['common.pricing.per_year'](),
+        }),
+      ],
+    },
+  ];
+
+  const comparisonSections: PricingComparisonSection[] = [
+    {
+      label: m['landing.pricing.comparison.section_ai'](),
+      rows: [
+        { key: 'models', label: m['landing.pricing.comparison.models']() },
+        {
+          key: 'fallback',
+          label: m['landing.pricing.comparison.fallback'](),
+        },
+        {
+          key: 'previews',
+          label: m['landing.pricing.comparison.previews'](),
+        },
+        { key: 'review', label: m['landing.pricing.comparison.review']() },
+      ],
+    },
+    {
+      label: m['landing.pricing.comparison.section_rendering'](),
+      rows: [
+        { key: 'credits', label: m['landing.pricing.comparison.credits']() },
+        { key: 'renders', label: m['landing.pricing.comparison.renders']() },
+        { key: 'video', label: m['landing.pricing.comparison.video']() },
+        { key: 'python', label: m['landing.pricing.comparison.python']() },
+        {
+          key: 'expiration',
+          label: m['landing.pricing.comparison.expiration'](),
+        },
       ],
     },
   ];
@@ -208,7 +362,7 @@ export function Pricing({ title }: { title?: string } = {}) {
       router.push('/sign-in?callbackUrl=%2Fpricing');
       return;
     }
-    if (viewerTier === 'pro') {
+    if (viewerTier !== 'free') {
       router.push('/settings/billing');
       return;
     }
@@ -241,14 +395,19 @@ export function Pricing({ title }: { title?: string } = {}) {
   return (
     <section
       id="pricing"
-      className="border-border border-t px-4 py-24 sm:py-32"
+      className="border-border relative overflow-hidden border-t px-4 py-24 sm:py-32"
     >
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-16 text-center">
-          <h1 className="font-serif text-4xl font-normal tracking-tight sm:text-5xl">
+      <div className="curvg-coordinate-grid pointer-events-none absolute inset-0 [mask-image:linear-gradient(to_bottom,black,transparent_78%)] opacity-35" />
+      <div className="curvg-dotmatrix pointer-events-none absolute top-24 right-[7%] size-64 opacity-20" />
+      <div className="relative mx-auto max-w-6xl">
+        <div className="mb-14 text-center sm:mb-16">
+          <p className="text-primary font-mono text-[10px] font-semibold tracking-[0.18em] uppercase">
+            {m['landing.pricing.eyebrow']()}
+          </p>
+          <h1 className="mt-5 font-serif text-4xl font-normal tracking-tight sm:text-6xl">
             {title ?? m['landing.pricing.title']()}
           </h1>
-          <p className="text-muted-foreground mx-auto mt-5 max-w-2xl">
+          <p className="text-muted-foreground mx-auto mt-5 max-w-2xl leading-7">
             {m['landing.pricing.description']()}
           </p>
         </div>
@@ -256,15 +415,34 @@ export function Pricing({ title }: { title?: string } = {}) {
           groups={groups}
           onCheckout={handleCheckout}
           loadingPlanId={loadingPlanId}
+          comparisonEyebrow={m['landing.pricing.comparison.eyebrow']()}
+          comparisonTitle={m['landing.pricing.comparison.title']()}
+          comparisonDescription={m['landing.pricing.comparison.description']()}
+          comparisonSections={comparisonSections}
+          billingPeriodLabel={m['landing.pricing.billing_period']()}
+          includedLabel={m['landing.pricing.comparison.included']()}
+          notIncludedLabel={m['landing.pricing.comparison.not_included']()}
           disabledPlanIds={
             checkoutMutation.isPending
-              ? ['free-monthly', 'pro-monthly', 'free-yearly', 'pro-yearly']
+              ? [
+                  'free-monthly',
+                  'starter-monthly',
+                  'pro-monthly',
+                  'free-yearly',
+                  'starter-yearly',
+                  'pro-yearly',
+                ]
               : (tierLoading ||
                     providerQuery.isLoading ||
                     providerQuery.isError ||
                     !paymentsAvailable) &&
-                  viewerTier !== 'pro'
-                ? ['pro-monthly', 'pro-yearly']
+                  viewerTier === 'free'
+                ? [
+                    'starter-monthly',
+                    'pro-monthly',
+                    'starter-yearly',
+                    'pro-yearly',
+                  ]
                 : []
           }
         />

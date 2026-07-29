@@ -30,9 +30,15 @@ export type PricingProduct = {
   tier: 'starter' | 'pro' | 'enterprise';
 };
 
-export const PUBLIC_PRO_PRODUCT_IDS = ['pro_monthly', 'pro_yearly'] as const;
+export const PUBLIC_SUBSCRIPTION_PRODUCT_IDS = [
+  'starter_monthly',
+  'starter_yearly',
+  'pro_monthly',
+  'pro_yearly',
+] as const;
 
-export type PublicProProductId = (typeof PUBLIC_PRO_PRODUCT_IDS)[number];
+export type PublicSubscriptionProductId =
+  (typeof PUBLIC_SUBSCRIPTION_PRODUCT_IDS)[number];
 
 export interface SubscriptionProductDescriptor {
   providerProductId?: string | null;
@@ -44,7 +50,7 @@ export interface SubscriptionProductDescriptor {
 }
 
 /**
- * Default demo catalog. Replace with your real products when launching.
+ * Product catalog used by checkout and signed webhook reconciliation.
  * Keys MUST match what the pricing UI sends as product_id.
  */
 export const pricingCatalog: Record<string, PricingProduct> = {
@@ -54,9 +60,10 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     planName: 'Starter',
     description: 'Starter Monthly',
     type: PaymentType.SUBSCRIPTION,
-    priceInCents: 900,
+    priceInCents: 990,
     currency: 'usd',
-    credits: 5000,
+    credits: 300,
+    creditsValidDays: 31,
     tier: 'starter',
     plan: {
       name: 'Starter',
@@ -70,9 +77,10 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     planName: 'Pro',
     description: 'Pro Monthly',
     type: PaymentType.SUBSCRIPTION,
-    priceInCents: 2900,
+    priceInCents: 1890,
     currency: 'usd',
-    credits: 50000,
+    credits: 1000,
+    creditsValidDays: 31,
     tier: 'pro',
     plan: { name: 'Pro', interval: PaymentInterval.MONTH, intervalCount: 1 },
   },
@@ -98,9 +106,10 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     planName: 'Starter',
     description: 'Starter Yearly',
     type: PaymentType.SUBSCRIPTION,
-    priceInCents: 8600,
+    priceInCents: 9500,
     currency: 'usd',
-    credits: 60000,
+    credits: 3600,
+    creditsValidDays: 366,
     tier: 'starter',
     plan: { name: 'Starter', interval: PaymentInterval.YEAR, intervalCount: 1 },
   },
@@ -110,9 +119,10 @@ export const pricingCatalog: Record<string, PricingProduct> = {
     planName: 'Pro',
     description: 'Pro Yearly',
     type: PaymentType.SUBSCRIPTION,
-    priceInCents: 27800,
+    priceInCents: 18100,
     currency: 'usd',
-    credits: 600000,
+    credits: 12000,
+    creditsValidDays: 366,
     tier: 'pro',
     plan: { name: 'Pro', interval: PaymentInterval.YEAR, intervalCount: 1 },
   },
@@ -176,10 +186,12 @@ export function listPricingProducts(): PricingProduct[] {
   return Object.values(pricingCatalog);
 }
 
-export function isPublicProProductId(
+export function isPublicSubscriptionProductId(
   productId: string
-): productId is PublicProProductId {
-  return (PUBLIC_PRO_PRODUCT_IDS as readonly string[]).includes(productId);
+): productId is PublicSubscriptionProductId {
+  return (PUBLIC_SUBSCRIPTION_PRODUCT_IDS as readonly string[]).includes(
+    productId
+  );
 }
 
 /**

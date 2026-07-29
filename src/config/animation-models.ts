@@ -17,13 +17,13 @@ export const animationModelPolicies = [
     provider: 'yunwu',
     model: 'deepseek-v4-flash',
     presetKey: 'deepseekV4Flash',
-    requiredTier: 'pro',
+    requiredTier: 'starter',
   },
   {
     provider: 'yunwu',
     model: 'qwen3-coder-plus',
     presetKey: 'qwen3Coder',
-    requiredTier: 'pro',
+    requiredTier: 'starter',
   },
   {
     provider: 'yunwu',
@@ -52,7 +52,7 @@ export const animationModelPolicies = [
 ] as const;
 
 export type AnimationModelPolicy = (typeof animationModelPolicies)[number];
-export type AnimationAccessTier = 'free' | 'pro';
+export type AnimationAccessTier = 'free' | 'starter' | 'pro';
 
 export const DEFAULT_ANIMATION_MODEL = 'deepseek-v4-pro';
 
@@ -77,7 +77,12 @@ export function canUseAnimationModel(
   tier: AnimationAccessTier,
   policy: AnimationModelPolicy
 ): boolean {
-  return policy.requiredTier === 'free' || tier === 'pro';
+  const rank: Record<AnimationAccessTier, number> = {
+    free: 0,
+    starter: 1,
+    pro: 2,
+  };
+  return rank[tier] >= rank[policy.requiredTier];
 }
 
 export type AnimationModelDecision =

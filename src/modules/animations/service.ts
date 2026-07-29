@@ -523,7 +523,7 @@ const failureMessages: Record<AnimationFailure['code'], string> = {
     'The AI model returned an invalid result. Retry or choose another model.',
   STREAM_INTERRUPTED: 'The AI response was interrupted. Please retry.',
   RENDER_FAILED: 'The video renderer could not finish this scene.',
-  PRO_REQUIRED: 'A Pro plan is required for this model.',
+  PRO_REQUIRED: 'Your current plan does not include this model.',
   INSUFFICIENT_CREDITS: 'There are not enough credits to render this video.',
   BUSY: 'Animation generation is busy. Please retry shortly.',
   UNKNOWN: 'CurvG could not finish this step.',

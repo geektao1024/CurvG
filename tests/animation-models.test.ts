@@ -22,7 +22,7 @@ test('the default free model is explicitly allowlisted', () => {
   assert.equal(canUseAnimationModel('free', policy), true);
 });
 
-test('direct API selections cannot bypass the Free/Pro boundary', () => {
+test('direct API selections cannot bypass the plan boundary', () => {
   const freeAuto = decideAnimationModelAccess({
     tier: 'free',
     choice: 'auto',
@@ -47,6 +47,22 @@ test('direct API selections cannot bypass the Free/Pro boundary', () => {
   });
   assert.equal(proExplicit.allowed, true);
 
+  const starterExplicit = decideAnimationModelAccess({
+    tier: 'starter',
+    choice: 'yunwu',
+    requestedModel: 'qwen3-coder-plus',
+  });
+  assert.equal(starterExplicit.allowed, true);
+
+  assert.deepEqual(
+    decideAnimationModelAccess({
+      tier: 'starter',
+      choice: 'yunwu',
+      requestedModel: 'gpt-5',
+    }),
+    { allowed: false, reason: 'PRO_REQUIRED' }
+  );
+
   assert.deepEqual(
     decideAnimationModelAccess({
       tier: 'free',
@@ -67,18 +83,28 @@ test('direct API selections cannot bypass the Free/Pro boundary', () => {
   );
 });
 
-test('free access cannot use Pro-only models', () => {
-  const proPolicies = animationModelPolicies.filter(
-    (policy) => policy.requiredTier === 'pro'
+test('free access cannot use paid-plan models', () => {
+  const paidPolicies = animationModelPolicies.filter(
+    (policy) => policy.requiredTier !== 'free'
   );
 
-  assert.ok(proPolicies.length > 0);
-  for (const policy of proPolicies) {
+  assert.ok(paidPolicies.length > 0);
+  for (const policy of paidPolicies) {
     assert.equal(canUseAnimationModel('free', policy), false, policy.model);
   }
 });
 
-test('Pro access can use both free and Pro models', () => {
+test('Starter access includes Free and Starter models but not Pro models', () => {
+  for (const policy of animationModelPolicies) {
+    assert.equal(
+      canUseAnimationModel('starter', policy),
+      policy.requiredTier !== 'pro',
+      policy.model
+    );
+  }
+});
+
+test('Pro access can use every model tier', () => {
   for (const policy of animationModelPolicies) {
     assert.equal(canUseAnimationModel('pro', policy), true, policy.model);
   }

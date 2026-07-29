@@ -25,7 +25,7 @@ export interface AnimationModelOption {
   isDefault: boolean;
   description?: string;
   presetKey?: string;
-  requiredTier: 'free' | 'pro';
+  requiredTier: 'free' | 'starter' | 'pro';
   entitled: boolean;
 }
 
@@ -33,7 +33,7 @@ export interface AnimationModelCatalog {
   options: AnimationModelOption[];
   defaultProvider?: AnimationModelProvider;
   defaultModel?: string;
-  viewerTier: 'free' | 'pro';
+  viewerTier: 'free' | 'starter' | 'pro';
   catalogStale?: boolean;
 }
 

@@ -32,10 +32,10 @@ function tier(params: {
   });
 }
 
-test('Starter and unknown products remain free', () => {
+test('Starter products grant Starter access and unknown products remain free', () => {
   assert.equal(
     tier({ subscriptions: [subscription({ productId: 'starter_monthly' })] }),
-    'free'
+    'starter'
   );
   assert.equal(
     tier({ subscriptions: [subscription({ productId: 'unknown_product' })] }),
@@ -113,6 +113,24 @@ test('a newer Starter record does not mask another valid Pro subscription', () =
       ],
     }),
     'pro'
+  );
+});
+
+test('Starter access follows the same period and deletion boundaries', () => {
+  assert.equal(
+    tier({ subscriptions: [subscription({ productId: 'starter_yearly' })] }),
+    'starter'
+  );
+  assert.equal(
+    tier({
+      subscriptions: [
+        subscription({
+          productId: 'starter_monthly',
+          currentPeriodEnd: new Date(now.getTime()),
+        }),
+      ],
+    }),
+    'free'
   );
 });
 

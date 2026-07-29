@@ -27,15 +27,22 @@ export type UpdateSubscription = Partial<
 
 export type { AnimationAccessTier } from '@/config/animation-models';
 
-const ANIMATION_PRO_SUBSCRIPTION_PRODUCT_IDS = listPricingProducts()
-  .filter(
-    (product) =>
-      product.type === PaymentType.SUBSCRIPTION &&
-      productIncludesProModels(product.productId)
-  )
-  .map((product) => product.productId);
+const ANIMATION_SUBSCRIPTION_PRODUCTS = listPricingProducts().filter(
+  (product) => product.type === PaymentType.SUBSCRIPTION && product.plan
+);
 
-const ANIMATION_PRO_SUBSCRIPTION_STATUSES = [
+const ANIMATION_SUBSCRIPTION_PRODUCT_IDS = ANIMATION_SUBSCRIPTION_PRODUCTS.map(
+  (product) => product.productId
+);
+
+const ANIMATION_SUBSCRIPTION_ACCESS = new Map<string, AnimationAccessTier>(
+  ANIMATION_SUBSCRIPTION_PRODUCTS.map((product) => [
+    product.productId,
+    productIncludesProModels(product.productId) ? 'pro' : 'starter',
+  ])
+);
+
+const ANIMATION_SUBSCRIPTION_STATUSES = [
   SubscriptionStatus.ACTIVE,
   SubscriptionStatus.TRIALING,
   SubscriptionStatus.PENDING_CANCEL,
@@ -62,21 +69,19 @@ export function getAnimationAccessTierFromRecords(params: {
   now?: Date;
 }): AnimationAccessTier {
   const now = (params.now || new Date()).getTime();
-  const proSubscriptionProducts = new Set<string>(
-    ANIMATION_PRO_SUBSCRIPTION_PRODUCT_IDS
-  );
-  const proSubscriptionStatuses = new Set<string>(
-    ANIMATION_PRO_SUBSCRIPTION_STATUSES
-  );
+  const subscriptionStatuses = new Set<string>(ANIMATION_SUBSCRIPTION_STATUSES);
 
-  const hasValidSubscription = params.subscriptions.some((candidate) => {
+  let resolvedTier: AnimationAccessTier = 'free';
+  for (const candidate of params.subscriptions) {
+    const candidateTier = candidate.productId
+      ? ANIMATION_SUBSCRIPTION_ACCESS.get(candidate.productId)
+      : undefined;
     if (
       candidate.deletedAt ||
-      !candidate.productId ||
-      !proSubscriptionProducts.has(candidate.productId) ||
-      !proSubscriptionStatuses.has(candidate.status)
+      !candidateTier ||
+      !subscriptionStatuses.has(candidate.status)
     ) {
-      return false;
+      continue;
     }
 
     const periodStart = candidate.currentPeriodStart?.getTime();
@@ -87,7 +92,7 @@ export function getAnimationAccessTierFromRecords(params: {
       !Number.isFinite(periodStart) ||
       !Number.isFinite(periodEnd)
     ) {
-      return false;
+      continue;
     }
 
     const canceledEnd = candidate.canceledEndAt?.getTime();
@@ -96,10 +101,13 @@ export function getAnimationAccessTierFromRecords(params: {
         ? Math.min(periodEnd, canceledEnd)
         : periodEnd;
 
-    return periodStart <= now && now < effectiveEnd;
-  });
+    if (periodStart <= now && now < effectiveEnd) {
+      if (candidateTier === 'pro') return 'pro';
+      resolvedTier = 'starter';
+    }
+  }
 
-  return hasValidSubscription ? 'pro' : 'free';
+  return resolvedTier;
 }
 
 export async function getAnimationAccessTier(
@@ -120,9 +128,9 @@ export async function getAnimationAccessTier(
         eq(subscription.userId, userId),
         isNull(subscription.deletedAt),
         inArray(subscription.productId, [
-          ...ANIMATION_PRO_SUBSCRIPTION_PRODUCT_IDS,
+          ...ANIMATION_SUBSCRIPTION_PRODUCT_IDS,
         ]),
-        inArray(subscription.status, [...ANIMATION_PRO_SUBSCRIPTION_STATUSES])
+        inArray(subscription.status, [...ANIMATION_SUBSCRIPTION_STATUSES])
       )
     );
 
@@ -178,6 +186,7 @@ export async function getCurrentSubscription(userId: string) {
     .where(
       and(
         eq(subscription.userId, userId),
+        isNull(subscription.deletedAt),
         inArray(subscription.status, [
           SubscriptionStatus.ACTIVE,
           SubscriptionStatus.PENDING_CANCEL,
