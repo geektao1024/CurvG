@@ -1153,13 +1153,13 @@ function Welcome({
     label: string;
     icon: typeof LayoutGrid;
   }> = [
-    { value: 'template', label: copy.entryTemplate, icon: LayoutGrid },
-    { value: 'formula', label: copy.entryFormula, icon: SquareSigma },
     {
       value: 'description',
       label: copy.entryDescription,
       icon: MessageSquareText,
     },
+    { value: 'template', label: copy.entryTemplate, icon: LayoutGrid },
+    { value: 'formula', label: copy.entryFormula, icon: SquareSigma },
   ];
   const symbols = [
     ['∫', '\\int_{0}^{1}'],
@@ -3073,7 +3073,7 @@ export function CreatorWorkspace({
   const user = session?.user;
   const [selectedId, setSelectedId] = useState(initialAnimationId);
   const [creationMode, setCreationMode] =
-    useState<AnimationCreationMode>('template');
+    useState<AnimationCreationMode>('description');
   const [prompt, setPrompt] = useState('');
   const [formula, setFormula] = useState('sin(x)');
   const [formulaIntent, setFormulaIntent] = useState('');
@@ -3608,7 +3608,7 @@ export function CreatorWorkspace({
     setPendingAnimation(undefined);
     setSelectedId(undefined);
     setPrompt('');
-    setCreationMode('template');
+    setCreationMode('description');
     setFormulaIntent('');
     setMathObjectType(detectMathObjectType(formula));
     setMathTypeOverridden(false);
