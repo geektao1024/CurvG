@@ -15,7 +15,10 @@ import {
 } from '../src/lib/animation-pipeline';
 import { compileAnimationSpec } from '../src/lib/manim-compiler';
 import { enforceMinIntervalRateLimit } from '../src/lib/rate-limit';
-import { validateAnimationPlanningStageSemantics } from '../src/modules/animations/planning';
+import {
+  deterministicMathReviewForScene,
+  validateAnimationPlanningStageSemantics,
+} from '../src/modules/animations/planning';
 import {
   ANIMATION_STAGE_TIMEOUT_MS,
   animationStageDeadlineAt,
@@ -368,6 +371,35 @@ test('quadratic tangent fallback preserves exact curve and tangent geometry', ()
   );
   assert.match(code, /lambda x: x\*\*2/);
   assert.match(code, /y=2x-1/);
+  assert.equal(
+    deterministicMathReviewForScene(spec, {
+      content: JSON.stringify(scene),
+      provider: 'curvg',
+      model: 'deterministic-scene-v1',
+    })?.status,
+    'approved'
+  );
+});
+
+test('deterministic math approval rejects unrecognized fallback geometry', () => {
+  const artifacts = planningArtifacts();
+  const scene = buildDeterministicSceneArtifact({
+    intent: artifacts.intent,
+    knowledge: artifacts.knowledge,
+    curriculum: artifacts.curriculum,
+    mathematics: artifacts.mathematics,
+    storyboard: artifacts.storyboard,
+  });
+  const spec = composeAnimationSpecFromArtifacts({ ...artifacts, scene });
+
+  assert.equal(
+    deterministicMathReviewForScene(spec, {
+      content: JSON.stringify(scene),
+      provider: 'curvg',
+      model: 'deterministic-scene-v1',
+    }),
+    undefined
+  );
 });
 
 test('term-tour fallback keeps the camera grammar valid', () => {

@@ -597,6 +597,72 @@ function definition<Name extends AnimationPlanningStageName>(name: Name) {
   ) as AnimationPlanningStageDefinition & { name: Name };
 }
 
+export function deterministicMathReviewForScene(
+  spec: AnimationSpec,
+  result: ChatCompletionResult
+): AnimationMathReview | undefined {
+  if (
+    result.provider !== 'curvg' ||
+    result.model !== 'deterministic-scene-v1' ||
+    spec.schemaVersion !== 5 ||
+    !spec.mathDossier
+  ) {
+    return undefined;
+  }
+  const evidence = [
+    spec.title,
+    spec.summary,
+    spec.mathDossier.coreClaim,
+    ...(spec.mathDossier.derivationSteps || []),
+  ].join(' ');
+  const hasQuadraticClaim =
+    /(?:x\s*(?:\^|\*\*)\s*2|x²)/iu.test(evidence) &&
+    /(?:x\s*=\s*1|x=1)/iu.test(evidence) &&
+    /(?:slope|derivative|tangent|斜率|导数|切线).{0,80}2|2.{0,80}(?:slope|derivative|tangent|斜率|导数|切线)/iu.test(
+      evidence
+    );
+  const hasQuadraticCurve = spec.objects?.some(
+    (object) =>
+      object.kind === 'curve' &&
+      object.expr?.replaceAll(' ', '').replaceAll('**', '^') === 'x^2'
+  );
+  const hasExactTangent = spec.objects?.some((object) => {
+    if (object.kind !== 'line' || !object.start || !object.end) return false;
+    const dx = object.end[0] - object.start[0];
+    if (Math.abs(dx) < 1e-9) return false;
+    const slope = (object.end[1] - object.start[1]) / dx;
+    const intercept = object.start[1] - slope * object.start[0];
+    return Math.abs(slope - 2) < 1e-9 && Math.abs(intercept + 1) < 1e-9;
+  });
+  const hasExactFormula = spec.objects?.some(
+    (object) =>
+      object.kind === 'formula' &&
+      [object.expr, ...(object.parts?.map((part) => part.latex) || [])]
+        .filter(Boolean)
+        .join('')
+        .replaceAll('\\quad', '')
+        .replaceAll(' ', '')
+        .includes('y=2x-1')
+  );
+  if (
+    !hasQuadraticClaim ||
+    !hasQuadraticCurve ||
+    !hasExactTangent ||
+    !hasExactFormula
+  ) {
+    return undefined;
+  }
+  return {
+    status: 'approved',
+    summary:
+      'The deterministic quadratic-tangent profile preserves the approved dossier and exact y=x^2 / y=2x-1 geometry.',
+    checkedClaims: (spec.mathDossier.checks || [])
+      .map((check) => check.claim)
+      .slice(0, 20),
+    issues: [],
+  };
+}
+
 async function runFromStage(params: {
   planning: PlanningParams;
   artifacts: Partial<AnimationPlanningArtifacts>;
@@ -676,7 +742,10 @@ export async function generatePersistentAnimationSpec(
   }
   if (!spec) throw integrationError;
 
-  let mathReview = planning.audit ? await planning.audit(spec) : undefined;
+  let mathReview = deterministicMathReviewForScene(spec, result);
+  if (!mathReview && planning.audit) {
+    mathReview = await planning.audit(spec);
+  }
   for (
     let revision = 0;
     planning.audit &&
