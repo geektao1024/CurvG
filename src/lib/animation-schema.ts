@@ -389,7 +389,16 @@ export const animationSpecSchema = z
         });
       }
       if (event.op === 'move_along') {
+        const subject = spec.objects.find((object) => object.id === event.ref);
         const path = spec.objects.find((object) => object.id === event.pathRef);
+        if (subject?.kind !== 'point') {
+          context.addIssue({
+            code: 'custom',
+            message:
+              'move_along requires a point ref; connector lines must stay synchronized by the scene composer instead of moving along a fixed path',
+            path: ['timeline', index, 'ref'],
+          });
+        }
         if (!path || !['circle', 'curve', 'arc', 'line'].includes(path.kind)) {
           context.addIssue({
             code: 'custom',

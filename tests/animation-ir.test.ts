@@ -578,6 +578,20 @@ test('v5 geometry IR rejects a claimed rotating circle point without timeline mo
   );
 });
 
+test('move_along rejects connector lines as motion subjects', () => {
+  const invalidConnectorMotion = auditedGeometrySpec();
+  const motion = invalidConnectorMotion.timeline?.find(
+    (event) => event.op === 'move_along'
+  );
+  if (!motion) throw new Error('fixture motion is missing');
+  motion.ref = 'projection-line';
+
+  assert.throws(
+    () => validateAnimationSpec(invalidConnectorMotion),
+    /move_along requires a point ref/
+  );
+});
+
 test('geometry IR rejects incomplete primitives and invalid motion paths', () => {
   const missingCenter = auditedGeometrySpec();
   const circle = missingCenter.objects?.find(
