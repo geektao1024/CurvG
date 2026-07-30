@@ -675,6 +675,21 @@ class SurfaceProof(ThreeDScene):
   assert.match(code, /class CurvGScene\(ThreeDScene\):/);
 });
 
+test('generated code rejects unsupported MathTex keyword arguments before rendering', () => {
+  assert.throws(
+    () =>
+      parseManimCode(`
+from manim import *
+
+class CurvGScene(Scene):
+    def construct(self):
+        formula = MathTex("y", "=", "x", substring_sieve_map={"y": BLUE})
+        self.play(Write(formula), run_time=1)
+`),
+    /unsupported Manim argument substring_sieve_map/
+  );
+});
+
 test('browser math preview detects and evaluates supported inputs', () => {
   assert.equal(detectMathObjectType('sin(x) + x^2'), 'function');
   assert.equal(detectMathObjectType('int(x^2, x, 0, 1)'), 'integral');

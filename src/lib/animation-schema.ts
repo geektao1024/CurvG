@@ -810,6 +810,11 @@ export function parseManimCode(value: string): string {
   if (!/\bfrom\s+manim\s+import\b/.test(code)) {
     throw new Error('Generated code does not import Manim');
   }
+  if (/\bsubstring_sieve_map\s*=/.test(code)) {
+    throw new Error(
+      'Generated code uses unsupported Manim argument substring_sieve_map; color MathTex parts after construction instead'
+    );
+  }
   const sceneClasses = [
     ...code.matchAll(
       /\bclass\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*(Scene|MovingCameraScene|ThreeDScene)\s*\)\s*:/g

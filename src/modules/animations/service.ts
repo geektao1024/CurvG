@@ -232,7 +232,7 @@ Follow this production contract:
 9. Preserve object continuity across transformations. Prefer TransformMatchingTex, ReplacementTransform, traced geometry, filled regions, comparison arrows, or camera reveals to clearing and rebuilding the whole frame.
 10. Make the final third visibly different from the setup and end on a clean mathematical payoff that can hold without extra explanation.
 11. Prebuild MathTex, Tex, and Text objects outside frame callbacks. ValueTracker and always_redraw are allowed, but never construct or mutate text per frame.
-12. Keep the scene self-contained and renderable with Manim CE and TeX Live. Use only documented Manim APIs.
+12. Keep the scene self-contained and renderable with Manim CE and TeX Live. Use only documented Manim APIs. Never pass substring_sieve_map to MathTex; construct separate arguments and color indexed parts after construction.
 13. Treat every move_along timeline event as mandatory visible motion, not a suggestion. When it proves a projection or traced relationship, synchronize the source point, connector, derived point, and revealed locus throughout the motion with ValueTracker/always_redraw or an equivalent documented mechanism; a single static endpoint is not a valid substitute.
 
 The wrapper owns validation, rendering, evidence extraction, and repair. Do not print explanations or wrap the code in Markdown.`;
