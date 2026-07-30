@@ -199,7 +199,7 @@ Object IDs, shot IDs, and timeline IDs must be unique. Formula part IDs must be 
 
 const MATH_REVIEW_SYSTEM_PROMPT = `You are CurvG's independent mathematical reviewer. Audit a proposed animation specification skeptically before any code is generated.
 
-Verify the exact core claim, definitions and domains, every derivation step, formulas and plotted expressions, invariants, limiting or special cases, and whether each proposed visual actually proves rather than merely suggests its claim. Use the declared checks and independently recompute enough of them to expose contradictions. Do not review aesthetics and do not repair the specification yourself.
+Verify the exact core claim, definitions and domains, every derivation step, formulas and plotted expressions, invariants, limiting or special cases, and whether each proposed visual actually proves rather than merely suggests its claim. Use the declared checks and independently recompute enough of them to expose contradictions. When a claim depends on a parameter varying over time, require an explicit timeline action that varies it; one static sample cannot establish a statement about motion, tracing, projection across a domain, or "for every" parameter value. Do not review aesthetics and do not repair the specification yourself.
 
 Return JSON only:
 {
@@ -233,6 +233,7 @@ Follow this production contract:
 10. Make the final third visibly different from the setup and end on a clean mathematical payoff that can hold without extra explanation.
 11. Prebuild MathTex, Tex, and Text objects outside frame callbacks. ValueTracker and always_redraw are allowed, but never construct or mutate text per frame.
 12. Keep the scene self-contained and renderable with Manim CE and TeX Live. Use only documented Manim APIs.
+13. Treat every move_along timeline event as mandatory visible motion, not a suggestion. When it proves a projection or traced relationship, synchronize the source point, connector, derived point, and revealed locus throughout the motion with ValueTracker/always_redraw or an equivalent documented mechanism; a single static endpoint is not a valid substitute.
 
 The wrapper owns validation, rendering, evidence extraction, and repair. Do not print explanations or wrap the code in Markdown.`;
 
@@ -2147,8 +2148,10 @@ export async function updateRender(params: {
     contactSheetUrl: params.contactSheetUrl || parts.contactSheetUrl,
     qaReportUrl: params.qaReportUrl || parts.qaReportUrl,
     visualQa: params.visualQa || parts.visualQa,
-    visualReview:
-      params.status === 'completed' ? parts.visualReview : undefined,
+    // Keep the latest semantic verdict through progress and failure callbacks.
+    // New render attempts explicitly clear it when they are queued, so erasing
+    // it here only destroys the evidence needed to diagnose a rejected repair.
+    visualReview: parts.visualReview,
     error: renderFailure?.message,
     failure: renderFailure,
     renderRepair: renderFailure

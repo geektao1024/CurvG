@@ -719,6 +719,40 @@ export const animationSpecSchema = z
       curriculumIds.add(beat.id);
       availableCurriculumDependencies.add(beat.id);
     }
+
+    const proofLanguage = [
+      spec.intent.learningGoal,
+      spec.intent.takeaway,
+      spec.mathDossier.coreClaim,
+      spec.mathDossier.visualProof,
+      ...spec.curriculum.map((beat) => beat.visualEvidence),
+      ...spec.shots.flatMap((shot) => [shot.purpose, ...shot.acceptance]),
+    ].join(' ');
+    const hasCircle = spec.objects.some((object) => object.kind === 'circle');
+    const hasPoint = spec.objects.some((object) => object.kind === 'point');
+    const requiresCircularPointMotion =
+      hasCircle &&
+      hasPoint &&
+      (/(?:point|marker|dot).{0,80}(?:mov|travel|rotat|revolv|sweep|trac)[a-z]*.{0,80}(?:circle|circular)|(?:mov|travel|rotat|revolv|sweep|trac)[a-z]*.{0,80}(?:point|marker|dot).{0,80}(?:circle|circular)|(?:circle|circular).{0,80}(?:point|marker|dot).{0,80}(?:mov|travel|rotat|revolv|sweep|trac)[a-z]*/iu.test(
+        proofLanguage
+      ) ||
+        /(?:圆周点|运动点|旋转点|转动点|沿(?:着)?圆|绕(?:着)?圆).{0,60}(?:运动|移动|旋转|转动|绕行|轨迹|扫过|描迹)?/u.test(
+          proofLanguage
+        ));
+    const hasCircularPointMotion = spec.timeline.some((event) => {
+      if (event.op !== 'move_along') return false;
+      const subject = spec.objects.find((object) => object.id === event.ref);
+      const path = spec.objects.find((object) => object.id === event.pathRef);
+      return subject?.kind === 'point' && path?.kind === 'circle';
+    });
+    if (requiresCircularPointMotion && !hasCircularPointMotion) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'A claimed moving or rotating circle point requires a point move_along event whose pathRef is the circle; a static sample does not prove the dynamic relationship',
+        path: ['timeline'],
+      });
+    }
   });
 
 function extractJson(value: string): unknown {

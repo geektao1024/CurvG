@@ -566,6 +566,18 @@ test('v5 geometry IR can express and compile a unit-circle projection proof', ()
   assert.match(code, /MoveAlongPath\(obj_rotating_point, obj_unit_circle\)/);
 });
 
+test('v5 geometry IR rejects a claimed rotating circle point without timeline motion', () => {
+  const staticProjection = auditedGeometrySpec();
+  staticProjection.timeline = staticProjection.timeline?.filter(
+    (event) => event.op !== 'move_along'
+  );
+
+  assert.throws(
+    () => validateAnimationSpec(staticProjection),
+    /static sample does not prove the dynamic relationship/
+  );
+});
+
 test('geometry IR rejects incomplete primitives and invalid motion paths', () => {
   const missingCenter = auditedGeometrySpec();
   const circle = missingCenter.objects?.find(
