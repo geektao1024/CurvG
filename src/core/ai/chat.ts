@@ -8,6 +8,8 @@ export interface ChatCompletionInput {
   messages: ChatTurn[];
   temperature?: number;
   maxTokens?: number;
+  /** OpenAI-compatible reasoning budget hint for supported models. */
+  reasoningEffort?: 'low' | 'medium' | 'high';
   /** Shared absolute deadline used by retry/failover chains. */
   deadlineAt?: number;
   signal?: AbortSignal;
@@ -49,6 +51,8 @@ export class ChatProviderError extends Error {
   readonly provider?: string;
   readonly model?: string;
   readonly partialOutput: boolean;
+  /** Whether retrying the same provider/model is useful before failover. */
+  readonly retrySameModel: boolean;
 
   constructor(
     message: string,
@@ -61,6 +65,7 @@ export class ChatProviderError extends Error {
       provider?: string;
       model?: string;
       partialOutput?: boolean;
+      retrySameModel?: boolean;
       cause?: unknown;
     }
   ) {
@@ -77,6 +82,7 @@ export class ChatProviderError extends Error {
     this.provider = options.provider;
     this.model = options.model;
     this.partialOutput = options.partialOutput ?? false;
+    this.retrySameModel = options.retrySameModel ?? options.retryable;
   }
 }
 
@@ -254,9 +260,12 @@ interface OpenAICompatibleChatProviderConfig {
   fetch?: typeof globalThis.fetch;
   sleep?: (delayMs: number) => Promise<void>;
   random?: () => number;
+  now?: () => number;
   maxAttempts?: number;
   requestTimeoutMs?: number;
   overallTimeoutMs?: number;
+  /** Stop a stream that emits only reasoning and never starts final content. */
+  reasoningOnlyTimeoutMs?: number;
 }
 
 export class OpenAICompatibleChatProvider implements ChatProvider {
@@ -266,9 +275,11 @@ export class OpenAICompatibleChatProvider implements ChatProvider {
   private readonly fetchImpl: typeof globalThis.fetch;
   private readonly sleepImpl: (delayMs: number) => Promise<void>;
   private readonly random: () => number;
+  private readonly now: () => number;
   private readonly maxAttempts: number;
   private readonly requestTimeoutMs: number;
   private readonly overallTimeoutMs: number;
+  private readonly reasoningOnlyTimeoutMs?: number;
 
   constructor(config: OpenAICompatibleChatProviderConfig) {
     if (!config.apiKey.trim()) throw new Error('OpenAI API key is required');
@@ -278,12 +289,21 @@ export class OpenAICompatibleChatProvider implements ChatProvider {
       config.baseUrl || '',
       'https://api.openai.com/v1'
     );
-    this.fetchImpl = config.fetch || globalThis.fetch;
+    // Cloudflare Workers' native `fetch` validates its receiver. Calling a
+    // saved reference as `this.fetchImpl(...)` otherwise supplies the provider
+    // instance as `this` and fails with `Illegal invocation`. Bind both the
+    // runtime fetch and injected test seams to the global receiver once.
+    this.fetchImpl = (config.fetch || globalThis.fetch).bind(globalThis);
     this.sleepImpl = config.sleep || sleep;
     this.random = config.random || Math.random;
+    this.now = config.now || Date.now;
     this.maxAttempts = Math.max(1, Math.min(config.maxAttempts ?? 3, 5));
     this.requestTimeoutMs = Math.max(config.requestTimeoutMs ?? 180_000, 1_000);
     this.overallTimeoutMs = Math.max(config.overallTimeoutMs ?? 240_000, 1_000);
+    this.reasoningOnlyTimeoutMs =
+      config.reasoningOnlyTimeoutMs === undefined
+        ? undefined
+        : Math.max(config.reasoningOnlyTimeoutMs, 1_000);
   }
 
   private deadline(input: ChatCompletionInput) {
@@ -342,6 +362,9 @@ export class OpenAICompatibleChatProvider implements ChatProvider {
               messages: input.messages,
               temperature: input.temperature ?? 0.2,
               max_tokens: input.maxTokens ?? 6000,
+              ...(input.reasoningEffort
+                ? { reasoning_effort: input.reasoningEffort }
+                : {}),
             }),
             signal: requestSignal(input, this.timeoutFor(deadlineAt)),
           }
@@ -385,7 +408,11 @@ export class OpenAICompatibleChatProvider implements ChatProvider {
           });
         }
         lastError = normalizedError(error, this.name, input.model);
-        if (!lastError.retryable || attempt >= this.maxAttempts)
+        if (
+          !lastError.retryable ||
+          !lastError.retrySameModel ||
+          attempt >= this.maxAttempts
+        )
           throw lastError;
         await this.waitForRetry(lastError, attempt, deadlineAt);
       }
@@ -423,6 +450,9 @@ export class OpenAICompatibleChatProvider implements ChatProvider {
               messages: input.messages,
               temperature: input.temperature ?? 0.2,
               max_tokens: input.maxTokens ?? 6000,
+              ...(input.reasoningEffort
+                ? { reasoning_effort: input.reasoningEffort }
+                : {}),
               stream: true,
             }),
             signal: requestSignal(input, this.timeoutFor(deadlineAt)),
@@ -450,6 +480,8 @@ export class OpenAICompatibleChatProvider implements ChatProvider {
         let buffer = '';
         let content = '';
         let responseModel = input.model;
+        let reasoningStartedAt: number | undefined;
+        let reasoningCharacters = 0;
 
         const consumeLine = (line: string) => {
           const trimmed = line.trim();
@@ -481,24 +513,54 @@ export class OpenAICompatibleChatProvider implements ChatProvider {
           const first = choices[0] as Record<string, unknown> | undefined;
           const delta = first?.delta as Record<string, unknown> | undefined;
           const text = textContent(delta?.content);
-          if (!text) return;
-          emitted = true;
-          content += text;
-          onDelta(text);
+          if (text) {
+            emitted = true;
+            content += text;
+            onDelta(text);
+            return;
+          }
+          const reasoning = textContent(
+            delta?.reasoning_content ?? delta?.reasoning
+          );
+          if (!reasoning || emitted) return;
+          const now = this.now();
+          reasoningStartedAt ??= now;
+          reasoningCharacters += reasoning.length;
+          if (
+            this.reasoningOnlyTimeoutMs !== undefined &&
+            now - reasoningStartedAt >= this.reasoningOnlyTimeoutMs
+          ) {
+            throw new ChatProviderError(
+              `AI model exceeded the reasoning-only budget after ${reasoningCharacters} characters`,
+              {
+                code: 'upstream_timeout',
+                retryable: true,
+                retrySameModel: false,
+                requestId: responseRequestId(response),
+                provider: this.name,
+                model: input.model,
+              }
+            );
+          }
         };
 
-        while (true) {
-          const { done, value } = await reader.read();
-          buffer += decoder.decode(value, { stream: !done });
-          let newline = buffer.indexOf('\n');
-          while (newline >= 0) {
-            consumeLine(buffer.slice(0, newline));
-            buffer = buffer.slice(newline + 1);
-            newline = buffer.indexOf('\n');
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            buffer += decoder.decode(value, { stream: !done });
+            let newline = buffer.indexOf('\n');
+            while (newline >= 0) {
+              consumeLine(buffer.slice(0, newline));
+              buffer = buffer.slice(newline + 1);
+              newline = buffer.indexOf('\n');
+            }
+            if (done) break;
           }
-          if (done) break;
+          if (buffer.trim()) consumeLine(buffer);
+        } catch (error) {
+          await reader.cancel().catch(() => undefined);
+          throw error;
         }
-        if (buffer.trim()) consumeLine(buffer);
         if (!content.trim()) {
           throw new ChatProviderError(
             'AI upstream returned an empty response',
@@ -528,7 +590,12 @@ export class OpenAICompatibleChatProvider implements ChatProvider {
           });
         }
         lastError = normalizedError(error, this.name, input.model, emitted);
-        if (!lastError.retryable || emitted || attempt >= this.maxAttempts) {
+        if (
+          !lastError.retryable ||
+          !lastError.retrySameModel ||
+          emitted ||
+          attempt >= this.maxAttempts
+        ) {
           throw lastError;
         }
         await this.waitForRetry(lastError, attempt, deadlineAt);
@@ -608,6 +675,22 @@ export class FailoverChatProvider implements ChatProvider {
     );
   }
 
+  private inputForModel(
+    input: ChatCompletionInput,
+    model: string,
+    deadlineAt: number
+  ): ChatCompletionInput {
+    return {
+      ...input,
+      model,
+      deadlineAt,
+      // A tuning hint verified for the selected model must not be forwarded
+      // blindly when Auto advances to a different provider-specific model.
+      reasoningEffort:
+        model === input.model ? input.reasoningEffort : undefined,
+    };
+  }
+
   async complete(input: ChatCompletionInput): Promise<ChatCompletionResult> {
     const deadlineAt = input.deadlineAt ?? this.now() + this.overallTimeoutMs;
     let lastError: ChatProviderError | undefined;
@@ -631,11 +714,9 @@ export class FailoverChatProvider implements ChatProvider {
         const modelDeadlineAt = this.fallbackModels.length
           ? Math.min(deadlineAt, this.now() + this.perModelTimeoutMs)
           : deadlineAt;
-        const result = await this.provider.complete({
-          ...input,
-          model,
-          deadlineAt: modelDeadlineAt,
-        });
+        const result = await this.provider.complete(
+          this.inputForModel(input, model, modelDeadlineAt)
+        );
         this.circuitBreaker.recordSuccess(this.provider.name, model);
         return result;
       } catch (error) {
@@ -685,17 +766,15 @@ export class FailoverChatProvider implements ChatProvider {
           : deadlineAt;
         if (this.provider.stream) {
           const result = await this.provider.stream(
-            { ...input, model, deadlineAt: modelDeadlineAt },
+            this.inputForModel(input, model, modelDeadlineAt),
             onDelta
           );
           this.circuitBreaker.recordSuccess(this.provider.name, model);
           return result;
         }
-        const result = await this.provider.complete({
-          ...input,
-          model,
-          deadlineAt: modelDeadlineAt,
-        });
+        const result = await this.provider.complete(
+          this.inputForModel(input, model, modelDeadlineAt)
+        );
         onDelta(result.content);
         this.circuitBreaker.recordSuccess(this.provider.name, model);
         return result;
@@ -713,6 +792,170 @@ export class FailoverChatProvider implements ChatProvider {
         code: attempted ? 'upstream_unavailable' : 'upstream_saturated',
         retryable: true,
         provider: this.provider.name,
+        model: input.model,
+      })
+    );
+  }
+}
+
+export interface ChatProviderTarget {
+  provider: ChatProvider;
+  model: string;
+  reasoningEffort?: ChatCompletionInput['reasoningEffort'];
+}
+
+/**
+ * Bounded failover across provider/model targets. This is deliberately
+ * separate from FailoverChatProvider: retryable model failures may advance to
+ * another target, while a credential/quota failure never tries another model
+ * with the same credential and no failure advances after partial output.
+ */
+export class ProviderFailoverChatProvider implements ChatProvider {
+  readonly name: string;
+  private readonly targets: readonly ChatProviderTarget[];
+
+  constructor(
+    targets: readonly ChatProviderTarget[],
+    private readonly overallTimeoutMs = 300_000,
+    private readonly circuitBreaker = new ChatModelCircuitBreaker(),
+    private readonly perTargetTimeoutMs = 90_000,
+    private readonly now: () => number = Date.now
+  ) {
+    if (targets.length === 0) {
+      throw new Error('At least one chat provider target is required');
+    }
+    this.targets = targets.filter(
+      (target, index, values) =>
+        values.findIndex(
+          (candidate) =>
+            candidate.provider.name === target.provider.name &&
+            candidate.model === target.model
+        ) === index
+    );
+    this.name = this.targets[0].provider.name;
+  }
+
+  private inputForTarget(
+    input: ChatCompletionInput,
+    target: ChatProviderTarget,
+    deadlineAt: number
+  ): ChatCompletionInput {
+    return {
+      ...input,
+      model: target.model,
+      deadlineAt,
+      reasoningEffort: target.reasoningEffort,
+    };
+  }
+
+  private mayAdvance(
+    error: ChatProviderError,
+    current: ChatProviderTarget,
+    next: ChatProviderTarget | undefined,
+    signal: AbortSignal | undefined
+  ) {
+    if (!next || error.partialOutput || signal?.aborted) return false;
+    if (error.retryable || error.code === 'model_unavailable') return true;
+    if (next.provider.name === current.provider.name) return false;
+    return ['upstream_auth', 'upstream_quota', 'invalid_response'].includes(
+      error.code
+    );
+  }
+
+  async complete(input: ChatCompletionInput): Promise<ChatCompletionResult> {
+    const deadlineAt = input.deadlineAt ?? this.now() + this.overallTimeoutMs;
+    let lastError: ChatProviderError | undefined;
+    let attempted = false;
+    for (let index = 0; index < this.targets.length; index += 1) {
+      const target = this.targets[index];
+      const next = this.targets[index + 1];
+      if (this.now() >= deadlineAt) break;
+      if (!this.circuitBreaker.canAttempt(target.provider.name, target.model)) {
+        continue;
+      }
+      attempted = true;
+      try {
+        const targetDeadlineAt = Math.min(
+          deadlineAt,
+          this.now() + this.perTargetTimeoutMs
+        );
+        const result = await target.provider.complete(
+          this.inputForTarget(input, target, targetDeadlineAt)
+        );
+        this.circuitBreaker.recordSuccess(target.provider.name, target.model);
+        return result;
+      } catch (error) {
+        lastError = normalizedError(error, target.provider.name, target.model);
+        this.circuitBreaker.recordFailure(
+          target.provider.name,
+          target.model,
+          lastError
+        );
+        if (!this.mayAdvance(lastError, target, next, input.signal)) {
+          throw lastError;
+        }
+      }
+    }
+    throw (
+      lastError ||
+      new ChatProviderError('AI models are temporarily at capacity', {
+        code: attempted ? 'upstream_unavailable' : 'upstream_saturated',
+        retryable: true,
+        provider: this.name,
+        model: input.model,
+      })
+    );
+  }
+
+  async stream(
+    input: ChatCompletionInput,
+    onDelta: (delta: string) => void
+  ): Promise<ChatCompletionResult> {
+    const deadlineAt = input.deadlineAt ?? this.now() + this.overallTimeoutMs;
+    let lastError: ChatProviderError | undefined;
+    let attempted = false;
+    for (let index = 0; index < this.targets.length; index += 1) {
+      const target = this.targets[index];
+      const next = this.targets[index + 1];
+      if (this.now() >= deadlineAt) break;
+      if (!this.circuitBreaker.canAttempt(target.provider.name, target.model)) {
+        continue;
+      }
+      attempted = true;
+      try {
+        const targetDeadlineAt = Math.min(
+          deadlineAt,
+          this.now() + this.perTargetTimeoutMs
+        );
+        const targetInput = this.inputForTarget(
+          input,
+          target,
+          targetDeadlineAt
+        );
+        const result = target.provider.stream
+          ? await target.provider.stream(targetInput, onDelta)
+          : await target.provider.complete(targetInput);
+        if (!target.provider.stream) onDelta(result.content);
+        this.circuitBreaker.recordSuccess(target.provider.name, target.model);
+        return result;
+      } catch (error) {
+        lastError = normalizedError(error, target.provider.name, target.model);
+        this.circuitBreaker.recordFailure(
+          target.provider.name,
+          target.model,
+          lastError
+        );
+        if (!this.mayAdvance(lastError, target, next, input.signal)) {
+          throw lastError;
+        }
+      }
+    }
+    throw (
+      lastError ||
+      new ChatProviderError('AI models are temporarily at capacity', {
+        code: attempted ? 'upstream_unavailable' : 'upstream_saturated',
+        retryable: true,
+        provider: this.name,
         model: input.model,
       })
     );

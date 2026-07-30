@@ -60,6 +60,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 
+# python test/runtime cache
+__pycache__/
+*.py[cod]
+
 # database
 /data/
 src/config/db/schema.ts

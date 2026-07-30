@@ -2,6 +2,7 @@ export interface AnimationRenderRequest {
   animationId: string;
   code: string;
   callbackUrl: string;
+  qualityGateUrl: string;
   signal?: AbortSignal;
 }
 
@@ -44,6 +45,7 @@ export class HttpAnimationRenderer implements AnimationRenderer {
         animationId: request.animationId,
         code: request.code,
         callbackUrl: request.callbackUrl,
+        qualityGateUrl: request.qualityGateUrl,
         format: 'mp4',
         quality: 'medium',
       }),

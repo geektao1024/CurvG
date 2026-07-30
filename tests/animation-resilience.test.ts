@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { ChatProviderError } from '../src/core/ai/chat';
+import { animationFailureCodeFromHttpStatus } from '../src/lib/animation';
 import { enforceMinIntervalRateLimit } from '../src/lib/rate-limit';
 import {
   ANIMATION_STAGE_TIMEOUT_MS,
   animationStageDeadlineAt,
+  parseAnimationSpecWithRepairs,
   renderFailureRequiresCodeRegeneration,
 } from '../src/modules/animations/service';
 import {
@@ -173,6 +175,99 @@ test('SSE exposes controlled busy failures as structured retryable events', asyn
   assert.match(body, /"retryable":true/);
 });
 
+test('SSE relays real planning phases to the creator workspace', async () => {
+  const response = animationEventStream(async (send) => {
+    send({ type: 'phase', phase: 'understanding' });
+    send({ type: 'phase', phase: 'auditing' });
+  });
+
+  const body = await response.text();
+  assert.match(body, /"type":"phase","phase":"understanding"/);
+  assert.match(body, /"type":"phase","phase":"auditing"/);
+});
+
+test('every generated specification can repair a validator-level timeline conflict', async () => {
+  const validSpec = {
+    schemaVersion: 2 as const,
+    title: 'Sequential timeline',
+    summary: 'Draw one object without overlapping event groups.',
+    durationSeconds: 2,
+    assumptions: [],
+    style: {
+      background: '#000000',
+      palette: ['#ffffff'],
+      camera: 'static',
+    },
+    objects: [{ id: 'axes', kind: 'axes' as const, region: 'graph' as const }],
+    timeline: [
+      {
+        id: 'draw-axes',
+        at: 0,
+        op: 'draw' as const,
+        ref: 'axes',
+        runTime: 1,
+        ease: 'smooth' as const,
+      },
+    ],
+    layout: { regions: 'single' as const },
+    dependencies: [],
+    notes: [],
+  };
+  const invalidSpec = {
+    ...validSpec,
+    timeline: [
+      validSpec.timeline[0],
+      {
+        id: 'hold-axes',
+        at: 0.5,
+        op: 'hold' as const,
+        ref: 'axes',
+        runTime: 0.5,
+        ease: 'linear' as const,
+      },
+    ],
+  };
+  let repairCalls = 0;
+  const provider = {
+    name: 'test-provider',
+    async complete(input: { messages: Array<{ content: string }> }) {
+      repairCalls += 1;
+      assert.match(
+        input.messages.at(-1)?.content || '',
+        /next\.at >= current\.at \+ max/
+      );
+      return {
+        content: JSON.stringify(validSpec),
+        model: 'test-model',
+        provider: 'test-provider',
+      };
+    },
+  };
+
+  const repaired = await parseAnimationSpecWithRepairs({
+    provider,
+    input: {
+      model: 'test-model',
+      messages: [{ role: 'user', content: 'Build a scene.' }],
+    },
+    result: {
+      content: JSON.stringify(invalidSpec),
+      model: 'test-model',
+      provider: 'test-provider',
+    },
+  });
+
+  assert.equal(repairCalls, 1);
+  assert.ok(repaired.spec.timeline);
+  assert.equal(repaired.spec.timeline.length, 1);
+});
+
+test('render payment failures map to the localized insufficient-credit message', () => {
+  assert.equal(animationFailureCodeFromHttpStatus(402), 'INSUFFICIENT_CREDITS');
+  assert.equal(animationFailureCodeFromHttpStatus(403), 'PRO_REQUIRED');
+  assert.equal(animationFailureCodeFromHttpStatus(500), undefined);
+});
+
 test('saturated upstream failures return safe retry headers', () => {
   const failure = animationErrorResponse(
     new ChatProviderError('upstream internals must not leak', {
@@ -191,6 +286,24 @@ test('saturated upstream failures return safe retry headers', () => {
     'The selected AI model is at capacity. Please retry shortly.'
   );
   assert.equal(new Headers(init.headers).get('retry-after'), '7');
+});
+
+test('reasoning budget failures surface as timeouts, not provider outages', () => {
+  const failure = animationErrorResponse(
+    new ChatProviderError('internal reasoning metrics must not leak', {
+      code: 'upstream_timeout',
+      retryable: true,
+      retrySameModel: false,
+      provider: 'yunwu',
+      model: 'deepseek-v4-pro',
+    })
+  );
+  const init = animationErrorInit(failure);
+
+  assert.equal(failure.status, 503);
+  assert.equal(failure.message, 'The AI model timed out. Please retry.');
+  assert.equal(new Headers(init.headers).get('retry-after'), '3');
+  assert.doesNotMatch(failure.message, /reasoning|deepseek/i);
 });
 
 test('deterministic renderer errors trigger code repair, infrastructure errors do not', () => {

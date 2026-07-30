@@ -2,14 +2,17 @@ import { and, asc, desc, eq, ne } from 'drizzle-orm';
 
 import {
   ChatProviderError,
+  type ChatCompletionInput,
+  type ChatCompletionResult,
   type ChatProvider,
   type ChatTurn,
 } from '@/core/ai/chat';
 import type { AnimationRenderer } from '@/core/animation-renderer';
 import { db } from '@/core/db';
+import { getAnimationReasoningEffort } from '@/config/animation-models';
 import { chat, chatMessage, type Chat } from '@/config/db/schema';
 import {
-  isAnimationSpecV2,
+  isAnimationSpecRenderable,
   type AnimationCreationMode,
   type AnimationDetail,
   type AnimationFailure,
@@ -18,14 +21,25 @@ import {
   type AnimationMessage,
   type AnimationModelSelection,
   type AnimationParts,
+  type AnimationPlanningPhase,
+  type AnimationQualityControlState,
+  type AnimationQualityGateAction,
   type AnimationSpec,
   type AnimationStatus,
   type AnimationSubject,
   type AnimationSummary,
   type AnimationVersion,
+  type AnimationVisualQaReport,
+  type AnimationVisualReview,
 } from '@/lib/animation';
 import {
+  isAnimationMathReviewApproved,
+  parseAnimationMathReview,
+  type AnimationMathReview,
+} from '@/lib/animation-math';
+import {
   parseAnimationSpec,
+  parseManimCode,
   validateAnimationSpec,
 } from '@/lib/animation-schema';
 import { getUuid, md5 } from '@/lib/hash';
@@ -40,10 +54,13 @@ const STALE_ANIMATION_TTL_MS = 30 * 60_000;
 const MAX_ANIMATION_VERSIONS = 20;
 const MAX_ANIMATION_MESSAGES = 200;
 const MAX_ANIMATIONS_PER_USER = 200;
-// This budget is shared by the initial model call, one schema-correction call,
-// provider retries, and Auto fallbacks. It prevents a single stage from
-// multiplying independent timeout windows under upstream saturation.
-export const ANIMATION_STAGE_TIMEOUT_MS = 180_000;
+// This budget is shared by planning, schema correction, an independent math
+// audit, at most two specification rebuilds, provider retries, and Auto
+// fallbacks. It remains one absolute deadline instead of multiplying a timeout
+// per call, but gives the audited v5 pipeline enough room to finish.
+export const ANIMATION_STAGE_TIMEOUT_MS = 300_000;
+const MAX_SPEC_SCHEMA_REPAIRS = 2;
+const MAX_MATH_SPEC_REPAIRS = 2;
 
 export function animationStageDeadlineAt(now = Date.now()) {
   return now + ANIMATION_STAGE_TIMEOUT_MS;
@@ -63,17 +80,56 @@ interface StoredAnimationParts extends AnimationParts {
     jobId: string;
     status: 'rendering' | 'completed' | 'failed';
   };
+  qualityControl?: AnimationQualityControlState;
 }
 
-const SPEC_SYSTEM_PROMPT = `You are CurvG's mathematical animation planner. Convert the user's request into CurvG's strict v2 intermediate representation. You never write Python.
+const SPEC_SYSTEM_PROMPT = `You are CurvG's mathematical animation director. Convert the user's request into CurvG's strict v5 intermediate representation. You never write Python.
 
 Return valid JSON only with this shape:
 {
-  "schemaVersion": 2,
+  "schemaVersion": 5,
   "title": "short title",
   "summary": "what the animation proves or explains",
   "durationSeconds": 20,
   "assumptions": ["mathematical assumptions"],
+  "intent": {
+    "learningGoal": "one precise capability the viewer gains",
+    "hook": "the visible question or surprise in the first shot",
+    "takeaway": "the compact idea the final frame should leave"
+  },
+  "direction": {
+    "preset": "clean-classroom|cinematic-math|geometric-proof|data-story",
+    "frame": "16:9|9:16",
+    "pacing": "calm|balanced|energetic",
+    "textPolicy": { "maxWordsPerObject": 8, "maxSimultaneousText": 2 }
+  },
+  "cinematography": {
+    "scene": "static|moving-camera",
+    "emphasis": "clean|spotlight|term-tour"
+  },
+  "knowledgeMap": [{
+    "id": "concept identifier",
+    "concept": "one prerequisite or target concept",
+    "dependsOn": ["ids of prerequisite knowledge nodes"],
+    "misconception": "a concrete misconception this concept must avoid"
+  }],
+  "curriculum": [{
+    "id": "ordered teaching beat identifier",
+    "learningJob": "what the viewer learns in this beat",
+    "dependsOn": ["knowledge node ids or earlier curriculum beat ids"],
+    "visualEvidence": "what must visibly happen to establish the learning job",
+    "notationBudget": 2
+  }],
+  "mathDossier": {
+    "coreClaim": "the exact mathematical statement the animation establishes",
+    "invariants": ["facts that must remain true throughout every shot"],
+    "commonMisreading": "the most likely conceptual mistake to prevent",
+    "visualProof": "how visible motion or geometry proves the claim without prose",
+    "definitions": [{"concept": "symbol or concept", "statement": "exact definition and domain"}],
+    "derivationSteps": ["ordered, checkable step", "next justified step"],
+    "checks": [{"claim": "claim to verify", "method": "substitution, differentiation, limiting case, or other check", "expected": "exact expected result"}],
+    "limitations": ["scope limits or exceptional cases"]
+  },
   "style": {
     "background": "#0B0D14",
     "palette": ["#7C8CFF", "#62D9C3"],
@@ -83,30 +139,96 @@ Return valid JSON only with this shape:
     "id": "axes",
     "kind": "axes|curve|area|formula|text|series|matrix",
     "region": "title|formula|graph",
+    "importance": "hero|supporting|context",
     "label": "optional plain text",
-    "expr": "safe math expression for curves, LaTeX for formulas",
+    "expr": "safe math expression for curves, full LaTeX for formulas",
+    "parts": [{
+      "id": "semantic term id such as delta_x",
+      "latex": "one independently renderable LaTeX chunk",
+      "meaning": "what this term means in the explanation",
+      "color": "#F4A261"
+    }],
     "domain": [-6, 6],
     "color": "#7C8CFF",
     "values": [[1, 0], [0, 1]]
   }],
   "timeline": [{
     "id": "draw-axes",
+    "shotId": "hook",
     "at": 0,
-    "op": "draw|write|fade_in|fade_out|transform|hold",
+    "op": "draw|write|fade_in|fade_out|transform|emphasize|spotlight|glow|camera_focus|camera_reset|hold",
     "ref": "axes",
     "targetRef": "only for transform",
+    "partId": "optional formula part id for emphasize, spotlight, glow or camera_focus",
+    "zoom": 1.8,
     "runTime": 1.5,
     "ease": "linear|smooth|there_and_back"
+  }],
+  "shots": [{
+    "id": "hook",
+    "beat": "hook|setup|mechanism|proof|payoff|memory",
+    "purpose": "what changes visually and why it teaches the idea",
+    "startAt": 0,
+    "endAt": 4,
+    "focusRef": "a valid object id",
+    "transition": "build|morph|emphasis|hold",
+    "acceptance": ["observable visual condition for this shot"]
   }],
   "layout": { "regions": "single|left|right|top|bottom", "title": "optional" },
   "dependencies": ["required Manim, LaTeX or font capabilities"],
   "notes": ["mathematical invariants"]
 }
 
-Preserve mathematical correctness and state assumptions instead of inventing facts. Object IDs and timeline IDs must be unique. Curves use x and only these functions: sin, cos, tan, asin, acos, atan, sqrt, abs, exp, log, ln, sinh, cosh, tanh. Timeline groups may share the same start time, but groups must not overlap. Every event must end at or before durationSeconds. Include an axes object whenever a curve or area is present. Layout declares only semantic regions; the compiler owns all coordinates and scaling. Do not return Python, prose fields, Markdown, or any schemaVersion other than 2.`;
+Preserve mathematical correctness and state assumptions instead of inventing facts. First build the dependency-ordered knowledgeMap, then the curriculum, then complete the mathDossier with definitions, an explicit derivation, and independent checks before committing to the visual sequence. Every curriculum dependency must refer to a knowledge node or an earlier beat. The shots must establish coreClaim, preserve every invariant, explicitly avoid commonMisreading, and realize visualProof. Build the explanation around one visible hero object. Use 3-6 non-overlapping shots: the first must be a hook beginning at 0, and the last must be payoff or memory ending exactly at durationSeconds. Every timeline event must name its shotId and stay inside that shot. Prefer motion, geometry, formulas, counters, and transformations over explanatory sentences. Keep text objects within textPolicy and never plan more than two simultaneous text/formula objects. Include one obvious visual change before the midpoint and a visually distinct payoff in the final third.
+
+Treat the camera as a teaching tool, not decoration. Choose moving-camera only when a local term, curve feature, or proof step benefits from a 1.4-2.4x focus. Pair the final camera_focus with camera_reset before the payoff. Use at most two camera_focus events in a short animation. Use spotlight or glow for brief evidence, never as a persistent effect. If emphasis is term-tour, include addressable formula parts and at least one camera_focus that names partId.
+
+For formulas with multiple meaningful terms, always provide 2-8 parts as separate MathTex arguments. Each latex chunk must compile independently and concatenate into the intended formula. Reuse the same part id and color for the same mathematical role across formulas. Use ivory for neutral symbols and reserve coral, blue, teal, or gold for semantically important terms. The animation should remain understandable when prose text is hidden: formulas, geometry, motion, and color must carry the explanation.
+
+Object IDs, shot IDs, and timeline IDs must be unique. Formula part IDs must be unique inside their formula. Curves use x and only these functions: sin, cos, tan, asin, acos, atan, sqrt, abs, exp, log, ln, sinh, cosh, tanh. Timeline events that should run concurrently must use exactly the same at value. After grouping equal at values and sorting the groups, every next group must satisfy next.at >= current.at + max(current group runTime); never stagger a new event before the current group finishes. Every event must end at or before durationSeconds and remain inside its declared shot. zoom is only valid for camera_focus. Camera operations require moving-camera. Include an axes object whenever a curve or area is present. Portrait scenes cannot use left|right layout. Layout declares only semantic regions; the compiler owns all coordinates, scaling, and safe zones. Keep internal reasoning brief and begin the final JSON as soon as the requirements are understood. Do not return Python, prose fields, Markdown, or any schemaVersion other than 5.`;
+
+const MATH_REVIEW_SYSTEM_PROMPT = `You are CurvG's independent mathematical reviewer. Audit a proposed animation specification skeptically before any code is generated.
+
+Verify the exact core claim, definitions and domains, every derivation step, formulas and plotted expressions, invariants, limiting or special cases, and whether each proposed visual actually proves rather than merely suggests its claim. Use the declared checks and independently recompute enough of them to expose contradictions. Do not review aesthetics and do not repair the specification yourself.
+
+Return JSON only:
+{
+  "status": "approved|needs_revision",
+  "summary": "evidence-grounded verdict",
+  "checkedClaims": ["specific claims independently checked"],
+  "issues": [{
+    "severity": "major|blocking",
+    "claim": "the affected claim",
+    "problem": "the exact contradiction, missing condition, or invalid step",
+    "correction": "the mathematically correct replacement or required condition"
+  }]
+}
+
+Approve only when no mathematical issue remains. If the request is ambiguous, require explicit assumptions instead of inventing certainty. Ambiguity alone is not a mathematical error when the specification states a conventional, coherent interpretation in its assumptions and limitations and keeps every claim consistent with that scope.`;
+
+const CODE_SYSTEM_PROMPT = `You are CurvG's scene composer. Produce one complete, cinematic, teachable Manim Community Edition 0.20 scene from an approved mathematical specification.
+
+Return Python source only. The source must import from manim, may import numpy or math, and must define exactly one class named CurvGScene whose single base is Scene, MovingCameraScene, or ThreeDScene. Do not use files, network, subprocesses, shell commands, eval, exec, dynamic imports, external assets, custom fonts, or add_updater. Every self.play call must have an explicit positive run_time.
+
+Follow this production contract:
+1. Reason backward from the viewer's learning goal and use the approved math dossier as the source of truth. Never change assumptions, constants, formulas, or the proof direction.
+2. Build a visual argument, not a slide deck. Geometry, transformation, camera movement, and consistent semantic color must carry the explanation. Keep prose sparse.
+3. Put the hero object or mathematical question on screen immediately and start meaningful motion within the first second. Do not open with a static title card.
+4. Introduce plain-language meaning before dense notation. Build MathTex from multiple arguments when terms need independent color or emphasis.
+5. Treat the camera as the narrator. Use MovingCameraScene camera.frame for focused 2D term tours. Use ThreeDScene move_camera and a top-down stage that tilts into true 3D only when depth proves something. Never animate self.camera directly.
+6. For a term tour, dim context, emphasize the exact term, move the camera into it, then restore the whole formula before the payoff.
+7. Use one house palette consistently: near-black #0c0c0b, ivory #faf9f5, coral #d97757, blue #6a9bcc, olive #788c5d, gold #d4a27f, secondary gray #b0aea5, unless the approved direction explicitly overrides it.
+8. Keep at most two text/formula blocks visible together. Use safe margins, strong contrast, generous whitespace, readable phone-scale type, and one dominant motion per beat.
+9. Preserve object continuity across transformations. Prefer TransformMatchingTex, ReplacementTransform, traced geometry, filled regions, comparison arrows, or camera reveals to clearing and rebuilding the whole frame.
+10. Make the final third visibly different from the setup and end on a clean mathematical payoff that can hold without extra explanation.
+11. Prebuild MathTex, Tex, and Text objects outside frame callbacks. ValueTracker and always_redraw are allowed, but never construct or mutate text per frame.
+12. Keep the scene self-contained and renderable with Manim CE and TeX Live. Use only documented Manim APIs.
+
+The wrapper owns validation, rendering, evidence extraction, and repair. Do not print explanations or wrap the code in Markdown.`;
 
 export interface AnimationGenerationHooks {
   onStarted?: (animation: AnimationDetail) => void;
+  onPhase?: (phase: AnimationPlanningPhase) => void;
   onSummaryDelta?: (delta: string) => void;
 }
 
@@ -147,6 +269,92 @@ function partialJsonStringField(source: string, field: string): string {
   return output;
 }
 
+async function reviewAnimationMathematics(params: {
+  provider: ChatProvider;
+  model: string;
+  prompt: string;
+  spec: AnimationSpec;
+  signal?: AbortSignal;
+  deadlineAt?: number;
+}): Promise<AnimationMathReview> {
+  const input = {
+    model: params.model,
+    messages: [
+      { role: 'system' as const, content: MATH_REVIEW_SYSTEM_PROMPT },
+      {
+        role: 'user' as const,
+        content: `ORIGINAL REQUEST:\n${params.prompt}\n\nPROPOSED SPECIFICATION:\n${JSON.stringify(params.spec)}`,
+      },
+    ],
+    temperature: 0,
+    maxTokens: 3_000,
+    reasoningEffort: getAnimationReasoningEffort(params.model),
+    signal: params.signal,
+    deadlineAt: params.deadlineAt,
+  };
+  let result = await params.provider.complete(input);
+  try {
+    return parseAnimationMathReview(result.content);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'invalid output';
+    result = await params.provider.complete({
+      ...input,
+      messages: [
+        ...input.messages,
+        { role: 'assistant', content: result.content },
+        {
+          role: 'user',
+          content: `Your audit response failed validation: ${reason}. Return the same skeptical mathematical verdict as one valid JSON object with every required field. Do not approve an unresolved issue.`,
+        },
+      ],
+      temperature: 0,
+    });
+    return parseAnimationMathReview(result.content);
+  }
+}
+
+class AnimationMathAuditError extends Error {
+  constructor(readonly review: AnimationMathReview) {
+    super(`Mathematical audit still requires revision: ${review.summary}`);
+    this.name = 'AnimationMathAuditError';
+  }
+}
+
+export async function parseAnimationSpecWithRepairs(params: {
+  provider: ChatProvider;
+  input: ChatCompletionInput;
+  result: ChatCompletionResult;
+}): Promise<{ result: ChatCompletionResult; spec: AnimationSpec }> {
+  let result = params.result;
+  let lastError: unknown;
+  for (
+    let repairAttempt = 0;
+    repairAttempt <= MAX_SPEC_SCHEMA_REPAIRS;
+    repairAttempt += 1
+  ) {
+    try {
+      return { result, spec: parseAnimationSpec(result.content) };
+    } catch (error) {
+      lastError = error;
+      if (repairAttempt === MAX_SPEC_SCHEMA_REPAIRS) break;
+      const reason = error instanceof Error ? error.message : 'invalid output';
+      result = await params.provider.complete({
+        ...params.input,
+        messages: [
+          ...params.input.messages,
+          { role: 'assistant', content: result.content },
+          {
+            role: 'user',
+            content: `The previous specification failed application validation (schema repair ${repairAttempt + 1} of ${MAX_SPEC_SCHEMA_REPAIRS}):\n${reason}\n\nReturn one complete corrected schemaVersion 5 JSON object only. Preserve the approved mathematical meaning and include every required field. Treat every validator issue as mandatory. For the timeline, events that run concurrently must have exactly the same at value; after grouping equal starts and sorting the groups, enforce next.at >= current.at + max(current group runTime), keep each event inside its shot, and keep the final event within durationSeconds.`,
+          },
+        ],
+        temperature: 0,
+      });
+    }
+  }
+  throw lastError;
+}
+
 async function generateAnimationSpec(params: {
   provider: ChatProvider;
   model: string;
@@ -156,8 +364,10 @@ async function generateAnimationSpec(params: {
   history?: ChatTurn[];
   signal?: AbortSignal;
   deadlineAt?: number;
+  onPhase?: (phase: AnimationPlanningPhase) => void;
   onSummaryDelta?: (delta: string) => void;
 }) {
+  params.onPhase?.('understanding');
   const input = {
     model: params.model,
     messages: [
@@ -173,15 +383,21 @@ async function generateAnimationSpec(params: {
       },
     ],
     temperature: 0.15,
-    maxTokens: 5000,
+    maxTokens: 9_000,
+    reasoningEffort: getAnimationReasoningEffort(params.model),
     signal: params.signal,
     deadlineAt: params.deadlineAt,
   };
   let streamedContent = '';
   let streamedSummary = '';
+  let structureStarted = false;
   let result =
     params.onSummaryDelta && params.provider.stream
       ? await params.provider.stream(input, (delta) => {
+          if (!structureStarted) {
+            structureStarted = true;
+            params.onPhase?.('structuring');
+          }
           streamedContent += delta;
           const nextSummary = partialJsonStringField(
             streamedContent,
@@ -196,25 +412,62 @@ async function generateAnimationSpec(params: {
           }
         })
       : await params.provider.complete(input);
-  let spec: AnimationSpec;
-  try {
-    spec = parseAnimationSpec(result.content);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : 'invalid output';
-    result = await params.provider.complete({
+  if (!structureStarted) params.onPhase?.('structuring');
+  const parsedInitialSpec = await parseAnimationSpecWithRepairs({
+    provider: params.provider,
+    input,
+    result,
+  });
+  result = parsedInitialSpec.result;
+  let spec = parsedInitialSpec.spec;
+  params.onPhase?.('auditing');
+  let mathReview = await reviewAnimationMathematics({
+    provider: params.provider,
+    model: params.model,
+    prompt: params.prompt,
+    spec,
+    signal: params.signal,
+    deadlineAt: params.deadlineAt,
+  });
+  for (
+    let repairAttempt = 1;
+    repairAttempt <= MAX_MATH_SPEC_REPAIRS &&
+    !isAnimationMathReviewApproved(mathReview);
+    repairAttempt += 1
+  ) {
+    params.onPhase?.('structuring');
+    const repairInput: ChatCompletionInput = {
       ...input,
       messages: [
         ...input.messages,
-        { role: 'assistant', content: result.content },
+        { role: 'assistant', content: JSON.stringify(spec) },
         {
           role: 'user',
-          content: `The previous specification failed validation: ${reason}. Return one corrected JSON object only, preserving the original request and every required field.`,
+          content: `An independent mathematical audit rejected the specification (repair ${repairAttempt} of ${MAX_MATH_SPEC_REPAIRS}):\n${JSON.stringify(mathReview)}\n\nRebuild and return the complete corrected schemaVersion 5 JSON specification. Treat every audit issue as a mandatory acceptance criterion and correct it at the specification level instead of merely rephrasing it. When the original request is underspecified, choose one conventional mathematical interpretation, state it explicitly in assumptions and limitations, narrow coreClaim to that scope, and keep every definition, derivation, check, shot, and visual consistent with it. Preserve the user's intent and include every required field.`,
         },
       ],
       temperature: 0,
+    };
+    result = await params.provider.complete(repairInput);
+    ({ result, spec } = await parseAnimationSpecWithRepairs({
+      provider: params.provider,
+      input: repairInput,
+      result,
+    }));
+    params.onPhase?.('auditing');
+    mathReview = await reviewAnimationMathematics({
+      provider: params.provider,
+      model: params.model,
+      prompt: params.prompt,
+      spec,
+      signal: params.signal,
+      deadlineAt: params.deadlineAt,
     });
-    spec = parseAnimationSpec(result.content);
   }
+  if (!isAnimationMathReviewApproved(mathReview)) {
+    throw new AnimationMathAuditError(mathReview);
+  }
+  params.onPhase?.('finalizing');
   if (params.onSummaryDelta) {
     const remaining = spec.summary.startsWith(streamedSummary)
       ? spec.summary.slice(streamedSummary.length)
@@ -224,6 +477,69 @@ async function generateAnimationSpec(params: {
     if (remaining) params.onSummaryDelta(remaining);
   }
   return { result, spec };
+}
+
+function codeCompositionPrompt(params: {
+  prompt: string;
+  spec: AnimationSpec;
+  currentCode?: string;
+  repairEvidence?: string;
+}) {
+  const repair = params.currentCode
+    ? `\n\nEXISTING SCENE TO REPAIR:\n${params.currentCode}\n\nREPAIR EVIDENCE:\n${(
+        params.repairEvidence ||
+        'Improve the scene without changing correct work.'
+      ).slice(0, 8_000)}`
+    : '';
+  return `ORIGINAL USER REQUEST:\n${params.prompt}\n\nAPPROVED SPECIFICATION:\n${JSON.stringify(
+    params.spec
+  )}${repair}\n\nWrite the complete final Python scene now. Preserve correct work and change only what the specification or repair evidence requires.`;
+}
+
+async function composeAnimationCode(params: {
+  provider: ChatProvider;
+  model: string;
+  prompt: string;
+  spec: AnimationSpec;
+  currentCode?: string;
+  repairEvidence?: string;
+  signal?: AbortSignal;
+}) {
+  const input = {
+    model: params.model,
+    messages: [
+      { role: 'system' as const, content: CODE_SYSTEM_PROMPT },
+      {
+        role: 'user' as const,
+        content: codeCompositionPrompt(params),
+      },
+    ],
+    temperature: params.currentCode ? 0 : 0.08,
+    maxTokens: 14_000,
+    signal: params.signal,
+    deadlineAt: animationStageDeadlineAt(),
+  };
+  let result = await params.provider.complete(input);
+  let code: string;
+  try {
+    code = parseManimCode(result.content);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'invalid output';
+    result = await params.provider.complete({
+      ...input,
+      messages: [
+        ...input.messages,
+        { role: 'assistant' as const, content: result.content },
+        {
+          role: 'user' as const,
+          content: `The previous scene failed the application-side source contract: ${reason}. Return one corrected complete Python module only. Preserve the approved mathematics and the requested visual repair.`,
+        },
+      ],
+      temperature: 0,
+    });
+    code = parseManimCode(result.content);
+  }
+  return { result, code };
 }
 
 function parseJson<T>(value: string | null | undefined, fallback: T): T {
@@ -265,6 +581,7 @@ function publicAnimationParts(parts: StoredAnimationParts): AnimationParts {
     operation: _operation,
     renderRepair: _renderRepair,
     renderCallback: _renderCallback,
+    qualityControl: _qualityControl,
     ...publicParts
   } = parts;
   return publicParts;
@@ -341,6 +658,8 @@ function toSummary(row: Chat): AnimationSummary {
     prompt: parts.prompt,
     videoUrl: parts.videoUrl,
     thumbnailUrl: parts.thumbnailUrl,
+    contactSheetUrl: parts.contactSheetUrl,
+    qaReportUrl: parts.qaReportUrl,
     createdAt: isoDate(row.createdAt),
     updatedAt: isoDate(row.updatedAt),
   };
@@ -534,6 +853,14 @@ function animationFailure(
   stage: AnimationFailureStage
 ): AnimationFailure {
   if (error instanceof AnimationGenerationError) return error.failure;
+  if (error instanceof AnimationMathAuditError) {
+    return {
+      stage,
+      code: 'INVALID_OUTPUT',
+      message: failureMessages.INVALID_OUTPUT,
+      retryable: true,
+    };
+  }
   if (error instanceof ChatProviderError) {
     const code = chatFailureCodes[error.code];
     return {
@@ -637,6 +964,46 @@ async function setFailure(
   return failure;
 }
 
+export async function markAnimationProductionFailure(params: {
+  userId: string;
+  id: string;
+  error: unknown;
+}): Promise<void> {
+  const row = await ownedRow(params.userId, params.id);
+  if (row.status !== 'awaiting_approval') return;
+  const parts = animationParts(row);
+  const diagnostic = (
+    params.error instanceof Error ? params.error.message : String(params.error)
+  )
+    .replace(/[\r\n]+/g, ' ')
+    .slice(0, 500);
+  const code: AnimationFailure['code'] = /insufficient credits/i.test(
+    diagnostic
+  )
+    ? 'INSUFFICIENT_CREDITS'
+    : /busy|capacity/i.test(diagnostic)
+      ? 'BUSY'
+      : 'RENDER_FAILED';
+  const failure: AnimationFailure = {
+    stage: 'render',
+    code,
+    message: failureMessages[code],
+    retryable: true,
+  };
+  await db()
+    .update(chat)
+    .set({
+      status: 'failed',
+      parts: JSON.stringify({
+        ...parts,
+        error: failure.message,
+        failure,
+        renderRepair: { regenerateCode: false, context: diagnostic },
+      }),
+    })
+    .where(and(eq(chat.id, row.id), eq(chat.status, 'awaiting_approval')));
+}
+
 async function conversation(chatId: string): Promise<ChatTurn[]> {
   const rows = await db()
     .select()
@@ -681,6 +1048,10 @@ function snapshot(parts: AnimationParts): AnimationVersion | null {
     code: parts.code,
     videoUrl: parts.videoUrl,
     thumbnailUrl: parts.thumbnailUrl,
+    contactSheetUrl: parts.contactSheetUrl,
+    qaReportUrl: parts.qaReportUrl,
+    visualQa: parts.visualQa,
+    visualReview: parts.visualReview,
   };
 }
 
@@ -719,6 +1090,22 @@ export async function getAnimation(
     parts: publicAnimationParts(animationParts(row)),
     messages: messages.reverse().map(toMessage),
   };
+}
+
+export async function renameAnimation(params: {
+  userId: string;
+  id: string;
+  title: string;
+}): Promise<AnimationDetail> {
+  const title = params.title.replace(/\s+/g, ' ').trim();
+  if (!title) throw new Error('Title is required');
+  if (Array.from(title).length > 160) {
+    throw new Error('Title must be 160 characters or fewer');
+  }
+
+  const row = await ownedRow(params.userId, params.id);
+  await db().update(chat).set({ title }).where(eq(chat.id, row.id));
+  return getAnimation(params.userId, params.id);
 }
 
 export async function createAnimation(params: {
@@ -776,6 +1163,7 @@ export async function createAnimation(params: {
       subject: params.subject,
       signal: params.signal,
       deadlineAt: animationStageDeadlineAt(),
+      onPhase: params.hooks?.onPhase,
       onSummaryDelta: params.hooks?.onSummaryDelta,
     });
     await db()
@@ -876,7 +1264,7 @@ export async function reviseAnimation(params: {
 }): Promise<AnimationDetail> {
   const row = await ownedRow(params.userId, params.id);
   const current = animationParts(row);
-  if (current.spec && !isAnimationSpecV2(current.spec)) {
+  if (current.spec && !isAnimationSpecRenderable(current.spec)) {
     throw new Error('Legacy animations are read-only archives');
   }
   if (current.creationMode === 'template') {
@@ -904,10 +1292,15 @@ export async function reviseAnimation(params: {
     code: undefined,
     videoUrl: undefined,
     thumbnailUrl: undefined,
+    contactSheetUrl: undefined,
+    qaReportUrl: undefined,
+    visualQa: undefined,
+    visualReview: undefined,
     render: undefined,
     error: undefined,
     failure: undefined,
     renderRepair: undefined,
+    qualityControl: undefined,
   };
   const claimed = await claimAnimationOperation({
     row,
@@ -941,6 +1334,7 @@ export async function reviseAnimation(params: {
       history,
       signal: params.signal,
       deadlineAt: animationStageDeadlineAt(),
+      onPhase: params.hooks?.onPhase,
       onSummaryDelta: params.hooks?.onSummaryDelta,
     });
     const { operation: _operation, ...completedParts } = claimed.parts;
@@ -978,15 +1372,18 @@ export async function reviseAnimation(params: {
 export async function approveAnimation(params: {
   userId: string;
   id: string;
+  provider?: ChatProvider;
+  model?: string;
   renderer?: AnimationRenderer;
   callbackUrl: string;
+  qualityGateUrl: string;
   creditTaskId?: string;
   signal?: AbortSignal;
 }): Promise<AnimationDetail> {
   const row = await ownedRow(params.userId, params.id);
   const parts = animationParts(row);
   if (!parts.spec) throw new Error('Animation specification is missing');
-  if (!isAnimationSpecV2(parts.spec)) {
+  if (!isAnimationSpecRenderable(parts.spec)) {
     throw new Error('Legacy animations are read-only archives');
   }
   if (!['awaiting_approval', 'code_ready', 'failed'].includes(row.status)) {
@@ -1013,7 +1410,29 @@ export async function approveAnimation(params: {
   let code: string | undefined;
   let failureStage: AnimationFailureStage = 'code';
   try {
-    code = compileAnimationSpec(parts.spec);
+    const repairEvidence = parts.renderRepair?.regenerateCode
+      ? parts.renderRepair.context
+      : undefined;
+    const shouldCompose =
+      !!params.provider &&
+      !!params.model &&
+      (row.status === 'awaiting_approval' ||
+        !parts.code ||
+        parts.renderRepair?.regenerateCode === true);
+    if (shouldCompose) {
+      const composed = await composeAnimationCode({
+        provider: params.provider!,
+        model: params.model!,
+        prompt: parts.prompt,
+        spec: parts.spec,
+        currentCode: repairEvidence ? parts.code : undefined,
+        repairEvidence,
+        signal: params.signal,
+      });
+      code = composed.code;
+    } else {
+      code = parts.code || compileAnimationSpec(parts.spec);
+    }
     if (!params.renderer) {
       const {
         operation: _operation,
@@ -1052,6 +1471,7 @@ export async function approveAnimation(params: {
       animationId: row.id,
       code,
       callbackUrl: params.callbackUrl,
+      qualityGateUrl: params.qualityGateUrl,
       signal: params.signal,
     });
     const {
@@ -1076,6 +1496,12 @@ export async function approveAnimation(params: {
             progress: 8,
             startedAt: new Date().toISOString(),
             creditTaskId: params.creditTaskId,
+          },
+          qualityControl: {
+            status: 'pending',
+            attempt: 0,
+            maxRepairs: 2,
+            attempts: [],
           },
         }),
       })
@@ -1111,7 +1537,7 @@ export async function updateAnimationSpec(params: {
     throw new Error('Animation is currently processing');
   }
   const parts = animationParts(row);
-  if (parts.spec && !isAnimationSpecV2(parts.spec)) {
+  if (parts.spec && !isAnimationSpecRenderable(parts.spec)) {
     throw new Error('Legacy animations are read-only archives');
   }
   const spec = validateAnimationSpec(params.spec);
@@ -1124,11 +1550,16 @@ export async function updateAnimationSpec(params: {
     versions: appendVersion(parts, previous),
     videoUrl: undefined,
     thumbnailUrl: undefined,
+    contactSheetUrl: undefined,
+    qaReportUrl: undefined,
+    visualQa: undefined,
+    visualReview: undefined,
     publishedAt: undefined,
     render: undefined,
     error: undefined,
     failure: undefined,
     renderRepair: undefined,
+    qualityControl: undefined,
   };
   await db()
     .update(chat)
@@ -1164,7 +1595,7 @@ export async function restoreAnimationVersion(params: {
   const selected = parts.versions.find(
     (version) => version.version === params.version
   );
-  if (!selected?.spec || !isAnimationSpecV2(selected.spec)) {
+  if (!selected?.spec || !isAnimationSpecRenderable(selected.spec)) {
     throw new Error('Version cannot be restored');
   }
   const spec = validateAnimationSpec(selected.spec);
@@ -1177,11 +1608,16 @@ export async function restoreAnimationVersion(params: {
     versions: appendVersion(parts, previous),
     videoUrl: undefined,
     thumbnailUrl: undefined,
+    contactSheetUrl: undefined,
+    qaReportUrl: undefined,
+    visualQa: undefined,
+    visualReview: undefined,
     publishedAt: undefined,
     render: undefined,
     error: undefined,
     failure: undefined,
     renderRepair: undefined,
+    qualityControl: undefined,
   };
   await db()
     .update(chat)
@@ -1307,14 +1743,307 @@ export async function getPublishedAnimationArtifact(
   return { animationId: row.id, jobId };
 }
 
+export async function isCurrentAnimationRender(
+  id: string,
+  jobId: string
+): Promise<boolean> {
+  const [row] = await db()
+    .select()
+    .from(chat)
+    .where(and(eq(chat.id, id), eq(chat.metadata, ANIMATION_METADATA)))
+    .limit(1);
+  return (
+    !!row &&
+    row.status !== 'deleted' &&
+    animationParts(row).render?.jobId === jobId
+  );
+}
+
+export interface AnimationQualityContext {
+  userId: string;
+  id: string;
+  jobId: string;
+  prompt: string;
+  spec: AnimationSpec;
+  code: string;
+  provider: string;
+  model: string;
+  modelSelection?: AnimationModelSelection;
+  qualityControl: AnimationQualityControlState;
+}
+
+export async function getAnimationQualityContext(
+  id: string,
+  jobId: string
+): Promise<AnimationQualityContext> {
+  const [row] = await db()
+    .select()
+    .from(chat)
+    .where(and(eq(chat.id, id), eq(chat.metadata, ANIMATION_METADATA)))
+    .limit(1);
+  if (!row || row.status === 'deleted') throw new Error('Animation not found');
+  const parts = animationParts(row);
+  if (
+    !['queued', 'rendering'].includes(row.status) ||
+    parts.render?.jobId !== jobId ||
+    !parts.spec ||
+    !parts.code
+  ) {
+    throw new Error('Animation quality gate is not current');
+  }
+  return {
+    userId: row.userId,
+    id: row.id,
+    jobId,
+    prompt: parts.prompt,
+    spec: parts.spec,
+    code: parts.code,
+    provider: row.provider,
+    model: row.model,
+    modelSelection: parts.modelSelection,
+    qualityControl: parts.qualityControl || {
+      status: 'pending',
+      attempt: 0,
+      maxRepairs: 2,
+      attempts: [],
+    },
+  };
+}
+
+export async function composeAnimationQualityRepair(params: {
+  context: AnimationQualityContext;
+  provider: ChatProvider;
+  model: string;
+  evidence: string;
+  signal?: AbortSignal;
+}) {
+  return composeAnimationCode({
+    provider: params.provider,
+    model: params.model,
+    prompt: params.context.prompt,
+    spec: params.context.spec,
+    currentCode: params.context.code,
+    repairEvidence: params.evidence,
+    signal: params.signal,
+  });
+}
+
+export async function composeAnimationMathematicalRepair(params: {
+  context: AnimationQualityContext;
+  provider: ChatProvider;
+  model: string;
+  review: AnimationVisualReview;
+  signal?: AbortSignal;
+}): Promise<{ spec: AnimationSpec; code: string }> {
+  const deadlineAt = animationStageDeadlineAt();
+  const input: ChatCompletionInput = {
+    model: params.model,
+    messages: [
+      { role: 'system', content: SPEC_SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: `ORIGINAL USER REQUEST:\n${params.context.prompt}\n\nCURRENT REJECTED SPECIFICATION:\n${JSON.stringify(params.context.spec)}\n\nPOST-RENDER MATHEMATICAL REVIEW:\n${JSON.stringify(params.review)}\n\nRebuild the complete schemaVersion 5 specification so the mathematical defect is corrected at its source. Return JSON only.`,
+      },
+    ],
+    temperature: 0,
+    maxTokens: 9_000,
+    reasoningEffort: getAnimationReasoningEffort(params.model),
+    signal: params.signal,
+    deadlineAt,
+  };
+  let result = await params.provider.complete(input);
+  let parsed = await parseAnimationSpecWithRepairs({
+    provider: params.provider,
+    input,
+    result,
+  });
+  result = parsed.result;
+  let spec = parsed.spec;
+  let mathReview = await reviewAnimationMathematics({
+    provider: params.provider,
+    model: params.model,
+    prompt: params.context.prompt,
+    spec,
+    signal: params.signal,
+    deadlineAt,
+  });
+  for (
+    let repairAttempt = 1;
+    repairAttempt <= MAX_MATH_SPEC_REPAIRS &&
+    !isAnimationMathReviewApproved(mathReview);
+    repairAttempt += 1
+  ) {
+    const repairInput: ChatCompletionInput = {
+      ...input,
+      messages: [
+        { role: 'system', content: SPEC_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: `ORIGINAL USER REQUEST:\n${params.context.prompt}\n\nCURRENT REJECTED SPECIFICATION:\n${JSON.stringify(spec)}\n\nPOST-RENDER MATHEMATICAL REVIEW:\n${JSON.stringify(params.review)}\n\nINDEPENDENT MATHEMATICAL AUDIT (repair ${repairAttempt} of ${MAX_MATH_SPEC_REPAIRS}):\n${JSON.stringify(mathReview)}\n\nRebuild the complete schemaVersion 5 specification. Treat every post-render issue and independent audit correction as mandatory. Correct the visual proof at its source: the timeline and shots must visibly demonstrate the core claim, not merely place correct formulas beside static geometry. Preserve already-correct definitions and return JSON only.`,
+        },
+      ],
+      temperature: 0,
+    };
+    result = await params.provider.complete(repairInput);
+    parsed = await parseAnimationSpecWithRepairs({
+      provider: params.provider,
+      input: repairInput,
+      result,
+    });
+    result = parsed.result;
+    spec = parsed.spec;
+    mathReview = await reviewAnimationMathematics({
+      provider: params.provider,
+      model: params.model,
+      prompt: params.context.prompt,
+      spec,
+      signal: params.signal,
+      deadlineAt,
+    });
+  }
+  if (!isAnimationMathReviewApproved(mathReview)) {
+    throw new AnimationMathAuditError(mathReview);
+  }
+  const composed = await composeAnimationCode({
+    provider: params.provider,
+    model: params.model,
+    prompt: params.context.prompt,
+    spec,
+    repairEvidence: JSON.stringify(params.review),
+    signal: params.signal,
+  });
+  return { spec, code: composed.code };
+}
+
+export async function recordAnimationQualityGate(params: {
+  id: string;
+  jobId: string;
+  attempt: number;
+  kind: 'render_error' | 'visual_review' | 'final_review';
+  action: AnimationQualityGateAction;
+  visualQa?: AnimationVisualQaReport;
+  visualReview?: AnimationVisualReview;
+  spec?: AnimationSpec;
+  code?: string;
+}): Promise<AnimationQualityContext> {
+  return persistAnimationQualityGate(params, 0);
+}
+
+async function persistAnimationQualityGate(
+  params: {
+    id: string;
+    jobId: string;
+    attempt: number;
+    kind: 'render_error' | 'visual_review' | 'final_review';
+    action: AnimationQualityGateAction;
+    visualQa?: AnimationVisualQaReport;
+    visualReview?: AnimationVisualReview;
+    spec?: AnimationSpec;
+    code?: string;
+  },
+  conflictAttempt: number
+): Promise<AnimationQualityContext> {
+  const [row] = await db()
+    .select()
+    .from(chat)
+    .where(and(eq(chat.id, params.id), eq(chat.metadata, ANIMATION_METADATA)))
+    .limit(1);
+  if (!row || row.status === 'deleted') throw new Error('Animation not found');
+  const parts = animationParts(row);
+  if (
+    !['queued', 'rendering'].includes(row.status) ||
+    parts.render?.jobId !== params.jobId ||
+    !parts.spec ||
+    !parts.code
+  ) {
+    throw new Error('Animation quality gate is not current');
+  }
+  const qualityControl = parts.qualityControl || {
+    status: 'pending' as const,
+    attempt: 0,
+    maxRepairs: 2,
+    attempts: [],
+  };
+  const existing = qualityControl.attempts.find(
+    (entry) => entry.attempt === params.attempt && entry.kind === params.kind
+  );
+  if (existing) return getAnimationQualityContext(params.id, params.jobId);
+
+  const status =
+    params.action === 'approve'
+      ? 'approved'
+      : params.action === 'repair'
+        ? 'repairing'
+        : 'rejected';
+  const nextParts: StoredAnimationParts = {
+    ...parts,
+    spec: params.spec || parts.spec,
+    code: params.code || parts.code,
+    visualQa: params.visualQa || parts.visualQa,
+    visualReview: params.visualReview || parts.visualReview,
+    qualityControl: {
+      ...qualityControl,
+      status,
+      attempt: params.attempt,
+      attempts: [
+        ...qualityControl.attempts,
+        {
+          attempt: params.attempt,
+          kind: params.kind,
+          action: params.action,
+          deterministicScore: params.visualQa?.score,
+          reviewStatus: params.visualReview?.status,
+          issueCount:
+            params.visualReview?.issues.length ||
+            params.visualQa?.issues.length ||
+            0,
+          createdAt: new Date().toISOString(),
+        },
+      ].slice(-6),
+    },
+  };
+  await db()
+    .update(chat)
+    .set({
+      status: 'rendering',
+      parts: JSON.stringify(nextParts),
+    })
+    .where(
+      and(
+        eq(chat.id, row.id),
+        eq(chat.status, row.status),
+        eq(chat.updatedAt, row.updatedAt)
+      )
+    );
+  const persisted = await getAnimationQualityContext(params.id, params.jobId);
+  const recorded = persisted.qualityControl.attempts.some(
+    (entry) => entry.attempt === params.attempt && entry.kind === params.kind
+  );
+  if (!recorded) {
+    if (conflictAttempt >= 3) {
+      throw new Error('Animation quality gate update conflicted');
+    }
+    return persistAnimationQualityGate(params, conflictAttempt + 1);
+  }
+  return persisted;
+}
+
 export async function updateRender(params: {
   id: string;
   jobId: string;
   status: 'rendering' | 'completed' | 'failed';
-  stage?: 'validating' | 'compiling' | 'transcoding' | 'uploading';
+  stage?:
+    | 'validating'
+    | 'compiling'
+    | 'transcoding'
+    | 'reviewing'
+    | 'uploading';
   progress?: number;
   videoUrl?: string;
   thumbnailUrl?: string;
+  contactSheetUrl?: string;
+  qaReportUrl?: string;
+  visualQa?: AnimationVisualQaReport;
   error?: string;
 }): Promise<{
   cancelRequested: boolean;
@@ -1343,6 +2072,20 @@ export async function updateRender(params: {
     // deterministic message if the earlier request committed state and then
     // failed before inserting the conversation entry.
     if (row.status === 'completed' && params.status === 'completed') {
+      const replayParts: StoredAnimationParts = {
+        ...parts,
+        videoUrl: params.videoUrl || parts.videoUrl,
+        thumbnailUrl: params.thumbnailUrl || parts.thumbnailUrl,
+        contactSheetUrl: params.contactSheetUrl || parts.contactSheetUrl,
+        qaReportUrl: params.qaReportUrl || parts.qaReportUrl,
+        visualQa: params.visualQa || parts.visualQa,
+      };
+      if (JSON.stringify(replayParts) !== JSON.stringify(parts)) {
+        await db()
+          .update(chat)
+          .set({ parts: JSON.stringify(replayParts) })
+          .where(and(eq(chat.id, row.id), eq(chat.status, 'completed')));
+      }
       await ensureRenderCompletedMessage({
         userId: row.userId,
         chatId: row.id,
@@ -1359,6 +2102,16 @@ export async function updateRender(params: {
   }
   if (!['queued', 'rendering'].includes(row.status)) {
     throw new Error('Animation is not awaiting a render update');
+  }
+  if (params.status === 'completed') {
+    const finalApproval = parts.qualityControl?.attempts.some(
+      (entry) => entry.kind === 'final_review' && entry.action === 'approve'
+    );
+    if (parts.qualityControl?.status !== 'approved' || !finalApproval) {
+      throw new Error(
+        'Final high-quality render has not passed quality review'
+      );
+    }
   }
   const renderDiagnostic = params.error
     ?.replace(/[\u0000-\u001f\u007f]+/g, ' ')
@@ -1381,6 +2134,11 @@ export async function updateRender(params: {
     ...parts,
     videoUrl: params.videoUrl || parts.videoUrl,
     thumbnailUrl: params.thumbnailUrl || parts.thumbnailUrl,
+    contactSheetUrl: params.contactSheetUrl || parts.contactSheetUrl,
+    qaReportUrl: params.qaReportUrl || parts.qaReportUrl,
+    visualQa: params.visualQa || parts.visualQa,
+    visualReview:
+      params.status === 'completed' ? parts.visualReview : undefined,
     error: renderFailure?.message,
     failure: renderFailure,
     renderRepair: renderFailure

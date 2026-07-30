@@ -7,133 +7,178 @@ import {
   decideAnimationModelAccess,
   DEFAULT_ANIMATION_MODEL,
   getAnimationModelPolicy,
+  getAnimationReasoningEffort,
 } from '../src/config/animation-models';
 import { productIncludesProModels } from '../src/config/pricing';
+import {
+  animationModelValue,
+  parseAnimationModelValue,
+} from '../src/lib/animation';
 import {
   AnimationApiError,
   parseModelChoice,
 } from '../src/routes/api/animations/-shared';
 
-test('the default free model is explicitly allowlisted', () => {
-  const policy = getAnimationModelPolicy('yunwu', DEFAULT_ANIMATION_MODEL);
+test('the default free model is explicitly allowlisted on Kie', () => {
+  const policy = getAnimationModelPolicy('kie', DEFAULT_ANIMATION_MODEL);
 
   assert.ok(policy);
+  assert.equal(policy.model, 'gemini-3.6-flash');
   assert.equal(policy.requiredTier, 'free');
   assert.equal(canUseAnimationModel('free', policy), true);
 });
 
-test('direct API selections cannot bypass the plan boundary', () => {
-  const freeAuto = decideAnimationModelAccess({
-    tier: 'free',
-    choice: 'auto',
-  });
+test('only reviewed reasoning models receive a low-effort hint', () => {
+  for (const model of [
+    'gemini-3.6-flash',
+    'grok-4-5',
+    'gemini-3.1-pro',
+    'gpt-5-2',
+    'gpt-5-5',
+  ]) {
+    assert.equal(getAnimationReasoningEffort(model), 'low', model);
+  }
+  assert.equal(getAnimationReasoningEffort('claude-sonnet-4-6'), undefined);
+  assert.equal(getAnimationReasoningEffort('claude-opus-4-7'), undefined);
+});
+
+test('direct API selections enforce the free and Pro boundary', () => {
+  const freeModels = ['gemini-3.6-flash', 'grok-4-5', 'gemini-3.1-pro'];
+  const proModels = [
+    'gpt-5-2',
+    'gpt-5-5',
+    'claude-sonnet-4-6',
+    'claude-opus-4-7',
+  ];
+
+  const freeAuto = decideAnimationModelAccess({ tier: 'free', choice: 'auto' });
   assert.equal(freeAuto.allowed, true);
   if (freeAuto.allowed)
     assert.equal(freeAuto.policy.model, DEFAULT_ANIMATION_MODEL);
 
-  assert.deepEqual(
-    decideAnimationModelAccess({
-      tier: 'free',
-      choice: 'yunwu',
-      requestedModel: 'qwen3-coder-plus',
-    }),
-    { allowed: false, reason: 'PRO_REQUIRED' }
-  );
+  for (const model of freeModels) {
+    assert.equal(
+      decideAnimationModelAccess({
+        tier: 'free',
+        choice: 'kie',
+        requestedModel: model,
+      }).allowed,
+      true,
+      model
+    );
+  }
 
-  const proExplicit = decideAnimationModelAccess({
-    tier: 'pro',
-    choice: 'yunwu',
-    requestedModel: 'qwen3-coder-plus',
-  });
-  assert.equal(proExplicit.allowed, true);
-
-  const starterExplicit = decideAnimationModelAccess({
-    tier: 'starter',
-    choice: 'yunwu',
-    requestedModel: 'qwen3-coder-plus',
-  });
-  assert.equal(starterExplicit.allowed, true);
-
-  assert.deepEqual(
-    decideAnimationModelAccess({
-      tier: 'starter',
-      choice: 'yunwu',
-      requestedModel: 'gpt-5',
-    }),
-    { allowed: false, reason: 'PRO_REQUIRED' }
-  );
+  for (const model of proModels) {
+    assert.deepEqual(
+      decideAnimationModelAccess({
+        tier: 'starter',
+        choice: 'kie',
+        requestedModel: model,
+      }),
+      { allowed: false, reason: 'PRO_REQUIRED' },
+      model
+    );
+    assert.equal(
+      decideAnimationModelAccess({
+        tier: 'pro',
+        choice: 'kie',
+        requestedModel: model,
+      }).allowed,
+      true,
+      model
+    );
+  }
 
   assert.deepEqual(
     decideAnimationModelAccess({
       tier: 'free',
       choice: 'auto',
-      requestedModel: 'qwen3-coder-plus',
-    }),
-    { allowed: false, reason: 'INVALID_MODEL' }
-  );
-  assert.deepEqual(
-    decideAnimationModelAccess({
-      tier: 'pro',
-      // Keep the runtime fail-closed assertion for stale clients, even though
-      // the public TypeScript contract no longer exposes this provider.
-      choice: 'openai' as never,
-      requestedModel: 'gpt-5',
+      requestedModel: 'grok-4-5',
     }),
     { allowed: false, reason: 'INVALID_MODEL' }
   );
 });
 
-test('free access cannot use paid-plan models', () => {
-  const paidPolicies = animationModelPolicies.filter(
-    (policy) => policy.requiredTier !== 'free'
+test('all seven policies are Kie-only with the requested tier split', () => {
+  assert.equal(animationModelPolicies.length, 7);
+  assert.ok(
+    animationModelPolicies.every((policy) => policy.provider === 'kie')
   );
-
-  assert.ok(paidPolicies.length > 0);
-  for (const policy of paidPolicies) {
-    assert.equal(canUseAnimationModel('free', policy), false, policy.model);
-  }
+  assert.equal(
+    animationModelPolicies.filter((policy) => policy.requiredTier === 'free')
+      .length,
+    3
+  );
+  assert.equal(
+    animationModelPolicies.filter((policy) => policy.requiredTier === 'pro')
+      .length,
+    4
+  );
+  assert.equal(
+    animationModelPolicies.some(
+      (policy) => (policy.requiredTier as string) === 'starter'
+    ),
+    false
+  );
 });
 
-test('Starter access includes Free and Starter models but not Pro models', () => {
+test('Starter inherits Free models but not Pro models', () => {
   for (const policy of animationModelPolicies) {
     assert.equal(
       canUseAnimationModel('starter', policy),
-      policy.requiredTier !== 'pro',
+      policy.requiredTier === 'free',
       policy.model
     );
   }
 });
 
-test('Pro access can use every model tier', () => {
+test('Pro access can use every allowlisted model', () => {
   for (const policy of animationModelPolicies) {
     assert.equal(canUseAnimationModel('pro', policy), true, policy.model);
   }
 });
 
-test('unknown providers and model aliases fail closed', () => {
+test('unknown providers, old Yunwu values, and aliases fail closed', () => {
   const unknowns = [
     getAnimationModelPolicy('unknown-provider', DEFAULT_ANIMATION_MODEL),
-    getAnimationModelPolicy('yunwu', 'qwen3-coder'),
-    getAnimationModelPolicy('yunwu', 'new-unreviewed-model'),
+    getAnimationModelPolicy('yunwu', 'deepseek-v4-pro'),
+    getAnimationModelPolicy('kie', 'gemini-3-pro'),
+    getAnimationModelPolicy('kie', 'new-unreviewed-model'),
   ];
 
-  for (const policy of unknowns) {
-    assert.equal(policy, undefined);
-    const allowed = policy ? canUseAnimationModel('pro', policy) : false;
-    assert.equal(allowed, false);
+  for (const policy of unknowns) assert.equal(policy, undefined);
+  assert.deepEqual(parseAnimationModelValue('yunwu:deepseek-v4-pro'), {
+    modelChoice: 'auto',
+  });
+});
+
+test('stale API provider choices are rejected instead of becoming Auto', () => {
+  assert.equal(parseModelChoice(undefined), 'auto');
+  assert.equal(parseModelChoice('kie'), 'kie');
+  for (const provider of ['yunwu', 'openai']) {
+    assert.throws(
+      () => parseModelChoice(provider),
+      (error: unknown) =>
+        error instanceof AnimationApiError &&
+        error.code === 'INVALID_MODEL' &&
+        error.status === 400,
+      provider
+    );
   }
 });
 
-test('stale API provider choices do not silently become Auto', () => {
-  assert.equal(parseModelChoice(undefined), 'auto');
-  assert.equal(parseModelChoice('yunwu'), 'yunwu');
-  assert.throws(
-    () => parseModelChoice('openai'),
-    (error: unknown) =>
-      error instanceof AnimationApiError &&
-      error.code === 'INVALID_MODEL' &&
-      error.status === 400
+test('client model values preserve the explicit Kie boundary', () => {
+  assert.equal(
+    animationModelValue('kie', 'gemini-3.6-flash'),
+    'kie:gemini-3.6-flash'
   );
+  assert.deepEqual(parseAnimationModelValue('kie:gemini-3.6-flash'), {
+    modelChoice: 'kie',
+    model: 'gemini-3.6-flash',
+  });
+  assert.deepEqual(parseAnimationModelValue('unknown:gemini-3.6-flash'), {
+    modelChoice: 'auto',
+  });
 });
 
 test('the payment catalog is the source of truth for Pro model entitlement', () => {

@@ -9,17 +9,30 @@ import { getSettings } from './settings';
 
 export type ConfigMap = Record<string, string>;
 
-// In-memory cache
+const DEFAULT_CACHE_TTL_MS = 3600_000; // 1 hour
+const D1_CACHE_TTL_MS = 5_000;
+
+/**
+ * D1-backed Workers run many independent isolates, so invalidating this
+ * module-level cache after an admin save only clears the isolate that handled
+ * the request. Keep a very short D1 TTL so other isolates converge quickly;
+ * long-lived Node processes can retain the original one-hour cache.
+ */
+export function getConfigCacheTtlMs(databaseProvider: string): number {
+  return databaseProvider === 'd1' ? D1_CACHE_TTL_MS : DEFAULT_CACHE_TTL_MS;
+}
+
+// Per-process / per-isolate in-memory cache.
 let cachedConfigs: ConfigMap | null = null;
 let cacheTime = 0;
-const CACHE_TTL = 3600_000; // 1 hour
 
 /**
  * Get all configs from database.
  */
 export async function getDbConfigs(): Promise<ConfigMap> {
   const now = Date.now();
-  if (cachedConfigs && now - cacheTime < CACHE_TTL) {
+  const cacheTtl = getConfigCacheTtlMs(envConfigs.database_provider);
+  if (cachedConfigs && now - cacheTime < cacheTtl) {
     return cachedConfigs;
   }
 

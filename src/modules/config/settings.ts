@@ -159,9 +159,9 @@ export function getSettingGroups(): SettingGroup[] {
       tab: 'ai',
     },
     {
-      name: 'yunwu',
-      title: 'Yunwu',
-      description: 'Yunwu OpenAI-compatible API gateway',
+      name: 'kie',
+      title: 'Kie',
+      description: 'Kie chat model gateway',
       tab: 'ai',
     },
     {
@@ -781,22 +781,22 @@ export function getSettings(): Setting[] {
       group: 'openai',
       tab: 'ai',
     },
-    // ─── AI / Yunwu ─────────────────────────────────────────────────
+    // ─── AI / Kie ───────────────────────────────────────────────────
     {
-      name: 'yunwu_base_url',
+      name: 'kie_base_url',
       title: 'Base URL',
       type: 'text',
-      placeholder: 'https://yunwu.ai/v1',
-      group: 'yunwu',
+      placeholder: 'https://api.kie.ai',
+      group: 'kie',
       tab: 'ai',
-      defaultValue: 'https://yunwu.ai/v1',
+      defaultValue: 'https://api.kie.ai',
     },
     {
-      name: 'yunwu_api_key',
+      name: 'kie_api_key',
       title: 'API Key',
       type: 'password',
-      placeholder: 'sk-xxx',
-      group: 'yunwu',
+      placeholder: 'xxx',
+      group: 'kie',
       tab: 'ai',
     },
     // ─── AI / Anthropic ──────────────────────────────────────────────

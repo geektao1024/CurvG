@@ -7,10 +7,9 @@ export type AnimationSubject =
   | 'chemistry'
   | 'economics';
 
-// Animation generation is intentionally Yunwu-only. Other generic AI
-// providers remain available to unrelated modules, but are not valid choices
-// for this product surface and must not linger in the client contract.
-export type AnimationModelChoice = 'auto' | 'yunwu';
+// Only server-curated chat platforms belong in this product contract. Generic
+// media providers remain available to unrelated modules.
+export type AnimationModelChoice = 'auto' | 'kie';
 
 export type AnimationModelProvider = Exclude<AnimationModelChoice, 'auto'>;
 
@@ -53,7 +52,7 @@ export function parseAnimationModelValue(value: string): {
   if (separator <= 0) return { modelChoice: 'auto' };
   const provider = value.slice(0, separator);
   const model = value.slice(separator + 1).trim();
-  if (!model || provider !== 'yunwu') {
+  if (!model || provider !== 'kie') {
     return { modelChoice: 'auto' };
   }
   return {
@@ -93,15 +92,29 @@ export type AnimationObjectKind =
 
 export type AnimationSemanticRegion = 'title' | 'formula' | 'graph';
 
+export interface AnimationFormulaPartSpec {
+  id: string;
+  latex: string;
+  meaning: string;
+  color?: string;
+}
+
 export interface AnimationObjectSpec {
   id: string;
   kind: AnimationObjectKind;
   region: AnimationSemanticRegion;
+  importance?: 'hero' | 'supporting' | 'context';
   label?: string;
   expr?: string;
   domain?: [number, number];
   color?: string;
   values?: number[][];
+  /**
+   * Addressable MathTex arguments. Keeping the pieces explicit lets the
+   * deterministic compiler focus, recolor and transform a mathematical term
+   * without asking a model to write Python.
+   */
+  parts?: AnimationFormulaPartSpec[];
 }
 
 export type AnimationTimelineOperation =
@@ -110,16 +123,26 @@ export type AnimationTimelineOperation =
   | 'fade_in'
   | 'fade_out'
   | 'transform'
+  | 'emphasize'
+  | 'spotlight'
+  | 'glow'
+  | 'camera_focus'
+  | 'camera_reset'
   | 'hold';
 
 export type AnimationEase = 'linear' | 'smooth' | 'there_and_back';
 
 export interface AnimationTimelineSpec {
   id: string;
+  shotId?: string;
   at: number;
   op: AnimationTimelineOperation;
   ref: string;
   targetRef?: string;
+  /** A formula/series part id scoped to ref. */
+  partId?: string;
+  /** Camera magnification for camera_focus. */
+  zoom?: number;
   runTime: number;
   ease: AnimationEase;
 }
@@ -129,9 +152,178 @@ export interface AnimationLayoutSpec {
   title?: string;
 }
 
+export type AnimationDirectionPreset =
+  | 'clean-classroom'
+  | 'cinematic-math'
+  | 'geometric-proof'
+  | 'data-story';
+
+export type AnimationShotBeat =
+  | 'hook'
+  | 'setup'
+  | 'mechanism'
+  | 'proof'
+  | 'payoff'
+  | 'memory';
+
+export interface AnimationIntentSpec {
+  learningGoal: string;
+  hook: string;
+  takeaway: string;
+}
+
+export interface AnimationDirectionSpec {
+  preset: AnimationDirectionPreset;
+  frame: '16:9' | '9:16';
+  pacing: 'calm' | 'balanced' | 'energetic';
+  textPolicy: {
+    maxWordsPerObject: number;
+    maxSimultaneousText: number;
+  };
+}
+
+export interface AnimationCinematographySpec {
+  scene: 'static' | 'moving-camera';
+  /** Keep the visual language deliberate instead of allowing arbitrary FX. */
+  emphasis: 'clean' | 'spotlight' | 'term-tour';
+}
+
+export interface AnimationMathDossierSpec {
+  coreClaim: string;
+  invariants: string[];
+  commonMisreading: string;
+  visualProof: string;
+  /** Required by v5; optional here so archived v4 records remain readable. */
+  definitions?: Array<{ concept: string; statement: string }>;
+  derivationSteps?: string[];
+  checks?: Array<{
+    claim: string;
+    method: string;
+    expected: string;
+  }>;
+  limitations?: string[];
+}
+
+export interface AnimationKnowledgeNodeSpec {
+  id: string;
+  concept: string;
+  dependsOn: string[];
+  misconception: string;
+}
+
+export interface AnimationCurriculumBeatSpec {
+  id: string;
+  learningJob: string;
+  dependsOn: string[];
+  visualEvidence: string;
+  notationBudget: number;
+}
+
+export interface AnimationShotSpec {
+  id: string;
+  beat: AnimationShotBeat;
+  purpose: string;
+  startAt: number;
+  endAt: number;
+  focusRef: string;
+  transition: 'build' | 'morph' | 'emphasis' | 'hold';
+  acceptance: string[];
+}
+
+export type AnimationVisualQaCode =
+  | 'weak_opening'
+  | 'empty_frame'
+  | 'sparse_frame'
+  | 'edge_risk'
+  | 'off_center'
+  | 'low_contrast'
+  | 'static_sequence'
+  | 'black_segment'
+  | 'flash_frame'
+  | 'frozen_segment';
+
+export interface AnimationVisualQaFrame {
+  index: number;
+  occupancy: number;
+  edgeContent: number;
+  edgeRisk: boolean;
+  centerOffset: number;
+  contrast: number;
+  contentBounds: [number, number, number, number];
+}
+
+export interface AnimationVisualQaIssue {
+  code: AnimationVisualQaCode;
+  severity: 'info' | 'warning';
+  frames: number[];
+  message: string;
+}
+
+export interface AnimationVisualQaReport {
+  analyzerVersion: 1;
+  status: 'pass' | 'review';
+  score: number;
+  sampleCount: number;
+  frames: AnimationVisualQaFrame[];
+  transitionDeltas: number[];
+  durationSeconds: number;
+  temporalSampleRate: number;
+  temporalSampleCount: number;
+  blackSegments: Array<[number, number]>;
+  frozenSegments: Array<[number, number]>;
+  flashTimestamps: number[];
+  issues: AnimationVisualQaIssue[];
+}
+
+export interface AnimationVisualReviewIssue {
+  category:
+    | 'layout'
+    | 'clipping'
+    | 'legibility'
+    | 'pacing'
+    | 'hierarchy'
+    | 'math_fidelity'
+    | 'payoff';
+  severity: 'minor' | 'major' | 'blocking';
+  frames: number[];
+  problem: string;
+  suggestion: string;
+}
+
+export interface AnimationVisualReview {
+  status: 'approved' | 'needs_revision' | 'unavailable';
+  model: string;
+  summary: string;
+  strengths: string[];
+  issues: AnimationVisualReviewIssue[];
+  reviewedAt: string;
+  jobId: string;
+}
+
+export type AnimationQualityGateAction = 'approve' | 'repair' | 'reject';
+
+export interface AnimationQualityGateAttempt {
+  attempt: number;
+  kind: 'render_error' | 'visual_review' | 'final_review';
+  action: AnimationQualityGateAction;
+  deterministicScore?: number;
+  reviewStatus?: AnimationVisualReview['status'];
+  issueCount: number;
+  createdAt: string;
+}
+
+export interface AnimationQualityControlState {
+  status: 'pending' | 'reviewing' | 'repairing' | 'approved' | 'rejected';
+  attempt: number;
+  maxRepairs: number;
+  attempts: AnimationQualityGateAttempt[];
+}
+
 /**
  * v1 records are kept for read-only archive access. Every newly generated
- * animation uses schemaVersion 2 and the objects/timeline/layout IR below.
+ * animation uses the objects/timeline/layout IR below. v3 adds a director
+ * contract. v4 adds addressable formula terms and a restricted cinematography
+ * grammar without removing deterministic compilation or archive support.
  */
 export interface AnimationSceneSpec {
   id: string;
@@ -150,7 +342,7 @@ export interface AnimationAreaSpec {
 }
 
 export interface AnimationSpec {
-  schemaVersion?: 1 | 2;
+  schemaVersion?: 1 | 2 | 3 | 4 | 5;
   title: string;
   summary: string;
   durationSeconds: number;
@@ -164,6 +356,13 @@ export interface AnimationSpec {
   objects?: AnimationObjectSpec[];
   timeline?: AnimationTimelineSpec[];
   layout?: AnimationLayoutSpec | string;
+  intent?: AnimationIntentSpec;
+  direction?: AnimationDirectionSpec;
+  cinematography?: AnimationCinematographySpec;
+  mathDossier?: AnimationMathDossierSpec;
+  knowledgeMap?: AnimationKnowledgeNodeSpec[];
+  curriculum?: AnimationCurriculumBeatSpec[];
+  shots?: AnimationShotSpec[];
   areas?: AnimationAreaSpec[];
   dependencies?: string[];
   notes?: string[];
@@ -187,6 +386,81 @@ export function isAnimationSpecV2(
   );
 }
 
+export function isAnimationSpecV3(
+  spec: AnimationSpec | undefined
+): spec is AnimationSpec & {
+  schemaVersion: 3;
+  objects: AnimationObjectSpec[];
+  timeline: AnimationTimelineSpec[];
+  layout: AnimationLayoutSpec;
+  intent: AnimationIntentSpec;
+  direction: AnimationDirectionSpec;
+  shots: AnimationShotSpec[];
+} {
+  return (
+    spec?.schemaVersion === 3 &&
+    Array.isArray(spec.objects) &&
+    Array.isArray(spec.timeline) &&
+    !!spec.layout &&
+    typeof spec.layout === 'object' &&
+    !!spec.intent &&
+    !!spec.direction &&
+    Array.isArray(spec.shots)
+  );
+}
+
+export function isAnimationSpecV4(
+  spec: AnimationSpec | undefined
+): spec is AnimationSpec & {
+  schemaVersion: 4 | 5;
+  objects: AnimationObjectSpec[];
+  timeline: AnimationTimelineSpec[];
+  layout: AnimationLayoutSpec;
+  intent: AnimationIntentSpec;
+  direction: AnimationDirectionSpec;
+  cinematography: AnimationCinematographySpec;
+  mathDossier: AnimationMathDossierSpec;
+  shots: AnimationShotSpec[];
+} {
+  return (
+    (spec?.schemaVersion === 4 || spec?.schemaVersion === 5) &&
+    Array.isArray(spec.objects) &&
+    Array.isArray(spec.timeline) &&
+    !!spec.layout &&
+    typeof spec.layout === 'object' &&
+    !!spec.intent &&
+    !!spec.direction &&
+    !!spec.cinematography &&
+    !!spec.mathDossier &&
+    Array.isArray(spec.shots)
+  );
+}
+
+export function isAnimationSpecDirected(
+  spec: AnimationSpec | undefined
+): spec is AnimationSpec & {
+  schemaVersion: 3 | 4 | 5;
+  objects: AnimationObjectSpec[];
+  timeline: AnimationTimelineSpec[];
+  layout: AnimationLayoutSpec;
+  intent: AnimationIntentSpec;
+  direction: AnimationDirectionSpec;
+  shots: AnimationShotSpec[];
+} {
+  return isAnimationSpecV3(spec) || isAnimationSpecV4(spec);
+}
+
+export function isAnimationSpecRenderable(
+  spec: AnimationSpec | undefined
+): spec is AnimationSpec & {
+  schemaVersion: 2 | 3 | 4 | 5;
+  objects: AnimationObjectSpec[];
+  timeline: AnimationTimelineSpec[];
+  layout: AnimationLayoutSpec;
+} {
+  return isAnimationSpecV2(spec) || isAnimationSpecDirected(spec);
+}
+
 export interface AnimationVersion {
   version: number;
   createdAt: string;
@@ -195,6 +469,10 @@ export interface AnimationVersion {
   code?: string;
   videoUrl?: string;
   thumbnailUrl?: string;
+  contactSheetUrl?: string;
+  qaReportUrl?: string;
+  visualQa?: AnimationVisualQaReport;
+  visualReview?: AnimationVisualReview;
 }
 
 export interface AnimationRenderState {
@@ -206,6 +484,7 @@ export interface AnimationRenderState {
     | 'validating'
     | 'compiling'
     | 'transcoding'
+    | 'reviewing'
     | 'uploading'
     | 'completed'
     | 'canceled';
@@ -233,6 +512,14 @@ export type AnimationFailureCode =
   | 'BUSY'
   | 'UNKNOWN';
 
+export function animationFailureCodeFromHttpStatus(
+  status?: number
+): AnimationFailureCode | undefined {
+  if (status === 402) return 'INSUFFICIENT_CREDITS';
+  if (status === 403) return 'PRO_REQUIRED';
+  return undefined;
+}
+
 export interface AnimationFailure {
   stage: AnimationFailureStage;
   code: AnimationFailureCode;
@@ -255,6 +542,10 @@ export interface AnimationParts {
   code?: string;
   videoUrl?: string;
   thumbnailUrl?: string;
+  contactSheetUrl?: string;
+  qaReportUrl?: string;
+  visualQa?: AnimationVisualQaReport;
+  visualReview?: AnimationVisualReview;
   /** @deprecated Read failure.message. Kept for existing persisted rows. */
   error?: string;
   failure?: AnimationFailure;
@@ -272,6 +563,8 @@ export interface AnimationSummary {
   prompt: string;
   videoUrl?: string;
   thumbnailUrl?: string;
+  contactSheetUrl?: string;
+  qaReportUrl?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -290,8 +583,15 @@ export interface AnimationDetail extends AnimationSummary {
   messages: AnimationMessage[];
 }
 
+export type AnimationPlanningPhase =
+  | 'understanding'
+  | 'structuring'
+  | 'auditing'
+  | 'finalizing';
+
 export type AnimationGenerationEvent =
   | { type: 'started'; animation: AnimationDetail }
+  | { type: 'phase'; phase: AnimationPlanningPhase }
   | { type: 'delta'; delta: string }
   | { type: 'completed'; animation: AnimationDetail }
   | { type: 'error'; message: string; failure?: AnimationFailure };

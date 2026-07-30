@@ -5,6 +5,7 @@ export { Sandbox } from '@cloudflare/sandbox';
 interface RenderJob {
   animationId: string;
   callbackUrl: string;
+  qualityGateUrl: string;
   code: string;
   jobId: string;
 }
@@ -41,6 +42,8 @@ function parseJob(request: Request, body: Record<string, unknown>, env: Env) {
   const code = typeof body.code === 'string' ? body.code : '';
   const callbackValue =
     typeof body.callbackUrl === 'string' ? body.callbackUrl : '';
+  const qualityGateValue =
+    typeof body.qualityGateUrl === 'string' ? body.qualityGateUrl : '';
   if (!animationIdPattern.test(animationId)) {
     throw new Error('Invalid animation ID');
   }
@@ -50,7 +53,11 @@ function parseJob(request: Request, body: Record<string, unknown>, env: Env) {
   if (!code.includes('from manim import')) {
     throw new Error('Manim import is required');
   }
-  if (!/class\s+CurvGScene\s*\(\s*Scene\s*\)/.test(code)) {
+  if (
+    !/class\s+CurvGScene\s*\(\s*(?:Scene|MovingCameraScene|ThreeDScene)\s*\)/.test(
+      code
+    )
+  ) {
     throw new Error('CurvGScene is required');
   }
   const callbackUrl = new URL(callbackValue);
@@ -68,6 +75,20 @@ function parseJob(request: Request, body: Record<string, unknown>, env: Env) {
   if (callbackUrl.pathname !== expectedPath) {
     throw new Error('Callback path is invalid');
   }
+  const qualityGateUrl = new URL(qualityGateValue);
+  if (
+    qualityGateUrl.protocol !== 'https:' &&
+    qualityGateUrl.hostname !== 'localhost'
+  ) {
+    throw new Error('Quality gate URL must use HTTPS');
+  }
+  if (qualityGateUrl.origin !== allowedOrigin) {
+    throw new Error('Quality gate origin is not allowed');
+  }
+  const expectedQualityPath = `/api/animations/${encodeURIComponent(animationId)}/quality-gate`;
+  if (qualityGateUrl.pathname !== expectedQualityPath) {
+    throw new Error('Quality gate path is invalid');
+  }
   if (new URL(request.url).pathname !== '/render') {
     throw new Error('Not found');
   }
@@ -75,8 +96,63 @@ function parseJob(request: Request, body: Record<string, unknown>, env: Env) {
     animationId,
     code,
     callbackUrl: callbackUrl.toString(),
+    qualityGateUrl: qualityGateUrl.toString(),
     jobId: crypto.randomUUID(),
   } satisfies RenderJob;
+}
+
+interface QualityGateResult {
+  action: 'approve' | 'repair' | 'reject';
+  code?: string;
+}
+
+async function requestQualityGate(
+  job: RenderJob,
+  env: Env,
+  payload: Record<string, unknown>
+): Promise<QualityGateResult> {
+  const response = await fetch(job.qualityGateUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${env.RENDERER_TOKEN}`,
+    },
+    body: JSON.stringify({ ...payload, jobId: job.jobId }),
+  });
+  const result = (await response.json().catch(() => ({}))) as Record<
+    string,
+    unknown
+  >;
+  if (!response.ok || result.code !== 0) {
+    throw new Error(
+      typeof result.message === 'string'
+        ? result.message
+        : `Quality gate failed (${response.status})`
+    );
+  }
+  const data =
+    result.data && typeof result.data === 'object'
+      ? (result.data as Record<string, unknown>)
+      : undefined;
+  const action = data?.action;
+  if (action !== 'approve' && action !== 'repair' && action !== 'reject') {
+    throw new Error('Quality gate returned an invalid action');
+  }
+  const code = typeof data?.code === 'string' ? data.code : undefined;
+  if (action === 'repair') {
+    if (
+      !code ||
+      code.length < 100 ||
+      code.length > 60_000 ||
+      !code.includes('from manim import') ||
+      !/class\s+CurvGScene\s*\(\s*(?:Scene|MovingCameraScene|ThreeDScene)\s*\)/.test(
+        code
+      )
+    ) {
+      throw new Error('Quality gate returned invalid repaired code');
+    }
+  }
+  return { action, code };
 }
 
 async function notify(
@@ -113,7 +189,7 @@ async function notify(
 async function notifyStage(
   job: RenderJob,
   env: Env,
-  stage: 'validating' | 'compiling' | 'transcoding' | 'uploading',
+  stage: 'validating' | 'compiling' | 'transcoding' | 'reviewing' | 'uploading',
   progress: number
 ) {
   if (await notify(job, env, { status: 'rendering', stage, progress })) {
@@ -121,11 +197,17 @@ async function notifyStage(
   }
 }
 
-function artifactUrls(job: RenderJob) {
+function artifactUrls(job: RenderJob, includeQaReport = true) {
   const base = `/api/animations/${encodeURIComponent(job.animationId)}/artifact`;
   return {
     videoUrl: `${base}/video?jobId=${encodeURIComponent(job.jobId)}`,
     thumbnailUrl: `${base}/thumbnail?jobId=${encodeURIComponent(job.jobId)}`,
+    contactSheetUrl: `${base}/contact-sheet?jobId=${encodeURIComponent(job.jobId)}`,
+    ...(includeQaReport
+      ? {
+          qaReportUrl: `${base}/qa-report?jobId=${encodeURIComponent(job.jobId)}`,
+        }
+      : {}),
   };
 }
 
@@ -158,13 +240,20 @@ function artifactResponse(object: R2ObjectBody): Response {
 
 async function serveArtifact(request: Request, env: Env): Promise<Response> {
   const match = new URL(request.url).pathname.match(
-    /^\/artifact\/([A-Za-z0-9-]{1,80})\/([A-Za-z0-9-]{1,80})\/(video|thumbnail)$/
+    /^\/artifact\/([A-Za-z0-9-]{1,80})\/([A-Za-z0-9-]{1,80})\/(video|thumbnail|contact-sheet|qa-report)$/
   );
   if (!match) {
     return Response.json({ error: 'Artifact not found' }, { status: 404 });
   }
   const [, animationId, jobId, kind] = match;
-  const extension = kind === 'video' ? 'video.mp4' : 'thumbnail.jpg';
+  const extension =
+    kind === 'video'
+      ? 'video.mp4'
+      : kind === 'thumbnail'
+        ? 'thumbnail.jpg'
+        : kind === 'contact-sheet'
+          ? 'contact-sheet.jpg'
+          : 'qa-report.json';
   const object = await env.ARTIFACTS.get(
     `animations/${animationId}/${jobId}/${extension}`,
     { range: request.headers }
@@ -252,90 +341,322 @@ async function uploadBinaryFile(
   }
 }
 
+const MAX_QUALITY_REPAIRS = 2;
+
+function attemptProgress(attempt: number, offset: number) {
+  return Math.min(92, 10 + attempt * 28 + offset);
+}
+
+interface RenderEvidence {
+  playbackPath: string;
+  thumbnailPath: string;
+  contactSheetPath: string;
+  qaReportPath: string;
+  visualQa: Record<string, unknown>;
+}
+
+async function prepareRenderEvidence(
+  sandbox: Sandbox,
+  mediaRoot: '/workspace/media'
+): Promise<RenderEvidence> {
+  const locate = await sandbox.exec(
+    `find ${mediaRoot} -type f -name 'CurvGScene.mp4' -print -quit`,
+    { timeout: 10_000 }
+  );
+  const videoPath = locate.stdout.trim();
+  const expectedPrefix = `${mediaRoot}/`;
+  if (
+    !videoPath.startsWith(expectedPrefix) ||
+    !/^\/workspace\/[A-Za-z0-9_-]+\/[A-Za-z0-9_./-]+\.mp4$/.test(videoPath)
+  ) {
+    throw new NonRetryableRenderError('Rendered video path is invalid');
+  }
+
+  const playbackPath = '/workspace/video.mp4';
+  const optimize = await sandbox.exec(
+    `ffmpeg -y -i ${videoPath} -map 0:v:0 -an -c copy -movflags +faststart ${playbackPath}`,
+    { timeout: 60_000 }
+  );
+  if (!optimize.success) {
+    throw new NonRetryableRenderError(
+      commandError(optimize.stderr, 'Video playback optimization failed')
+    );
+  }
+
+  const thumbnailPath = '/workspace/thumbnail.jpg';
+  const thumbnail = await sandbox.exec(
+    `ffmpeg -y -ss 00:00:01 -i ${playbackPath} -frames:v 1 ${thumbnailPath}`,
+    { timeout: 30_000 }
+  );
+  if (!thumbnail.success) {
+    throw new NonRetryableRenderError(
+      commandError(thumbnail.stderr, 'Thumbnail generation failed')
+    );
+  }
+
+  const durationProbe = await sandbox.exec(
+    `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${playbackPath}`,
+    { timeout: 15_000 }
+  );
+  const duration = Number.parseFloat(durationProbe.stdout.trim());
+  if (!durationProbe.success || !Number.isFinite(duration) || duration <= 0) {
+    throw new NonRetryableRenderError('Rendered video duration is invalid');
+  }
+
+  const contactSheetPath = '/workspace/contact-sheet.jpg';
+  const sampleRate = (12 / duration).toFixed(8);
+  const contactSheet = await sandbox.exec(
+    `ffmpeg -y -i ${playbackPath} -vf "fps=${sampleRate},scale=360:-2:flags=lanczos,tile=4x3:padding=8:margin=8:color=0x0B0D14" -frames:v 1 -q:v 2 ${contactSheetPath}`,
+    { timeout: 60_000 }
+  );
+  if (!contactSheet.success) {
+    throw new NonRetryableRenderError(
+      commandError(contactSheet.stderr, 'Visual QA contact sheet failed')
+    );
+  }
+
+  const analysis = await sandbox.exec(
+    `python3 /opt/curvg/analyze_contact_sheet.py ${contactSheetPath} ${playbackPath}`,
+    { timeout: 240_000, cwd: '/workspace' }
+  );
+  let visualQa: Record<string, unknown> | undefined;
+  if (analysis.success && analysis.stdout.length <= 20_000) {
+    try {
+      const parsed = JSON.parse(analysis.stdout) as Record<string, unknown>;
+      if (
+        parsed.analyzerVersion === 1 &&
+        (parsed.status === 'pass' || parsed.status === 'review') &&
+        Array.isArray(parsed.frames) &&
+        parsed.frames.length === 12 &&
+        typeof parsed.temporalSampleCount === 'number'
+      ) {
+        visualQa = parsed;
+      }
+    } catch {
+      visualQa = undefined;
+    }
+  }
+  if (!visualQa) {
+    throw new Error(
+      commandError(
+        analysis.stderr,
+        'Visual QA analyzer did not produce valid evidence'
+      )
+    );
+  }
+  const qaReportPath = '/workspace/qa-report.json';
+  await sandbox.writeFile(qaReportPath, JSON.stringify(visualQa));
+  return {
+    playbackPath,
+    thumbnailPath,
+    contactSheetPath,
+    qaReportPath,
+    visualQa,
+  };
+}
+
+async function uploadReviewEvidence(params: {
+  sandbox: Sandbox;
+  env: Env;
+  job: RenderJob;
+  contactSheetKey: string;
+  qaReportKey: string;
+  evidence: RenderEvidence;
+  attempt: number;
+  phase: 'preview' | 'final';
+}) {
+  await uploadBinaryFile(
+    params.sandbox,
+    params.env.ARTIFACTS,
+    params.contactSheetKey,
+    params.evidence.contactSheetPath,
+    {
+      httpMetadata: { contentType: 'image/jpeg' },
+      customMetadata: {
+        animationId: params.job.animationId,
+        jobId: params.job.jobId,
+        sampleCount: '12',
+        attempt: String(params.attempt),
+        phase: params.phase,
+      },
+    }
+  );
+  await uploadBinaryFile(
+    params.sandbox,
+    params.env.ARTIFACTS,
+    params.qaReportKey,
+    params.evidence.qaReportPath,
+    {
+      httpMetadata: { contentType: 'application/json' },
+      customMetadata: {
+        animationId: params.job.animationId,
+        jobId: params.job.jobId,
+        analyzerVersion: '1',
+        attempt: String(params.attempt),
+        phase: params.phase,
+      },
+    }
+  );
+}
+
 async function processJob(job: RenderJob, env: Env) {
   const artifactPrefix = `animations/${job.animationId}/${job.jobId}`;
   const videoKey = `${artifactPrefix}/video.mp4`;
   const thumbnailKey = `${artifactPrefix}/thumbnail.jpg`;
-  const [existingVideo, existingThumbnail] = await Promise.all([
+  const contactSheetKey = `${artifactPrefix}/contact-sheet.jpg`;
+  const qaReportKey = `${artifactPrefix}/qa-report.json`;
+  const [
+    existingVideo,
+    existingThumbnail,
+    existingContactSheet,
+    existingQaReport,
+  ] = await Promise.all([
     env.ARTIFACTS.head(videoKey),
     env.ARTIFACTS.head(thumbnailKey),
+    env.ARTIFACTS.head(contactSheetKey),
+    env.ARTIFACTS.head(qaReportKey),
   ]);
-  if (existingVideo && existingThumbnail) {
-    await notify(job, env, { status: 'completed', ...artifactUrls(job) });
+  if (existingVideo && existingThumbnail && existingContactSheet) {
+    const reportObject = existingQaReport
+      ? await env.ARTIFACTS.get(qaReportKey)
+      : undefined;
+    const visualQa = reportObject
+      ? await reportObject
+          .json<Record<string, unknown>>()
+          .catch(() => undefined)
+      : undefined;
+    await notify(job, env, {
+      status: 'completed',
+      ...artifactUrls(job, !!visualQa),
+      ...(visualQa ? { visualQa } : {}),
+    });
     return;
   }
 
-  await notifyStage(job, env, 'validating', 18);
   const sandbox = getSandbox(env.Sandbox, job.jobId, {
     sleepAfter: '10m',
     labels: { workload: 'curvg-manim', animationId: job.animationId },
   });
+  let currentCode = job.code;
   try {
-    await sandbox.writeFile('/workspace/scene.py', job.code);
-    const validation = await sandbox.exec(
-      'python3 /opt/curvg/validate_scene.py /workspace/scene.py',
-      { timeout: 30_000, cwd: '/workspace' }
-    );
-    if (!validation.success) {
-      throw new NonRetryableRenderError(
-        commandError(validation.stderr, 'Generated code failed validation')
+    for (let attempt = 0; attempt <= MAX_QUALITY_REPAIRS; attempt += 1) {
+      await sandbox.exec(
+        'rm -rf /workspace/media /workspace/video.mp4 /workspace/thumbnail.jpg /workspace/contact-sheet.jpg /workspace/qa-report.json',
+        { timeout: 30_000, cwd: '/workspace' }
       );
-    }
-    await notifyStage(job, env, 'compiling', 42);
-    const render = await sandbox.exec(
-      'manim -qm --format=mp4 --disable_caching scene.py CurvGScene --media_dir /workspace/media',
-      { timeout: 600_000, cwd: '/workspace' }
-    );
-    if (!render.success) {
-      throw new NonRetryableRenderError(
-        commandError(render.stderr, 'Manim render failed')
+      await sandbox.writeFile('/workspace/scene.py', currentCode);
+      await notifyStage(job, env, 'validating', attemptProgress(attempt, 2));
+      const validation = await sandbox.exec(
+        'python3 /opt/curvg/validate_scene.py /workspace/scene.py',
+        { timeout: 30_000, cwd: '/workspace' }
       );
-    }
-    await notifyStage(job, env, 'transcoding', 72);
-    const locate = await sandbox.exec(
-      "find /workspace/media -type f -name 'CurvGScene.mp4' -print -quit",
-      { timeout: 10_000 }
-    );
-    const videoPath = locate.stdout.trim();
-    if (!/^\/workspace\/media\/[A-Za-z0-9_./-]+\.mp4$/.test(videoPath)) {
-      throw new NonRetryableRenderError('Rendered video path is invalid');
-    }
-    const playbackPath = '/workspace/video.mp4';
-    const optimize = await sandbox.exec(
-      `ffmpeg -y -i ${videoPath} -map 0:v:0 -an -c copy -movflags +faststart ${playbackPath}`,
-      { timeout: 60_000 }
-    );
-    if (!optimize.success) {
-      throw new NonRetryableRenderError(
-        commandError(optimize.stderr, 'Video playback optimization failed')
-      );
-    }
-    const thumbnailPath = '/workspace/thumbnail.jpg';
-    const thumbnail = await sandbox.exec(
-      `ffmpeg -y -ss 00:00:01 -i ${playbackPath} -frames:v 1 ${thumbnailPath}`,
-      { timeout: 30_000 }
-    );
-    if (!thumbnail.success) {
-      throw new NonRetryableRenderError(
-        commandError(thumbnail.stderr, 'Thumbnail generation failed')
-      );
-    }
-    await notifyStage(job, env, 'uploading', 88);
-    await uploadBinaryFile(sandbox, env.ARTIFACTS, videoKey, playbackPath, {
-      httpMetadata: { contentType: 'video/mp4' },
-      customMetadata: { animationId: job.animationId, jobId: job.jobId },
-    });
-    await uploadBinaryFile(
-      sandbox,
-      env.ARTIFACTS,
-      thumbnailKey,
-      thumbnailPath,
-      {
-        httpMetadata: { contentType: 'image/jpeg' },
-        customMetadata: { animationId: job.animationId, jobId: job.jobId },
+      if (!validation.success) {
+        const error = commandError(
+          validation.stderr,
+          'Generated code failed validation'
+        );
+        const gate = await requestQualityGate(job, env, {
+          kind: 'render_error',
+          attempt,
+          error,
+        });
+        if (gate.action !== 'repair' || !gate.code) {
+          throw new NonRetryableRenderError(
+            `Autonomous source repair was exhausted: ${error}`
+          );
+        }
+        currentCode = gate.code;
+        continue;
       }
+
+      await notifyStage(job, env, 'compiling', attemptProgress(attempt, 10));
+      const render = await sandbox.exec(
+        'manim -qm --format=mp4 --disable_caching scene.py CurvGScene --media_dir /workspace/media',
+        { timeout: 600_000, cwd: '/workspace' }
+      );
+      if (!render.success) {
+        const error = commandError(render.stderr, 'Manim render failed');
+        const gate = await requestQualityGate(job, env, {
+          kind: 'render_error',
+          attempt,
+          error,
+        });
+        if (gate.action !== 'repair' || !gate.code) {
+          throw new NonRetryableRenderError(
+            `Autonomous render repair was exhausted: ${error}`
+          );
+        }
+        currentCode = gate.code;
+        continue;
+      }
+
+      await notifyStage(job, env, 'transcoding', attemptProgress(attempt, 18));
+      await notifyStage(job, env, 'reviewing', attemptProgress(attempt, 24));
+      const previewEvidence = await prepareRenderEvidence(
+        sandbox,
+        '/workspace/media'
+      );
+      await notifyStage(job, env, 'reviewing', attemptProgress(attempt, 28));
+      await uploadReviewEvidence({
+        sandbox,
+        env,
+        job,
+        contactSheetKey,
+        qaReportKey,
+        evidence: previewEvidence,
+        attempt,
+        phase: 'final',
+      });
+      const finalGate = await requestQualityGate(job, env, {
+        kind: 'final_review',
+        attempt,
+        visualQa: previewEvidence.visualQa,
+      });
+      if (finalGate.action === 'repair' && finalGate.code) {
+        currentCode = finalGate.code;
+        continue;
+      }
+      if (finalGate.action !== 'approve') {
+        throw new NonRetryableRenderError(
+          'Final deliverable did not pass autonomous review'
+        );
+      }
+
+      await notifyStage(job, env, 'uploading', 96);
+      await uploadBinaryFile(
+        sandbox,
+        env.ARTIFACTS,
+        videoKey,
+        previewEvidence.playbackPath,
+        {
+          httpMetadata: { contentType: 'video/mp4' },
+          customMetadata: {
+            animationId: job.animationId,
+            jobId: job.jobId,
+            quality: '720p30',
+          },
+        }
+      );
+      await uploadBinaryFile(
+        sandbox,
+        env.ARTIFACTS,
+        thumbnailKey,
+        previewEvidence.thumbnailPath,
+        {
+          httpMetadata: { contentType: 'image/jpeg' },
+          customMetadata: { animationId: job.animationId, jobId: job.jobId },
+        }
+      );
+      await notify(job, env, {
+        status: 'completed',
+        ...artifactUrls(job, true),
+        visualQa: previewEvidence.visualQa,
+      });
+      return;
+    }
+    throw new NonRetryableRenderError(
+      'Autonomous quality repair budget was exhausted'
     );
-    await notify(job, env, { status: 'completed', ...artifactUrls(job) });
   } finally {
     await sandbox.destroy().catch(() => undefined);
   }

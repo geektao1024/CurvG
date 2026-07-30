@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { AITaskStatus, updateTask } from '@/modules/ai-tasks/service';
 import { updateRender } from '@/modules/animations/service';
 import { getAllConfigs } from '@/modules/config/service';
+import { validateAnimationVisualQaReport } from '@/lib/animation-qa';
 import {
   isRequestBodyTooLargeError,
   readJsonBodyCapped,
@@ -13,7 +14,13 @@ import { respData, respErr } from '@/lib/resp';
 import { hasBearerToken } from '../-shared';
 
 const statuses = new Set(['rendering', 'completed', 'failed']);
-const stages = new Set(['validating', 'compiling', 'transcoding', 'uploading']);
+const stages = new Set([
+  'validating',
+  'compiling',
+  'transcoding',
+  'reviewing',
+  'uploading',
+]);
 
 class RenderCallbackValidationError extends Error {}
 
@@ -32,7 +39,7 @@ function optionalArtifactUrl(
   origin: string,
   id: string,
   jobId: string,
-  kind: 'video' | 'thumbnail'
+  kind: 'video' | 'thumbnail' | 'contact-sheet' | 'qa-report'
 ): string | undefined {
   if (typeof value !== 'string' || !value.trim()) return undefined;
   const url = new URL(value, origin);
@@ -90,6 +97,34 @@ async function POST({
       jobId,
       'thumbnail'
     );
+    const contactSheetUrl = optionalArtifactUrl(
+      body.contactSheetUrl,
+      origin,
+      params.id,
+      jobId,
+      'contact-sheet'
+    );
+    const qaReportUrl = optionalArtifactUrl(
+      body.qaReportUrl,
+      origin,
+      params.id,
+      jobId,
+      'qa-report'
+    );
+    let visualQa;
+    if (body.visualQa !== undefined) {
+      try {
+        visualQa = validateAnimationVisualQaReport(body.visualQa);
+      } catch (error) {
+        // Deterministic QA is diagnostic metadata. A malformed report must not
+        // downgrade a successfully rendered and uploaded video to failed.
+        console.warn('[render-callback] ignored invalid visual QA report', {
+          animationId: params.id,
+          jobId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
     if (body.status === 'completed' && !videoUrl) {
       return respErr('Completed render requires a video URL', { status: 400 });
     }
@@ -99,6 +134,7 @@ async function POST({
             | 'validating'
             | 'compiling'
             | 'transcoding'
+            | 'reviewing'
             | 'uploading')
         : undefined;
     const progress =
@@ -113,6 +149,9 @@ async function POST({
       progress,
       videoUrl,
       thumbnailUrl,
+      contactSheetUrl,
+      qaReportUrl: visualQa ? qaReportUrl : undefined,
+      visualQa,
       error:
         typeof body.error === 'string' ? body.error.slice(0, 2000) : undefined,
     });

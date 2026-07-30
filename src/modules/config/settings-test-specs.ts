@@ -172,14 +172,14 @@ export const testSpecs: Record<string, TestSpec> = {
       },
     ],
   },
-  yunwu: {
-    group: 'yunwu',
+  kie: {
+    group: 'kie',
     fields: [
       {
         name: 'model',
         label: 'Model',
         type: 'text',
-        defaultValue: 'gpt-4o-mini',
+        defaultValue: 'gemini-3.6-flash',
         required: true,
       },
       {

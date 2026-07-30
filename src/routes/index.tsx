@@ -18,6 +18,7 @@ import { Footer } from '@/blocks/footer';
 import { FormulaWorkspacePreview } from '@/blocks/formula-workspace-preview';
 import { Header } from '@/blocks/header';
 import { Hero } from '@/blocks/hero';
+import { Pricing } from '@/blocks/pricing';
 import { PromptExamples } from '@/blocks/prompt-examples';
 import { ResourceLinks } from '@/blocks/resource-links';
 import { UseCases } from '@/blocks/use-cases';
@@ -44,6 +45,7 @@ function HomePage() {
         <UseCases />
         <FormulaWorkspacePreview />
         <Blog posts={posts} />
+        <Pricing headingLevel="h2" />
         <FAQ />
         <ResourceLinks />
         <CTA />

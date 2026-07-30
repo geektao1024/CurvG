@@ -23,6 +23,7 @@ import {
 import { respData, respErr } from '@/lib/resp';
 import { getLocale } from '@/paraglide/runtime.js';
 
+import { startSilentAnimationProduction } from './animations/-production';
 import {
   animationErrorInit,
   animationErrorResponse,
@@ -84,14 +85,22 @@ async function POST({ request }: { request: Request }) {
         locale: getLocale(),
         values,
       });
+      const animation = await createAnimationFromTemplate({
+        userId: session.user.id,
+        templateId,
+        title: instantiated.template.title,
+        prompt: `Template: ${instantiated.template.title}`,
+        mathObjectType: instantiated.template.mathObjectType,
+        spec: instantiated.spec,
+      });
+      const configs = await getAllConfigs();
       return respData(
-        await createAnimationFromTemplate({
+        await startSilentAnimationProduction({
+          request,
+          configs,
           userId: session.user.id,
-          templateId,
-          title: instantiated.template.title,
-          prompt: `Template: ${instantiated.template.title}`,
-          mathObjectType: instantiated.template.mathObjectType,
-          spec: instantiated.spec,
+          animation,
+          signal: request.signal,
         })
       );
     }
@@ -145,7 +154,7 @@ async function POST({ request }: { request: Request }) {
     const modelSelection = { choice: modelChoice, model: requestedModel };
     if (request.headers.get('accept')?.includes('text/event-stream')) {
       return animationEventStream(async (send, signal) => {
-        const animation = await withAnimationGenerationCapacity(
+        const planned = await withAnimationGenerationCapacity(
           session.user.id,
           () =>
             createAnimation({
@@ -161,14 +170,24 @@ async function POST({ request }: { request: Request }) {
               hooks: {
                 onStarted: (started) =>
                   send({ type: 'started', animation: started }),
+                onPhase: (phase) => send({ type: 'phase', phase }),
                 onSummaryDelta: (delta) => send({ type: 'delta', delta }),
               },
             })
         );
+        const animation = await startSilentAnimationProduction({
+          request,
+          configs,
+          userId: session.user.id,
+          animation: planned,
+          provider: provider.provider,
+          model: provider.model,
+          signal,
+        });
         send({ type: 'completed', animation });
       });
     }
-    const result: AnimationDetail = await withAnimationGenerationCapacity(
+    const planned: AnimationDetail = await withAnimationGenerationCapacity(
       session.user.id,
       () =>
         createAnimation({
@@ -183,7 +202,17 @@ async function POST({ request }: { request: Request }) {
           signal: request.signal,
         })
     );
-    return respData(result);
+    return respData(
+      await startSilentAnimationProduction({
+        request,
+        configs,
+        userId: session.user.id,
+        animation: planned,
+        provider: provider.provider,
+        model: provider.model,
+        signal: request.signal,
+      })
+    );
   } catch (error) {
     if (isRequestBodyTooLargeError(error)) {
       return respErr('Request body is too large', { status: 413 });

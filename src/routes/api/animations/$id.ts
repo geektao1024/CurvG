@@ -1,7 +1,16 @@
 import { createFileRoute } from '@tanstack/react-router';
 
 import { getAuth } from '@/core/auth';
-import { getAnimation, removeAnimation } from '@/modules/animations/service';
+import {
+  getAnimation,
+  removeAnimation,
+  renameAnimation,
+} from '@/modules/animations/service';
+import {
+  isRequestBodyTooLargeError,
+  readJsonBodyCapped,
+  REQUEST_BODY_LIMITS,
+} from '@/lib/request-body';
 import { respData, respErr, respOk } from '@/lib/resp';
 
 async function getUser(request: Request) {
@@ -42,6 +51,40 @@ async function DELETE({
   }
 }
 
+async function PATCH({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { id: string };
+}) {
+  try {
+    const user = await getUser(request);
+    const body = await readJsonBodyCapped<Record<string, unknown>>(
+      request,
+      REQUEST_BODY_LIMITS.animationAction
+    );
+    if (typeof body.title !== 'string') {
+      return respErr('Title is required', { status: 400 });
+    }
+    return respData(
+      await renameAnimation({
+        userId: user.id,
+        id: params.id,
+        title: body.title,
+      })
+    );
+  } catch (error) {
+    if (isRequestBodyTooLargeError(error)) {
+      return respErr('Request body is too large', { status: 413 });
+    }
+    const message = error instanceof Error ? error.message : 'Internal error';
+    return respErr(message, {
+      status: message === 'Unauthorized' ? 401 : 400,
+    });
+  }
+}
+
 export const Route = createFileRoute('/api/animations/$id')({
-  server: { handlers: { GET, DELETE } },
+  server: { handlers: { GET, PATCH, DELETE } },
 });

@@ -2,51 +2,51 @@
  * Server-authoritative animation model policy.
  *
  * Only models in this allowlist may be used by the animation APIs. Keep this
- * list deliberately small: every entry has been verified against the Yunwu
- * OpenAI-compatible endpoint. Unknown models fail closed instead of silently
- * becoming free when Yunwu adds new aliases.
+ * list deliberately small: every entry must have a documented provider
+ * endpoint. Unknown models fail closed instead of silently inheriting access
+ * when an upstream platform adds new aliases.
  */
 export const animationModelPolicies = [
   {
-    provider: 'yunwu',
-    model: 'deepseek-v4-pro',
-    presetKey: 'deepseekV4Pro',
+    provider: 'kie',
+    model: 'gemini-3.6-flash',
+    presetKey: 'kieGemini36Flash',
     requiredTier: 'free',
   },
   {
-    provider: 'yunwu',
-    model: 'deepseek-v4-flash',
-    presetKey: 'deepseekV4Flash',
-    requiredTier: 'starter',
+    provider: 'kie',
+    model: 'grok-4-5',
+    presetKey: 'kieGrok45',
+    requiredTier: 'free',
   },
   {
-    provider: 'yunwu',
-    model: 'qwen3-coder-plus',
-    presetKey: 'qwen3Coder',
-    requiredTier: 'starter',
+    provider: 'kie',
+    model: 'gemini-3.1-pro',
+    presetKey: 'kieGemini31Pro',
+    requiredTier: 'free',
   },
   {
-    provider: 'yunwu',
-    model: 'gpt-5',
-    presetKey: 'gpt5',
+    provider: 'kie',
+    model: 'gpt-5-2',
+    presetKey: 'kieGpt52',
     requiredTier: 'pro',
   },
   {
-    provider: 'yunwu',
-    model: 'gpt-5.5',
-    presetKey: 'gpt55',
+    provider: 'kie',
+    model: 'gpt-5-5',
+    presetKey: 'kieGpt55',
     requiredTier: 'pro',
   },
   {
-    provider: 'yunwu',
+    provider: 'kie',
     model: 'claude-sonnet-4-6',
-    presetKey: 'claudeSonnet46',
+    presetKey: 'kieClaudeSonnet46',
     requiredTier: 'pro',
   },
   {
-    provider: 'yunwu',
+    provider: 'kie',
     model: 'claude-opus-4-7',
-    presetKey: 'claudeOpus47',
+    presetKey: 'kieClaudeOpus47',
     requiredTier: 'pro',
   },
 ] as const;
@@ -54,14 +54,39 @@ export const animationModelPolicies = [
 export type AnimationModelPolicy = (typeof animationModelPolicies)[number];
 export type AnimationAccessTier = 'free' | 'starter' | 'pro';
 
-export const DEFAULT_ANIMATION_MODEL = 'deepseek-v4-pro';
+export const DEFAULT_ANIMATION_MODEL = 'gemini-3.6-flash';
+export const DEFAULT_ANIMATION_PROVIDER = 'kie';
 
-// Auto mode may fail over only for Pro users. Explicit model selections never
-// switch silently. Keep the chain short so one request cannot fan out across
-// the whole catalog during an upstream incident.
-export const PRO_AUTO_FALLBACK_MODELS = [
-  'qwen3-coder-plus',
-  'claude-sonnet-4-6',
+/**
+ * Provider tuning is allowlisted just like model access. Keeping reasoning at
+ * low protects the animation stage deadline while still allowing the models
+ * to plan structured scenes.
+ */
+export function getAnimationReasoningEffort(model: string): 'low' | undefined {
+  return [
+    'gemini-3.6-flash',
+    'grok-4-5',
+    'gemini-3.1-pro',
+    'gpt-5-2',
+    'gpt-5-5',
+  ].includes(model)
+    ? 'low'
+    : undefined;
+}
+
+export const FREE_AUTO_MODEL_TARGETS = [
+  { provider: 'kie', model: 'gemini-3.6-flash' },
+  { provider: 'kie', model: 'grok-4-5' },
+  { provider: 'kie', model: 'gemini-3.1-pro' },
+] as const;
+
+// Runtime resolution caps Auto at three targets. Claude Opus remains an
+// explicit choice because using it as an automatic fallback has a materially
+// higher cost and latency profile.
+export const PRO_AUTO_MODEL_TARGETS = [
+  { provider: 'kie', model: 'gpt-5-2' },
+  { provider: 'kie', model: 'gpt-5-5' },
+  { provider: 'kie', model: 'claude-sonnet-4-6' },
 ] as const;
 
 export function getAnimationModelPolicy(
@@ -99,12 +124,16 @@ export function decideAnimationModelAccess(params: {
   requestedModel?: string;
 }): AnimationModelDecision {
   const auto = params.choice === 'auto';
-  if ((!auto && params.choice !== 'yunwu') || (auto && params.requestedModel)) {
+  const explicitProvider = params.choice === 'kie' ? params.choice : undefined;
+  if ((!auto && !explicitProvider) || (auto && params.requestedModel)) {
     return { allowed: false, reason: 'INVALID_MODEL' };
   }
   const model = auto ? DEFAULT_ANIMATION_MODEL : params.requestedModel?.trim();
   if (!model) return { allowed: false, reason: 'INVALID_MODEL' };
-  const policy = getAnimationModelPolicy('yunwu', model);
+  const policy = getAnimationModelPolicy(
+    auto ? DEFAULT_ANIMATION_PROVIDER : explicitProvider!,
+    model
+  );
   if (!policy) return { allowed: false, reason: 'MODEL_UNAVAILABLE' };
   if (!canUseAnimationModel(params.tier, policy)) {
     return { allowed: false, reason: 'PRO_REQUIRED' };

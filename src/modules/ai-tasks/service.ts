@@ -13,25 +13,38 @@ export enum AITaskStatus {
   CANCELED = 'canceled',
 }
 
-/**
- * Create an AI task with optional credit consumption.
- */
-export async function createTask(params: {
+export interface CreateTaskParams {
   userId: string;
   mediaType: string;
   provider: string;
   model: string;
   prompt: string;
   costCredits?: number;
-  options?: any;
-}): Promise<any> {
+  options?: unknown;
+}
+
+export interface CreateTaskDependencies {
+  database: {
+    transaction<T>(callback: (tx: any) => Promise<T>): Promise<T>;
+  };
+  consumeCredits: typeof consume;
+  createId: () => string;
+}
+
+/**
+ * Create an AI task with optional credit consumption.
+ */
+export async function createTaskWithDependencies(
+  params: CreateTaskParams,
+  dependencies: CreateTaskDependencies
+): Promise<any> {
   const { userId, mediaType, provider, model, prompt, costCredits, options } =
     params;
 
-  return db().transaction(async (tx: any) => {
-    // 1. Insert task
+  return dependencies.database.transaction(async (tx: any) => {
+    const taskId = dependencies.createId();
     const taskData: any = {
-      id: getUuid(),
+      id: taskId,
       userId,
       mediaType,
       provider,
@@ -39,18 +52,20 @@ export async function createTask(params: {
       prompt,
       status: AITaskStatus.PENDING,
       costCredits: costCredits || 0,
+      options: options ? JSON.stringify(options) : undefined,
     };
 
-    const [task] = await tx.insert(aiTask).values(taskData).returning();
-
-    // 2. Consume credits if cost > 0
+    // Reserve credits before inserting the task. Cloudflare D1 does not
+    // provide rollback semantics for this interactive transaction callback,
+    // so inserting first would leave an orphaned pending task whenever the
+    // balance check fails.
     if (costCredits && costCredits > 0) {
-      const result = await consume({
+      const result = await dependencies.consumeCredits({
         userId,
         credits: costCredits,
         scene: 'ai_task',
         description: `AI ${mediaType} generation`,
-        metadata: JSON.stringify({ taskId: task.id }),
+        metadata: JSON.stringify({ taskId }),
         tx,
       });
 
@@ -58,18 +73,24 @@ export async function createTask(params: {
         throw new Error('Insufficient credits');
       }
 
-      // Store consumed credit ID for potential revocation
       if (result.consumedCredit) {
-        await tx
-          .update(aiTask)
-          .set({
-            taskInfo: JSON.stringify({ creditId: result.consumedCredit.id }),
-          })
-          .where(eq(aiTask.id, task.id));
+        taskData.creditId = result.consumedCredit.id;
+        taskData.taskInfo = JSON.stringify({
+          creditId: result.consumedCredit.id,
+        });
       }
     }
 
+    const [task] = await tx.insert(aiTask).values(taskData).returning();
     return task;
+  });
+}
+
+export async function createTask(params: CreateTaskParams): Promise<any> {
+  return createTaskWithDependencies(params, {
+    database: db(),
+    consumeCredits: consume,
+    createId: getUuid,
   });
 }
 

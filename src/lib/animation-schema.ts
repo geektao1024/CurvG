@@ -4,6 +4,13 @@ import type { AnimationSpec } from '@/lib/animation';
 
 const identifierSchema = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,79}$/);
 
+const formulaPartSchema = z.object({
+  id: identifierSchema,
+  latex: z.string().min(1).max(500),
+  meaning: z.string().min(1).max(300),
+  color: z.string().max(40).optional(),
+});
+
 const objectSchema = z.object({
   id: identifierSchema,
   kind: z.enum([
@@ -16,6 +23,7 @@ const objectSchema = z.object({
     'matrix',
   ]),
   region: z.enum(['title', 'formula', 'graph']),
+  importance: z.enum(['hero', 'supporting', 'context']).optional(),
   label: z.string().max(500).optional(),
   expr: z.string().max(1000).optional(),
   domain: z
@@ -27,39 +35,187 @@ const objectSchema = z.object({
     .min(1)
     .max(8)
     .optional(),
+  parts: z.array(formulaPartSchema).min(2).max(16).optional(),
 });
 
 const timelineSchema = z.object({
   id: identifierSchema,
+  shotId: identifierSchema.optional(),
   at: z.number().min(0).max(300),
-  op: z.enum(['draw', 'write', 'fade_in', 'fade_out', 'transform', 'hold']),
+  op: z.enum([
+    'draw',
+    'write',
+    'fade_in',
+    'fade_out',
+    'transform',
+    'emphasize',
+    'spotlight',
+    'glow',
+    'camera_focus',
+    'camera_reset',
+    'hold',
+  ]),
   ref: identifierSchema,
   targetRef: identifierSchema.optional(),
+  partId: identifierSchema.optional(),
+  zoom: z.number().min(1.1).max(3.5).optional(),
   runTime: z.number().min(0.1).max(120),
   ease: z.enum(['linear', 'smooth', 'there_and_back']).default('smooth'),
 });
 
+const commonAnimationSpecSchema = z.object({
+  title: z.string().min(1).max(160),
+  summary: z.string().min(1).max(2400),
+  durationSeconds: z.number().min(1).max(300),
+  assumptions: z.array(z.string().max(1000)).max(20).default([]),
+  style: z.object({
+    background: z.string().min(1).max(120),
+    palette: z.array(z.string().min(1).max(120)).min(1).max(12),
+    camera: z.string().min(1).max(600),
+  }),
+  objects: z.array(objectSchema).min(1).max(40),
+  layout: z.object({
+    regions: z.enum(['single', 'left|right', 'top|bottom']),
+    title: z.string().max(160).optional(),
+  }),
+  dependencies: z.array(z.string().max(500)).max(20).default([]),
+  notes: z.array(z.string().max(1000)).max(30).default([]),
+});
+
+const v2AnimationSpecSchema = commonAnimationSpecSchema.extend({
+  schemaVersion: z.literal(2),
+  timeline: z.array(timelineSchema).min(1).max(80),
+});
+
+const v3AnimationSpecSchema = commonAnimationSpecSchema.extend({
+  schemaVersion: z.literal(3),
+  intent: z.object({
+    learningGoal: z.string().min(1).max(500),
+    hook: z.string().min(1).max(240),
+    takeaway: z.string().min(1).max(240),
+  }),
+  direction: z.object({
+    preset: z.enum([
+      'clean-classroom',
+      'cinematic-math',
+      'geometric-proof',
+      'data-story',
+    ]),
+    frame: z.enum(['16:9', '9:16']),
+    pacing: z.enum(['calm', 'balanced', 'energetic']),
+    textPolicy: z.object({
+      maxWordsPerObject: z.number().int().min(1).max(14),
+      maxSimultaneousText: z.number().int().min(1).max(3),
+    }),
+  }),
+  shots: z
+    .array(
+      z.object({
+        id: identifierSchema,
+        beat: z.enum([
+          'hook',
+          'setup',
+          'mechanism',
+          'proof',
+          'payoff',
+          'memory',
+        ]),
+        purpose: z.string().min(1).max(500),
+        startAt: z.number().min(0).max(300),
+        endAt: z.number().min(0.1).max(300),
+        focusRef: identifierSchema,
+        transition: z.enum(['build', 'morph', 'emphasis', 'hold']),
+        acceptance: z.array(z.string().min(1).max(300)).min(1).max(6),
+      })
+    )
+    .min(3)
+    .max(8),
+  timeline: z
+    .array(timelineSchema.extend({ shotId: identifierSchema }))
+    .min(1)
+    .max(80),
+});
+
+const v4AnimationSpecSchema = commonAnimationSpecSchema.extend({
+  schemaVersion: z.literal(4),
+  intent: v3AnimationSpecSchema.shape.intent,
+  direction: v3AnimationSpecSchema.shape.direction,
+  cinematography: z.object({
+    scene: z.enum(['static', 'moving-camera']),
+    emphasis: z.enum(['clean', 'spotlight', 'term-tour']),
+  }),
+  mathDossier: z.object({
+    coreClaim: z.string().min(1).max(500),
+    invariants: z.array(z.string().min(1).max(500)).min(1).max(8),
+    commonMisreading: z.string().min(1).max(500),
+    visualProof: z.string().min(1).max(800),
+  }),
+  shots: v3AnimationSpecSchema.shape.shots,
+  timeline: z
+    .array(timelineSchema.extend({ shotId: identifierSchema }))
+    .min(1)
+    .max(80),
+});
+
+const knowledgeNodeSchema = z.object({
+  id: identifierSchema,
+  concept: z.string().min(1).max(500),
+  dependsOn: z.array(identifierSchema).max(12),
+  misconception: z.string().min(1).max(500),
+});
+
+const curriculumBeatSchema = z.object({
+  id: identifierSchema,
+  learningJob: z.string().min(1).max(500),
+  dependsOn: z.array(identifierSchema).max(12),
+  visualEvidence: z.string().min(1).max(800),
+  notationBudget: z.number().int().min(0).max(4),
+});
+
+const v5AnimationSpecSchema = commonAnimationSpecSchema.extend({
+  schemaVersion: z.literal(5),
+  intent: v3AnimationSpecSchema.shape.intent,
+  direction: v3AnimationSpecSchema.shape.direction,
+  cinematography: v4AnimationSpecSchema.shape.cinematography,
+  knowledgeMap: z.array(knowledgeNodeSchema).min(1).max(16),
+  curriculum: z.array(curriculumBeatSchema).min(3).max(12),
+  mathDossier: v4AnimationSpecSchema.shape.mathDossier.extend({
+    definitions: z
+      .array(
+        z.object({
+          concept: z.string().min(1).max(300),
+          statement: z.string().min(1).max(800),
+        })
+      )
+      .min(1)
+      .max(16),
+    derivationSteps: z.array(z.string().min(1).max(1000)).min(2).max(20),
+    checks: z
+      .array(
+        z.object({
+          claim: z.string().min(1).max(500),
+          method: z.string().min(1).max(500),
+          expected: z.string().min(1).max(500),
+        })
+      )
+      .min(1)
+      .max(12),
+    limitations: z.array(z.string().min(1).max(500)).max(12).default([]),
+  }),
+  shots: v3AnimationSpecSchema.shape.shots,
+  timeline: z
+    .array(timelineSchema.extend({ shotId: identifierSchema }))
+    .min(1)
+    .max(80),
+});
+
 export const animationSpecSchema = z
-  .object({
-    schemaVersion: z.literal(2),
-    title: z.string().min(1).max(160),
-    summary: z.string().min(1).max(2400),
-    durationSeconds: z.number().min(1).max(300),
-    assumptions: z.array(z.string().max(1000)).max(20).default([]),
-    style: z.object({
-      background: z.string().min(1).max(120),
-      palette: z.array(z.string().min(1).max(120)).min(1).max(12),
-      camera: z.string().min(1).max(600),
-    }),
-    objects: z.array(objectSchema).min(1).max(40),
-    timeline: z.array(timelineSchema).min(1).max(80),
-    layout: z.object({
-      regions: z.enum(['single', 'left|right', 'top|bottom']),
-      title: z.string().max(160).optional(),
-    }),
-    dependencies: z.array(z.string().max(500)).max(20).default([]),
-    notes: z.array(z.string().max(1000)).max(30).default([]),
-  })
+  .discriminatedUnion('schemaVersion', [
+    v2AnimationSpecSchema,
+    v3AnimationSpecSchema,
+    v4AnimationSpecSchema,
+    v5AnimationSpecSchema,
+  ])
   .superRefine((spec, context) => {
     const objectIds = new Set<string>();
     for (const [index, object] of spec.objects.entries()) {
@@ -78,9 +234,14 @@ export const animationSpecSchema = z
           path: ['objects', index, 'domain'],
         });
       }
+      const addressableFormula =
+        ['formula', 'series'].includes(object.kind) &&
+        object.parts &&
+        object.parts.length > 0;
       if (
         ['curve', 'area', 'formula', 'series'].includes(object.kind) &&
-        !object.expr
+        !object.expr &&
+        !addressableFormula
       ) {
         context.addIssue({
           code: 'custom',
@@ -94,6 +255,24 @@ export const animationSpecSchema = z
           message: 'matrix requires values',
           path: ['objects', index, 'values'],
         });
+      }
+      if (object.parts && !['formula', 'series'].includes(object.kind)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Only formula and series objects can declare parts',
+          path: ['objects', index, 'parts'],
+        });
+      }
+      const partIds = new Set<string>();
+      for (const [partIndex, part] of (object.parts || []).entries()) {
+        if (partIds.has(part.id)) {
+          context.addIssue({
+            code: 'custom',
+            message: `Duplicate formula part id: ${part.id}`,
+            path: ['objects', index, 'parts', partIndex, 'id'],
+          });
+        }
+        partIds.add(part.id);
       }
     }
 
@@ -124,6 +303,26 @@ export const animationSpecSchema = z
           path: ['timeline', index, 'targetRef'],
         });
       }
+      const referencedObject = spec.objects.find(
+        (object) => object.id === event.ref
+      );
+      if (
+        event.partId &&
+        !referencedObject?.parts?.some((part) => part.id === event.partId)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: `Unknown formula part reference: ${event.partId}`,
+          path: ['timeline', index, 'partId'],
+        });
+      }
+      if (event.zoom && event.op !== 'camera_focus') {
+        context.addIssue({
+          code: 'custom',
+          message: 'zoom is only supported by camera_focus',
+          path: ['timeline', index, 'zoom'],
+        });
+      }
       if (event.at + event.runTime > spec.durationSeconds + 0.001) {
         context.addIssue({
           code: 'custom',
@@ -132,6 +331,7 @@ export const animationSpecSchema = z
         });
       }
     }
+
     const groups = [...spec.timeline]
       .sort((left, right) => left.at - right.at)
       .reduce<Array<{ at: number; duration: number }>>((result, event) => {
@@ -146,13 +346,276 @@ export const animationSpecSchema = z
     for (let index = 1; index < groups.length; index += 1) {
       const previous = groups[index - 1];
       if (groups[index].at < previous.at + previous.duration - 0.001) {
+        const previousEnd = Number(
+          (previous.at + previous.duration).toFixed(3)
+        );
         context.addIssue({
           code: 'custom',
-          message: 'Overlapping start times are not supported yet',
+          message: `Overlapping start times are not supported yet: the group at ${groups[index].at}s starts before the previous group ends at ${previousEnd}s; concurrent events must use exactly the same start time`,
           path: ['timeline'],
         });
         break;
       }
+    }
+
+    const cinematicOps = new Set([
+      'spotlight',
+      'glow',
+      'camera_focus',
+      'camera_reset',
+    ]);
+    if (spec.schemaVersion !== 4 && spec.schemaVersion !== 5) {
+      for (const [index, event] of spec.timeline.entries()) {
+        if (!cinematicOps.has(event.op)) continue;
+        context.addIssue({
+          code: 'custom',
+          message: 'Cinematography operations require schemaVersion 4 or 5',
+          path: ['timeline', index, 'op'],
+        });
+      }
+    }
+
+    if (
+      spec.schemaVersion !== 3 &&
+      spec.schemaVersion !== 4 &&
+      spec.schemaVersion !== 5
+    )
+      return;
+    if (
+      spec.direction.frame === '9:16' &&
+      spec.layout.regions === 'left|right'
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Portrait scenes cannot use a left|right layout',
+        path: ['layout', 'regions'],
+      });
+    }
+    const shots = [...spec.shots].sort(
+      (left, right) => left.startAt - right.startAt
+    );
+    const shotIds = new Set<string>();
+    for (const [index, shot] of shots.entries()) {
+      if (shotIds.has(shot.id)) {
+        context.addIssue({
+          code: 'custom',
+          message: `Duplicate shot id: ${shot.id}`,
+          path: ['shots', index, 'id'],
+        });
+      }
+      shotIds.add(shot.id);
+      if (!objectIds.has(shot.focusRef)) {
+        context.addIssue({
+          code: 'custom',
+          message: `Unknown shot focus: ${shot.focusRef}`,
+          path: ['shots', index, 'focusRef'],
+        });
+      }
+      if (shot.startAt >= shot.endAt) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Shot endAt must be later than startAt',
+          path: ['shots', index, 'endAt'],
+        });
+      }
+      if (shot.endAt > spec.durationSeconds + 0.001) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Shot exceeds the animation duration',
+          path: ['shots', index, 'endAt'],
+        });
+      }
+      if (index > 0 && shot.startAt < shots[index - 1].endAt - 0.001) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Shots cannot overlap',
+          path: ['shots', index, 'startAt'],
+        });
+      }
+    }
+    if (Math.abs(shots[0].startAt) > 0.001) {
+      context.addIssue({
+        code: 'custom',
+        message: 'The first shot must begin at 0',
+        path: ['shots', 0, 'startAt'],
+      });
+    }
+    if (shots[0].beat !== 'hook') {
+      context.addIssue({
+        code: 'custom',
+        message: 'The first shot must be the hook',
+        path: ['shots', 0, 'beat'],
+      });
+    }
+    const lastShot = shots.at(-1)!;
+    if (Math.abs(lastShot.endAt - spec.durationSeconds) > 0.001) {
+      context.addIssue({
+        code: 'custom',
+        message: 'The final shot must end at durationSeconds',
+        path: ['shots', shots.length - 1, 'endAt'],
+      });
+    }
+    if (!['payoff', 'memory'].includes(lastShot.beat)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'The final shot must be a payoff or memory beat',
+        path: ['shots', shots.length - 1, 'beat'],
+      });
+    }
+    for (const [index, event] of spec.timeline.entries()) {
+      const shot = spec.shots.find(
+        (candidate) => candidate.id === event.shotId
+      );
+      if (!shot) {
+        context.addIssue({
+          code: 'custom',
+          message: `Unknown timeline shot: ${event.shotId}`,
+          path: ['timeline', index, 'shotId'],
+        });
+        continue;
+      }
+      if (
+        event.at < shot.startAt - 0.001 ||
+        event.at + event.runTime > shot.endAt + 0.001
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Timeline event must stay inside its shot',
+          path: ['timeline', index],
+        });
+      }
+    }
+    for (const [index, object] of spec.objects.entries()) {
+      if (object.kind !== 'text' || !object.label) continue;
+      const wordCount = object.label
+        .trim()
+        .split(/\s+/u)
+        .filter(Boolean).length;
+      if (wordCount > spec.direction.textPolicy.maxWordsPerObject) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Text object exceeds the director text budget',
+          path: ['objects', index, 'label'],
+        });
+      }
+    }
+    if (spec.schemaVersion !== 4 && spec.schemaVersion !== 5) return;
+
+    const semanticPartColors = new Map<string, string>();
+    for (const [objectIndex, object] of spec.objects.entries()) {
+      for (const [partIndex, part] of (object.parts || []).entries()) {
+        if (!part.color) continue;
+        const prior = semanticPartColors.get(part.id);
+        if (prior && prior.toUpperCase() !== part.color.toUpperCase()) {
+          context.addIssue({
+            code: 'custom',
+            message: `Formula part ${part.id} must keep one semantic color`,
+            path: ['objects', objectIndex, 'parts', partIndex, 'color'],
+          });
+        }
+        semanticPartColors.set(part.id, part.color);
+      }
+    }
+    for (const [index, event] of spec.timeline.entries()) {
+      if (
+        ['camera_focus', 'camera_reset'].includes(event.op) &&
+        spec.cinematography.scene !== 'moving-camera'
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Camera operations require a moving-camera scene',
+          path: ['timeline', index, 'op'],
+        });
+      }
+      if (
+        event.partId &&
+        !['spotlight', 'glow', 'camera_focus', 'emphasize'].includes(event.op)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: 'This operation cannot target a formula part',
+          path: ['timeline', index, 'partId'],
+        });
+      }
+    }
+    const cameraEvents = [...spec.timeline]
+      .filter((event) => ['camera_focus', 'camera_reset'].includes(event.op))
+      .sort((left, right) => left.at - right.at);
+    const cameraFocusCount = cameraEvents.filter(
+      (event) => event.op === 'camera_focus'
+    ).length;
+    if (cameraFocusCount > 2) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Short animations support at most two camera focus moves',
+        path: ['timeline'],
+      });
+    }
+    if (cameraFocusCount > 0 && cameraEvents.at(-1)?.op !== 'camera_reset') {
+      context.addIssue({
+        code: 'custom',
+        message: 'The final camera focus must be followed by camera_reset',
+        path: ['timeline'],
+      });
+    }
+    if (
+      spec.cinematography.emphasis === 'term-tour' &&
+      !spec.timeline.some(
+        (event) => !!event.partId && event.op === 'camera_focus'
+      )
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'term-tour emphasis requires a camera_focus on a formula part',
+        path: ['cinematography', 'emphasis'],
+      });
+    }
+
+    if (spec.schemaVersion !== 5) return;
+    const knowledgeIds = new Set<string>();
+    for (const [index, node] of spec.knowledgeMap.entries()) {
+      if (knowledgeIds.has(node.id)) {
+        context.addIssue({
+          code: 'custom',
+          message: `Duplicate knowledge node id: ${node.id}`,
+          path: ['knowledgeMap', index, 'id'],
+        });
+      }
+      knowledgeIds.add(node.id);
+    }
+    for (const [index, node] of spec.knowledgeMap.entries()) {
+      for (const dependency of node.dependsOn) {
+        if (dependency === node.id || !knowledgeIds.has(dependency)) {
+          context.addIssue({
+            code: 'custom',
+            message: `Invalid knowledge dependency: ${dependency}`,
+            path: ['knowledgeMap', index, 'dependsOn'],
+          });
+        }
+      }
+    }
+
+    const availableCurriculumDependencies = new Set(knowledgeIds);
+    const curriculumIds = new Set<string>();
+    for (const [index, beat] of spec.curriculum.entries()) {
+      if (curriculumIds.has(beat.id) || knowledgeIds.has(beat.id)) {
+        context.addIssue({
+          code: 'custom',
+          message: `Duplicate curriculum beat id: ${beat.id}`,
+          path: ['curriculum', index, 'id'],
+        });
+      }
+      for (const dependency of beat.dependsOn) {
+        if (!availableCurriculumDependencies.has(dependency)) {
+          context.addIssue({
+            code: 'custom',
+            message: `Curriculum dependency must refer to a knowledge node or earlier beat: ${dependency}`,
+            path: ['curriculum', index, 'dependsOn'],
+          });
+        }
+      }
+      curriculumIds.add(beat.id);
+      availableCurriculumDependencies.add(beat.id);
     }
   });
 
@@ -204,11 +667,13 @@ export function parseManimCode(value: string): string {
   }
   const sceneClasses = [
     ...code.matchAll(
-      /\bclass\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*Scene\s*\)\s*:/g
+      /\bclass\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*(Scene|MovingCameraScene|ThreeDScene)\s*\)\s*:/g
     ),
   ];
   if (
-    !/\bclass\s+CurvGScene\s*\(\s*Scene\s*\)/.test(code) &&
+    !/\bclass\s+CurvGScene\s*\(\s*(?:Scene|MovingCameraScene|ThreeDScene)\s*\)/.test(
+      code
+    ) &&
     sceneClasses.length === 1
   ) {
     const [declaration, className] = sceneClasses[0];
@@ -217,13 +682,20 @@ export function parseManimCode(value: string): string {
       declaration.replace(`class ${className}`, 'class CurvGScene')
     );
   }
-  if (!/\bclass\s+CurvGScene\s*\(\s*Scene\s*\)/.test(code)) {
+  if (
+    !/\bclass\s+CurvGScene\s*\(\s*(?:Scene|MovingCameraScene|ThreeDScene)\s*\)/.test(
+      code
+    )
+  ) {
     throw new Error('Generated code must define CurvGScene');
   }
   const blocked = [
     /\b(?:import|from)\s+(?:os|subprocess|socket|requests|urllib|httpx|pathlib|shutil)\b/,
-    /\b(?:open|eval|exec|compile|__import__)\s*\(/,
+    /\b(?:open|eval|exec|compile|__import__|getattr|setattr|delattr|globals|locals|vars)\s*\(/,
     /\b(?:Popen|run|call|check_output|system)\s*\(/,
+    /\b(?:ImageMobject|OpenGLImageMobject|SVGMobject|Code)\s*\(/,
+    /\b(?:np|numpy)\.(?:fromfile|genfromtxt|load|loadtxt|memmap|save|savetxt)\s*\(/,
+    /\\(?:include|includegraphics|input|lstinputlisting|openin|openout|read|verbatiminput|write|write18)\b/i,
   ];
   if (blocked.some((pattern) => pattern.test(code))) {
     throw new Error('Generated code contains blocked operations');

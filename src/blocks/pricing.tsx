@@ -4,7 +4,7 @@ import { Check, Code2, Film, RefreshCw, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useSession } from '@/core/auth/client';
-import { Link, useRouter } from '@/core/i18n/navigation';
+import { useRouter } from '@/core/i18n/navigation';
 import { getPricingProduct, type PricingProduct } from '@/config/pricing';
 import type { AnimationModelCatalog } from '@/lib/animation';
 import { apiGet, apiPost } from '@/lib/api-client';
@@ -41,7 +41,21 @@ function displayPrice(product: PricingProduct, locale: string) {
   return displayCents(product.priceInCents, product.currency, locale);
 }
 
-export function Pricing({ title }: { title?: string } = {}) {
+function displayMonthlyEquivalent(product: PricingProduct, locale: string) {
+  return displayCents(
+    Math.round(product.priceInCents / 12),
+    product.currency,
+    locale
+  );
+}
+
+export function Pricing({
+  title,
+  headingLevel: Heading = 'h1',
+}: {
+  title?: string;
+  headingLevel?: 'h1' | 'h2';
+} = {}) {
   const router = useRouter();
   const { data: session } = useSession();
   const locale = getLocale();
@@ -60,10 +74,9 @@ export function Pricing({ title }: { title?: string } = {}) {
     staleTime: 0,
   });
   const viewerTier = tierQuery.data?.viewerTier ?? 'free';
-  const tierLoading = !!session?.user && tierQuery.isLoading;
-  // Model discovery is an informational surface, not a prerequisite for
-  // purchasing a paid plan. If Yunwu's catalog is temporarily unavailable, the
-  // checkout endpoint still performs the authoritative entitlement check.
+  // Model availability is informational, not a prerequisite for purchasing a
+  // paid plan. The checkout endpoint performs the authoritative entitlement
+  // check independently of the configured Kie credential.
 
   const providerQuery = useQuery({
     queryKey: ['payment-providers'],
@@ -110,29 +123,22 @@ export function Pricing({ title }: { title?: string } = {}) {
   ];
 
   function freePlan(group: string): PricingPlan {
+    const cardFeatures = [
+      ...freeFeatures,
+      {
+        icon: Film,
+        label: m['landing.pricing.feature_no_render_credits'](),
+      },
+    ];
+
     return {
       id: `free-${group}`,
       name: m['landing.pricing.free'](),
       description: m['landing.pricing.free_desc'](),
       price: '$0',
-      features: freeFeatures,
-      featureGroups: [
-        {
-          label: m['landing.pricing.group.creation'](),
-          features: freeFeatures,
-        },
-        {
-          label: m['landing.pricing.group.rendering'](),
-          features: [
-            {
-              icon: Film,
-              label: m['landing.pricing.feature_no_render_credits'](),
-            },
-          ],
-        },
-      ],
+      features: cardFeatures,
       comparison: {
-        models: m['landing.pricing.comparison.one_model'](),
+        models: m['landing.pricing.comparison.three_models'](),
         fallback: false,
         credits: '—',
         renders: '—',
@@ -161,6 +167,19 @@ export function Pricing({ title }: { title?: string } = {}) {
     const isCurrent = viewerTier === params.tier;
     const hasPaidPlan = viewerTier !== 'free';
     const estimate = renderEstimate(params.product);
+    const cardFeatures = [
+      ...(isStarter ? starterFeatures : proFeatures),
+      {
+        icon: Film,
+        label: m['landing.pricing.feature_render_credits']({
+          credits: params.product.credits,
+        }),
+      },
+      ...(isStarter
+        ? [{ icon: Code2, label: m['landing.pricing.feature_video_export']() }]
+        : []),
+    ];
+
     return {
       id: `${params.tier}-${params.group}`,
       name: isStarter
@@ -176,35 +195,7 @@ export function Pricing({ title }: { title?: string } = {}) {
       badge: isStarter
         ? m['landing.pricing.popular']()
         : m['landing.pricing.full_power'](),
-      features: isStarter ? starterFeatures : proFeatures,
-      featureGroups: [
-        {
-          label: m['landing.pricing.group.models'](),
-          features: isStarter ? starterFeatures : proFeatures,
-        },
-        {
-          label: m['landing.pricing.group.rendering'](),
-          features: [
-            {
-              icon: Film,
-              label: m['landing.pricing.feature_render_credits']({
-                credits: params.product.credits,
-              }),
-            },
-            {
-              icon: Check,
-              label: m['landing.pricing.feature_render_estimate']({
-                renders: estimate,
-                cost: renderCreditCost,
-              }),
-            },
-            {
-              icon: Code2,
-              label: m['landing.pricing.feature_video_export'](),
-            },
-          ],
-        },
-      ],
+      features: cardFeatures,
       comparison: {
         models: isStarter
           ? m['landing.pricing.comparison.three_models']()
@@ -224,13 +215,9 @@ export function Pricing({ title }: { title?: string } = {}) {
       buttonText:
         isCurrent || hasPaidPlan
           ? m['common.pricing.manage_plan']()
-          : providerQuery.isLoading
-            ? m['common.loading']()
-            : !paymentsAvailable
-              ? m['common.pricing.payments_unavailable']()
-              : isStarter
-                ? m['common.pricing.upgrade_starter']()
-                : m['common.pricing.upgrade_pro'](),
+          : isStarter
+            ? m['common.pricing.upgrade_starter']()
+            : m['common.pricing.upgrade_pro'](),
     };
   }
 
@@ -264,27 +251,20 @@ export function Pricing({ title }: { title?: string } = {}) {
           tier: 'starter',
           group: 'yearly',
           product: starterYearly,
-          originalPrice: displayCents(
-            starterMonthly.priceInCents * 12,
-            starterMonthly.currency,
-            locale
-          ),
-          interval: m['common.pricing.per_year'](),
+          interval: m['common.pricing.per_month'](),
         }),
         paidPlan({
           tier: 'pro',
           group: 'yearly',
           product: proYearly,
-          originalPrice: displayCents(
-            proMonthly.priceInCents * 12,
-            proMonthly.currency,
-            locale
-          ),
-          interval: m['common.pricing.per_year'](),
+          interval: m['common.pricing.per_month'](),
         }),
       ],
     },
   ];
+
+  groups[1]!.plans[1]!.price = displayMonthlyEquivalent(starterYearly, locale);
+  groups[1]!.plans[2]!.price = displayMonthlyEquivalent(proYearly, locale);
 
   const comparisonSections: PricingComparisonSection[] = [
     {
@@ -395,102 +375,55 @@ export function Pricing({ title }: { title?: string } = {}) {
   return (
     <section
       id="pricing"
-      className="border-border relative overflow-hidden border-t px-4 py-24 sm:py-32"
+      className="curvg-pricing-shell relative overflow-hidden"
     >
-      <div className="curvg-coordinate-grid pointer-events-none absolute inset-0 [mask-image:linear-gradient(to_bottom,black,transparent_78%)] opacity-35" />
-      <div className="curvg-dotmatrix pointer-events-none absolute top-24 right-[7%] size-64 opacity-20" />
-      <div className="relative mx-auto max-w-6xl">
-        <div className="mb-14 text-center sm:mb-16">
-          <p className="text-primary font-mono text-[10px] font-semibold tracking-[0.18em] uppercase">
-            {m['landing.pricing.eyebrow']()}
-          </p>
-          <h1 className="mt-5 font-serif text-4xl font-normal tracking-tight sm:text-6xl">
-            {title ?? m['landing.pricing.title']()}
-          </h1>
-          <p className="text-muted-foreground mx-auto mt-5 max-w-2xl leading-7">
-            {m['landing.pricing.description']()}
-          </p>
-        </div>
-        <PricingTable
-          groups={groups}
-          onCheckout={handleCheckout}
-          loadingPlanId={loadingPlanId}
-          comparisonEyebrow={m['landing.pricing.comparison.eyebrow']()}
-          comparisonTitle={m['landing.pricing.comparison.title']()}
-          comparisonDescription={m['landing.pricing.comparison.description']()}
-          comparisonSections={comparisonSections}
-          billingPeriodLabel={m['landing.pricing.billing_period']()}
-          includedLabel={m['landing.pricing.comparison.included']()}
-          notIncludedLabel={m['landing.pricing.comparison.not_included']()}
-          disabledPlanIds={
-            checkoutMutation.isPending
-              ? [
-                  'free-monthly',
-                  'starter-monthly',
-                  'pro-monthly',
-                  'free-yearly',
-                  'starter-yearly',
-                  'pro-yearly',
-                ]
-              : (tierLoading ||
-                    providerQuery.isLoading ||
-                    providerQuery.isError ||
-                    !paymentsAvailable) &&
-                  viewerTier === 'free'
+      <div className="curvg-coordinate-grid pointer-events-none absolute inset-0 [mask-image:linear-gradient(to_bottom,black,transparent_82%)] opacity-30" />
+      <div className="relative mx-auto w-full max-w-[1440px] px-5 sm:px-10">
+        <div className="border-border bg-background/90 relative border-x">
+          <div className="border-border relative flex min-h-[302px] flex-col items-center justify-center overflow-hidden border-b px-5 py-12 text-center sm:min-h-[388px] sm:px-10 sm:py-16">
+            <div className="curvg-dotmatrix pointer-events-none absolute -top-12 left-[4%] size-60 opacity-20" />
+            <div className="curvg-dotmatrix pointer-events-none absolute -right-10 bottom-1 size-56 opacity-15" />
+            <span className="curvg-corner top-5 left-3 opacity-55" />
+            <span className="curvg-corner right-3 bottom-5 rotate-180 opacity-55" />
+            <p className="text-foreground relative font-mono text-xs font-medium tracking-normal">
+              <span className="text-muted-foreground mr-2">《</span>
+              <span className="text-primary">◎</span>{' '}
+              {m['landing.pricing.eyebrow']()}
+              <span className="text-muted-foreground ml-2">》</span>
+            </p>
+            <Heading className="relative mt-7 max-w-3xl text-[30px] leading-[1.05] font-normal tracking-[-0.035em] sm:text-[52px]">
+              {title ?? m['landing.pricing.title']()}
+            </Heading>
+            <p className="text-muted-foreground relative mx-auto mt-6 max-w-xl text-base leading-6">
+              {m['landing.pricing.description']()}
+            </p>
+          </div>
+          <PricingTable
+            groups={groups}
+            onCheckout={handleCheckout}
+            loadingPlanId={loadingPlanId}
+            comparisonEyebrow={m['landing.pricing.comparison.eyebrow']()}
+            comparisonTitle={m['landing.pricing.comparison.title']()}
+            comparisonDescription={m[
+              'landing.pricing.comparison.description'
+            ]()}
+            comparisonSections={comparisonSections}
+            billingPeriodLabel={m['landing.pricing.billing_period']()}
+            includedLabel={m['landing.pricing.comparison.included']()}
+            notIncludedLabel={m['landing.pricing.comparison.not_included']()}
+            disabledPlanIds={
+              checkoutMutation.isPending
                 ? [
+                    'free-monthly',
                     'starter-monthly',
                     'pro-monthly',
+                    'free-yearly',
                     'starter-yearly',
                     'pro-yearly',
                   ]
                 : []
-          }
-        />
-
-        <div className="border-border mt-20 border-t pt-16">
-          <div className="mx-auto max-w-3xl text-center">
-            <p className="text-primary text-xs font-semibold tracking-[0.18em] uppercase">
-              {m['landing.pricing.eyebrow']()}
-            </p>
-            <h2 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl">
-              {m['landing.pricing.factors_title']()}
-            </h2>
-          </div>
-          <div className="mx-auto mt-10 grid max-w-5xl gap-5 md:grid-cols-3">
-            {[
-              {
-                title: m['landing.pricing.factor_render_title'](),
-                description: m['landing.pricing.factor_render_description'](),
-              },
-              {
-                title: m['landing.pricing.factor_capacity_title'](),
-                description: m['landing.pricing.factor_capacity_description'](),
-              },
-              {
-                title: m['landing.pricing.factor_storage_title'](),
-                description: m['landing.pricing.factor_storage_description'](),
-              },
-            ].map((factor) => (
-              <div
-                key={factor.title}
-                className="border-border bg-card rounded-2xl border p-6"
-              >
-                <h3 className="font-semibold tracking-tight">{factor.title}</h3>
-                <p className="text-muted-foreground mt-3 text-sm leading-6">
-                  {factor.description}
-                </p>
-              </div>
-            ))}
-          </div>
-          <div className="text-muted-foreground mx-auto mt-8 max-w-2xl text-center text-sm leading-6">
-            <p>{m['landing.pricing.note']()}</p>
-            <Link
-              href="/blog/ai-manim-animation-workflow"
-              className="text-foreground mt-3 inline-flex font-medium underline underline-offset-4"
-            >
-              {m['landing.pricing.workflow_link']()}
-            </Link>
-          </div>
+            }
+          />
         </div>
       </div>
 

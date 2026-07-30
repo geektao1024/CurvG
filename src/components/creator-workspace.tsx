@@ -8,8 +8,10 @@ import {
   ChevronRight,
   Clock3,
   Code2,
+  Coins,
   Copy,
   Download,
+  Ellipsis,
   Film,
   FunctionSquare,
   History,
@@ -21,6 +23,7 @@ import {
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
+  PencilLine,
   Play,
   Plus,
   Sparkles,
@@ -34,9 +37,12 @@ import { useSession } from '@/core/auth/client';
 import { Link, useRouter } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
 import {
+  animationFailureCodeFromHttpStatus,
   animationModelValue,
   isAnimationBusy,
-  isAnimationSpecV2,
+  isAnimationSpecDirected,
+  isAnimationSpecRenderable,
+  isAnimationSpecV4,
   parseAnimationModelValue,
   type AnimationCreationMode,
   type AnimationDetail,
@@ -47,6 +53,7 @@ import {
   type AnimationMessage,
   type AnimationModelCatalog,
   type AnimationModelProvider,
+  type AnimationPlanningPhase,
   type AnimationStatus,
   type AnimationSubject,
   type AnimationSummary,
@@ -64,8 +71,26 @@ import {
 import { detectMathObjectType } from '@/lib/math-preview';
 import { cn } from '@/lib/utils';
 import { MathFormulaPreview } from '@/components/math-formula-preview';
+import { PixelRevealLink } from '@/components/pixel-reveal-link';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import {
   Select,
@@ -115,53 +140,61 @@ interface CreatorGenerationRequest {
 }
 
 export type CreatorCuratedModelKey =
-  | 'deepseekV4Flash'
-  | 'qwen3Coder'
-  | 'deepseekV4Pro'
-  | 'gpt5'
-  | 'gpt55'
-  | 'claudeSonnet46'
-  | 'claudeOpus47';
+  | 'kieGemini36Flash'
+  | 'kieGrok45'
+  | 'kieGemini31Pro'
+  | 'kieGpt52'
+  | 'kieGpt55'
+  | 'kieClaudeSonnet46'
+  | 'kieClaudeOpus47';
 
 interface CreatorCuratedModelPreset {
   key: CreatorCuratedModelKey;
+  provider: AnimationModelProvider;
   models: string[];
   tier: 'free' | 'starter' | 'pro';
 }
 
 const CURATED_MODEL_PRESETS: CreatorCuratedModelPreset[] = [
   {
-    key: 'deepseekV4Pro',
-    models: ['deepseek-v4-pro'],
+    key: 'kieGemini36Flash',
+    provider: 'kie',
+    models: ['gemini-3.6-flash'],
     tier: 'free',
   },
   {
-    key: 'deepseekV4Flash',
-    models: ['deepseek-v4-flash'],
-    tier: 'starter',
+    key: 'kieGrok45',
+    provider: 'kie',
+    models: ['grok-4-5'],
+    tier: 'free',
   },
   {
-    key: 'qwen3Coder',
-    models: ['qwen3-coder-plus'],
-    tier: 'starter',
+    key: 'kieGemini31Pro',
+    provider: 'kie',
+    models: ['gemini-3.1-pro'],
+    tier: 'free',
   },
   {
-    key: 'gpt5',
-    models: ['gpt-5'],
+    key: 'kieGpt52',
+    provider: 'kie',
+    models: ['gpt-5-2'],
     tier: 'pro',
   },
   {
-    key: 'gpt55',
-    models: ['gpt-5.5'],
+    key: 'kieGpt55',
+    provider: 'kie',
+    models: ['gpt-5-5'],
     tier: 'pro',
   },
   {
-    key: 'claudeSonnet46',
+    key: 'kieClaudeSonnet46',
+    provider: 'kie',
     models: ['claude-sonnet-4-6'],
     tier: 'pro',
   },
   {
-    key: 'claudeOpus47',
+    key: 'kieClaudeOpus47',
+    provider: 'kie',
     models: ['claude-opus-4-7'],
     tier: 'pro',
   },
@@ -185,8 +218,20 @@ export interface CreatorWorkspaceCopy {
   closeSidebar: string;
   collapseSidebar: string;
   expandSidebar: string;
+  userCenter: string;
+  credits: string;
+  guestNavigation: string;
+  viewPricing: string;
+  signIn: string;
+  moreActions: string;
+  renameAnimation: string;
+  renamePlaceholder: string;
+  renameSave: string;
+  renameCancel: string;
+  renameEmpty: string;
+  renameTooLong: string;
   deleteAnimation: string;
-  deleteConfirm: string;
+  deleteConfirm: (title: string) => string;
   promptPlaceholder: string;
   promptLabel: string;
   create: string;
@@ -217,6 +262,7 @@ export interface CreatorWorkspaceCopy {
   playPreview: string;
   retryPlayback: string;
   approve: string;
+  retryPlan: string;
   retryCode: string;
   retryRender: string;
   approvalDescription: string;
@@ -238,6 +284,12 @@ export interface CreatorWorkspaceCopy {
   pipelineApprove: string;
   pipelineProcess: string;
   pipelineDone: string;
+  planningEyebrow: string;
+  planningTitle: string;
+  planningDescription: string;
+  planningSemanticMap: string;
+  planningLiveSummary: string;
+  planningPhases: Record<AnimationPlanningPhase, string>;
   resizePanels: string;
   noCode: string;
   noVideo: string;
@@ -249,6 +301,7 @@ export interface CreatorWorkspaceCopy {
   failed: string;
   failureDescription: string;
   requestFailed: string;
+  renameFailed: string;
   deleteFailed: string;
   copyCode: string;
   downloadCode: string;
@@ -301,12 +354,30 @@ export interface CreatorWorkspaceCopy {
   savingSpec: string;
   objectsLabel: string;
   timelineLabel: string;
+  directorIntent: string;
+  learningGoal: string;
+  hook: string;
+  takeaway: string;
+  shotPlan: string;
+  acceptance: string;
+  cinematography: string;
+  formulaParts: string;
+  mathDossier: string;
+  coreClaim: string;
+  invariants: string;
+  commonMisreading: string;
+  visualProof: string;
   startTime: string;
   runTime: string;
   ease: string;
   restoreVersion: string;
   renderStages: Record<
-    'queued' | 'validating' | 'compiling' | 'transcoding' | 'uploading',
+    | 'queued'
+    | 'validating'
+    | 'compiling'
+    | 'transcoding'
+    | 'reviewing'
+    | 'uploading',
     string
   >;
   cancelRender: string;
@@ -321,7 +392,7 @@ export interface CreatorWorkspaceCopy {
 }
 
 function isModelProvider(value: string): value is AnimationModelProvider {
-  return value === 'yunwu';
+  return value === 'kie';
 }
 
 const progressByStatus: Record<AnimationStatus, number> = {
@@ -336,6 +407,13 @@ const progressByStatus: Record<AnimationStatus, number> = {
   completed: 100,
   failed: 0,
 };
+
+const PLANNING_PHASES: AnimationPlanningPhase[] = [
+  'understanding',
+  'structuring',
+  'auditing',
+  'finalizing',
+];
 
 function localizedFailure(
   copy: CreatorWorkspaceCopy,
@@ -363,8 +441,9 @@ function thrownAnimationFailure(error: unknown): AnimationFailure | undefined {
 function requestFailureMessage(copy: CreatorWorkspaceCopy, error: unknown) {
   const failure = thrownAnimationFailure(error);
   if (failure) return localizedFailure(copy, failure);
-  if (error instanceof ApiError && error.status === 403) {
-    return copy.failureMessages.PRO_REQUIRED;
+  if (error instanceof ApiError) {
+    const code = animationFailureCodeFromHttpStatus(error.status);
+    if (code) return copy.failureMessages[code];
   }
   if (
     error instanceof Error &&
@@ -384,9 +463,63 @@ function isAbortError(error: unknown) {
 type ArtifactTab = 'specification' | 'code' | 'video';
 
 const SPLIT_RATIO_STORAGE_KEY = 'creator-split-ratio';
+const GUEST_DRAFT_STORAGE_KEY = 'curvg-creator-guest-draft-v1';
+const GUEST_DRAFT_TTL_MS = 2 * 60 * 60 * 1000;
 const DEFAULT_SPLIT_RATIO = 0.4;
 const MIN_SPLIT_RATIO = 0.28;
 const MAX_SPLIT_RATIO = 0.62;
+
+interface GuestCreatorDraft {
+  savedAt: number;
+  creationMode: AnimationCreationMode;
+  prompt: string;
+  formula: string;
+  formulaIntent: string;
+  mathObjectType: AnimationMathObjectType;
+  selectedTemplateId?: string;
+  templateValues: Record<string, string>;
+  subject: AnimationSubject;
+}
+
+function readGuestCreatorDraft(): GuestCreatorDraft | undefined {
+  try {
+    const raw = window.sessionStorage.getItem(GUEST_DRAFT_STORAGE_KEY);
+    if (!raw) return undefined;
+    const value = JSON.parse(raw) as Partial<GuestCreatorDraft>;
+    if (
+      typeof value.savedAt !== 'number' ||
+      Date.now() - value.savedAt > GUEST_DRAFT_TTL_MS ||
+      !['description', 'template', 'formula'].includes(
+        value.creationMode || ''
+      ) ||
+      typeof value.prompt !== 'string' ||
+      typeof value.formula !== 'string' ||
+      typeof value.formulaIntent !== 'string' ||
+      !['function', 'integral', 'series', 'matrix'].includes(
+        value.mathObjectType || ''
+      ) ||
+      ![
+        'general',
+        'math',
+        'physics',
+        'computer_science',
+        'biology',
+        'chemistry',
+        'economics',
+      ].includes(value.subject || '') ||
+      !value.templateValues ||
+      typeof value.templateValues !== 'object' ||
+      Array.isArray(value.templateValues)
+    ) {
+      window.sessionStorage.removeItem(GUEST_DRAFT_STORAGE_KEY);
+      return undefined;
+    }
+    return value as GuestCreatorDraft;
+  } catch {
+    window.sessionStorage.removeItem(GUEST_DRAFT_STORAGE_KEY);
+    return undefined;
+  }
+}
 
 function preferredArtifactTab(detail?: AnimationDetail): ArtifactTab {
   if (!detail) return 'video';
@@ -408,6 +541,7 @@ function preferredArtifactTab(detail?: AnimationDetail): ArtifactTab {
           ? 'code'
           : 'specification';
     case 'failed':
+      if (detail.parts.failure?.stage === 'spec') return 'specification';
       return detail.parts.code
         ? 'code'
         : detail.parts.spec
@@ -484,12 +618,52 @@ function WorkspaceNavigation({
   );
 }
 
+function GuestWorkspaceHeader({ copy }: { copy: CreatorWorkspaceCopy }) {
+  return (
+    <header className="bg-background relative z-40 shrink-0 border-b">
+      <div className="flex h-14 items-center justify-between gap-3 px-4 sm:px-5">
+        <Link
+          href="/"
+          aria-label={envConfigs.app_name}
+          className="focus-visible:ring-primary/40 group flex min-w-0 items-center gap-1.5 rounded-md focus-visible:ring-2 focus-visible:outline-none"
+        >
+          <img
+            src={envConfigs.app_logo}
+            alt=""
+            className="size-8 shrink-0 rounded-lg"
+          />
+          <span className="truncate text-lg font-bold tracking-[-0.03em] sm:text-xl">
+            {envConfigs.app_name}
+          </span>
+        </Link>
+
+        <nav
+          aria-label={copy.guestNavigation}
+          className="flex shrink-0 items-center gap-2"
+        >
+          <PixelRevealLink
+            href="/pricing"
+            label={copy.viewPricing}
+            variant="nav-item"
+          />
+          <PixelRevealLink
+            href="/sign-in?callbackUrl=/creator"
+            label={copy.signIn}
+            variant="navigation"
+          />
+        </nav>
+      </div>
+    </header>
+  );
+}
+
 function HistoryList({
   items,
   selectedId,
   copy,
   locale,
   onSelect,
+  onRename,
   onDelete,
   collapsed = false,
 }: {
@@ -498,27 +672,79 @@ function HistoryList({
   copy: CreatorWorkspaceCopy;
   locale: string;
   onSelect: (id: string) => void;
-  onDelete: (id: string) => void;
+  onRename: (id: string, title: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
   collapsed?: boolean;
 }) {
-  const [confirmingId, setConfirmingId] = useState<string>();
-  const confirmTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [editingId, setEditingId] = useState<string>();
+  const [draftTitle, setDraftTitle] = useState('');
+  const [renameError, setRenameError] = useState<string>();
+  const [renamingId, setRenamingId] = useState<string>();
+  const [deleteTarget, setDeleteTarget] = useState<AnimationSummary>();
+  const [deleting, setDeleting] = useState(false);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => () => clearTimeout(confirmTimerRef.current), []);
+  useEffect(() => {
+    if (!editingId) return;
+    const frame = requestAnimationFrame(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [editingId]);
 
-  function requestDelete(id: string) {
-    if (confirmingId === id) {
-      clearTimeout(confirmTimerRef.current);
-      setConfirmingId(undefined);
-      onDelete(id);
+  function beginRename(item: AnimationSummary) {
+    setEditingId(item.id);
+    setDraftTitle(item.title);
+    setRenameError(undefined);
+  }
+
+  function cancelRename() {
+    if (renamingId) return;
+    setEditingId(undefined);
+    setDraftTitle('');
+    setRenameError(undefined);
+  }
+
+  async function submitRename(item: AnimationSummary) {
+    const title = draftTitle.replace(/\s+/g, ' ').trim();
+    if (!title) {
+      setRenameError(copy.renameEmpty);
       return;
     }
-    clearTimeout(confirmTimerRef.current);
-    setConfirmingId(id);
-    confirmTimerRef.current = setTimeout(
-      () => setConfirmingId(undefined),
-      3000
-    );
+    if (Array.from(title).length > 160) {
+      setRenameError(copy.renameTooLong);
+      return;
+    }
+    if (title === item.title) {
+      cancelRename();
+      return;
+    }
+
+    setRenamingId(item.id);
+    setRenameError(undefined);
+    try {
+      await onRename(item.id, title);
+      setEditingId(undefined);
+      setDraftTitle('');
+    } catch {
+      // The mutation surfaces the localized error toast and keeps the input open.
+    } finally {
+      setRenamingId(undefined);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    try {
+      await onDelete(deleteTarget.id);
+      setDeleteTarget(undefined);
+    } catch {
+      // The mutation surfaces the localized error toast and keeps the dialog open.
+    } finally {
+      setDeleting(false);
+    }
   }
 
   if (collapsed) {
@@ -566,81 +792,304 @@ function HistoryList({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="border-b px-4 py-4">
-        <div className="flex items-center gap-2 text-sm font-semibold">
-          <span className="text-primary border-primary/20 bg-primary/5 flex size-7 items-center justify-center rounded-full border">
-            <History className="size-3.5" />
-          </span>
-          <span>{copy.history}</span>
-        </div>
-        <p className="text-muted-foreground mt-2 pl-9 font-mono text-[10px] tracking-[0.08em] uppercase">
-          {items.length.toString().padStart(2, '0')} / {copy.workspaceLabel}
-        </p>
-      </div>
-      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-3">
-        {items.length === 0 ? (
-          <p className="text-muted-foreground px-2 py-10 text-center text-sm leading-6">
-            {copy.historyEmpty}
+    <>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="border-b px-4 py-4">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <span className="text-primary border-primary/20 bg-primary/5 flex size-7 items-center justify-center rounded-full border">
+              <History className="size-3.5" />
+            </span>
+            <span>{copy.history}</span>
+          </div>
+          <p className="text-muted-foreground mt-2 pl-9 font-mono text-[10px] tracking-[0.08em] uppercase">
+            {items.length.toString().padStart(2, '0')} / {copy.workspaceLabel}
           </p>
-        ) : (
-          items.map((item) => (
-            <div
-              key={item.id}
-              className={cn(
-                'group hover:border-primary/15 hover:bg-accent flex w-full items-start gap-2 rounded-md border border-transparent px-3 py-2.5 text-left transition-colors motion-reduce:transition-none lg:py-3',
-                selectedId === item.id &&
-                  'border-primary/25 bg-primary/5 hover:border-primary/25 hover:bg-primary/5'
-              )}
-            >
-              <button
-                type="button"
-                onClick={() => onSelect(item.id)}
-                aria-current={selectedId === item.id ? 'page' : undefined}
-                className="focus-visible:ring-primary/40 min-h-11 min-w-0 flex-1 rounded-sm text-left focus-visible:ring-2 focus-visible:outline-none lg:min-h-0"
-              >
-                <div className="truncate text-sm font-medium">{item.title}</div>
-                <div className="text-muted-foreground mt-1 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-xs">
-                  <span className="truncate" title={copy.statuses[item.status]}>
-                    {copy.statuses[item.status]}
-                  </span>
-                  <span className="shrink-0">
-                    {new Intl.DateTimeFormat(locale, {
-                      month: 'short',
-                      day: 'numeric',
-                    }).format(new Date(item.updatedAt))}
-                  </span>
-                </div>
-              </button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
+        </div>
+        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-3">
+          {items.length === 0 ? (
+            <p className="text-muted-foreground px-2 py-10 text-center text-sm leading-6">
+              {copy.historyEmpty}
+            </p>
+          ) : (
+            items.map((item) => (
+              <div
+                key={item.id}
                 className={cn(
-                  'size-11 transition-opacity focus-visible:opacity-100 motion-reduce:transition-none lg:size-8',
-                  confirmingId === item.id
-                    ? 'bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive opacity-100'
-                    : 'text-muted-foreground opacity-60 group-hover:opacity-100'
+                  'group hover:border-primary/15 hover:bg-accent flex w-full items-start gap-1 rounded-md border border-transparent px-2.5 py-2.5 text-left transition-colors motion-reduce:transition-none lg:py-3',
+                  selectedId === item.id &&
+                    'border-primary/25 bg-primary/5 hover:border-primary/25 hover:bg-primary/5',
+                  editingId === item.id &&
+                    'border-primary/30 bg-background hover:bg-background'
                 )}
-                aria-label={
-                  confirmingId === item.id
-                    ? copy.deleteConfirm
-                    : `${copy.deleteAnimation}: ${item.title}`
-                }
-                title={
-                  confirmingId === item.id ? copy.deleteConfirm : undefined
-                }
-                onClick={(event) => {
-                  event.stopPropagation();
-                  requestDelete(item.id);
-                }}
               >
-                {confirmingId === item.id ? <Check /> : <Trash2 />}
-              </Button>
-            </div>
-          ))
-        )}
+                {editingId === item.id ? (
+                  <form
+                    className="min-w-0 flex-1"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void submitRename(item);
+                    }}
+                  >
+                    <div className="flex items-center gap-1">
+                      <label className="sr-only" htmlFor={`rename-${item.id}`}>
+                        {copy.renameAnimation}
+                      </label>
+                      <Input
+                        ref={renameInputRef}
+                        id={`rename-${item.id}`}
+                        value={draftTitle}
+                        maxLength={160}
+                        disabled={renamingId === item.id}
+                        aria-invalid={!!renameError}
+                        placeholder={copy.renamePlaceholder}
+                        className="h-8 rounded-md px-2 text-sm"
+                        onChange={(event) => {
+                          setDraftTitle(event.target.value);
+                          if (renameError) setRenameError(undefined);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape') {
+                            event.preventDefault();
+                            cancelRename();
+                          }
+                        }}
+                      />
+                      <Button
+                        type="submit"
+                        variant="ghost"
+                        size="icon-xs"
+                        className="text-primary size-8"
+                        disabled={renamingId === item.id}
+                        aria-label={copy.renameSave}
+                        title={copy.renameSave}
+                      >
+                        {renamingId === item.id ? (
+                          <LoaderCircle className="animate-spin motion-reduce:animate-none" />
+                        ) : (
+                          <Check />
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        className="text-muted-foreground size-8"
+                        disabled={renamingId === item.id}
+                        onClick={cancelRename}
+                        aria-label={copy.renameCancel}
+                        title={copy.renameCancel}
+                      >
+                        <X />
+                      </Button>
+                    </div>
+                    {renameError && (
+                      <p
+                        role="alert"
+                        className="text-destructive mt-1 px-2 text-[11px]"
+                      >
+                        {renameError}
+                      </p>
+                    )}
+                  </form>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onSelect(item.id)}
+                      aria-current={selectedId === item.id ? 'page' : undefined}
+                      className="focus-visible:ring-primary/40 min-h-11 min-w-0 flex-1 rounded-sm px-0.5 text-left focus-visible:ring-2 focus-visible:outline-none lg:min-h-0"
+                    >
+                      <div className="truncate text-sm font-medium">
+                        {item.title}
+                      </div>
+                      <div className="text-muted-foreground mt-1 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-xs">
+                        <span
+                          className="truncate"
+                          title={copy.statuses[item.status]}
+                        >
+                          {copy.statuses[item.status]}
+                        </span>
+                        <span className="shrink-0">
+                          {new Intl.DateTimeFormat(locale, {
+                            month: 'short',
+                            day: 'numeric',
+                          }).format(new Date(item.updatedAt))}
+                        </span>
+                      </div>
+                    </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            className="text-muted-foreground hover:text-foreground size-11 shrink-0 opacity-70 transition-opacity group-focus-within:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100 motion-reduce:transition-none lg:size-8 lg:opacity-0 lg:group-hover:opacity-100"
+                            aria-label={`${copy.moreActions}: ${item.title}`}
+                          >
+                            <Ellipsis />
+                          </Button>
+                        }
+                      />
+                      <DropdownMenuContent
+                        side="right"
+                        align="start"
+                        sideOffset={6}
+                        className="min-w-36"
+                      >
+                        <DropdownMenuItem onClick={() => beginRename(item)}>
+                          <PencilLine />
+                          {copy.renameAnimation}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => setDeleteTarget(item)}
+                        >
+                          <Trash2 />
+                          {copy.deleteAnimation}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </>
+                )}
+              </div>
+            ))
+          )}
+        </div>
       </div>
+
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteTarget(undefined);
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{copy.deleteAnimation}</DialogTitle>
+            <DialogDescription>
+              {copy.deleteConfirm(deleteTarget?.title || '')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deleting}
+              onClick={() => setDeleteTarget(undefined)}
+            >
+              {copy.renameCancel}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => void confirmDelete()}
+            >
+              {deleting && (
+                <LoaderCircle className="animate-spin motion-reduce:animate-none" />
+              )}
+              {copy.deleteAnimation}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+interface WorkspaceUser {
+  name?: string | null;
+  email: string;
+  image?: string | null;
+}
+
+function WorkspaceUserCenter({
+  copy,
+  user,
+  credits,
+  creditsLoading,
+  locale,
+  collapsed = false,
+}: {
+  copy: CreatorWorkspaceCopy;
+  user: WorkspaceUser;
+  credits?: number;
+  creditsLoading: boolean;
+  locale: string;
+  collapsed?: boolean;
+}) {
+  const displayName =
+    user.name?.trim() || user.email.split('@')[0] || copy.userCenter;
+  const fallback = Array.from(displayName)[0]?.toUpperCase() || '?';
+  const creditsText =
+    creditsLoading || credits === undefined
+      ? '—'
+      : new Intl.NumberFormat(locale).format(credits);
+  const accessibleLabel = `${copy.userCenter} · ${displayName} · ${creditsText} ${copy.credits}`;
+
+  if (collapsed) {
+    return (
+      <div className="shrink-0 border-t p-2">
+        <Link
+          href="/settings"
+          aria-label={accessibleLabel}
+          title={accessibleLabel}
+          className="hover:bg-accent focus-visible:ring-primary/40 flex min-h-14 flex-col items-center justify-center gap-1 rounded-md transition-colors focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
+        >
+          <Avatar className="size-7 rounded-lg after:rounded-lg">
+            <AvatarImage src={user.image || undefined} alt={displayName} />
+            <AvatarFallback className="rounded-lg text-[10px]">
+              {fallback}
+            </AvatarFallback>
+          </Avatar>
+          <span
+            className={cn(
+              'text-muted-foreground flex max-w-10 items-center gap-1 font-mono text-[9px] leading-none tabular-nums',
+              creditsLoading && 'animate-pulse motion-reduce:animate-none'
+            )}
+          >
+            <Coins className="size-2.5 shrink-0" />
+            <span className="truncate">{creditsText}</span>
+          </span>
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="shrink-0 border-t p-2.5">
+      <Link
+        href="/settings"
+        aria-label={accessibleLabel}
+        className="hover:bg-accent focus-visible:ring-primary/40 group grid min-h-14 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-md px-2.5 py-2 transition-colors focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
+      >
+        <Avatar className="size-8 rounded-lg after:rounded-lg">
+          <AvatarImage src={user.image || undefined} alt={displayName} />
+          <AvatarFallback className="rounded-lg text-xs">
+            {fallback}
+          </AvatarFallback>
+        </Avatar>
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-medium">
+            {displayName}
+          </span>
+          <span className="text-muted-foreground mt-0.5 block truncate font-mono text-[9px] tracking-[0.1em] uppercase">
+            {copy.userCenter}
+          </span>
+        </span>
+        <span
+          className={cn(
+            'border-border/70 bg-background text-muted-foreground group-hover:text-foreground flex max-w-20 items-center gap-1 rounded-sm border px-1.5 py-1 font-mono text-[10px] leading-none tabular-nums transition-colors',
+            creditsLoading && 'animate-pulse motion-reduce:animate-none'
+          )}
+          title={`${creditsText} ${copy.credits}`}
+        >
+          <Coins className="text-primary size-3 shrink-0" />
+          <span className="truncate">{creditsText}</span>
+        </span>
+      </Link>
     </div>
   );
 }
@@ -650,25 +1099,33 @@ function WorkspaceSidebarChrome({
   history,
   selectedId,
   locale,
+  user,
+  credits,
+  creditsLoading,
   collapsed,
   historyOpen,
   onToggleCollapsed,
   onHistoryOpenChange,
   onCreate,
   onSelect,
+  onRename,
   onDelete,
 }: {
   copy: CreatorWorkspaceCopy;
   history: AnimationSummary[];
   selectedId?: string;
   locale: string;
+  user: WorkspaceUser;
+  credits?: number;
+  creditsLoading: boolean;
   collapsed: boolean;
   historyOpen: boolean;
   onToggleCollapsed: () => void;
   onHistoryOpenChange: (open: boolean) => void;
   onCreate: () => void;
   onSelect: (id: string) => void;
-  onDelete: (id: string) => void;
+  onRename: (id: string, title: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
 }) {
   return (
     <>
@@ -723,7 +1180,16 @@ function WorkspaceSidebarChrome({
           copy={copy}
           locale={locale}
           onSelect={onSelect}
+          onRename={onRename}
           onDelete={onDelete}
+          collapsed={collapsed}
+        />
+        <WorkspaceUserCenter
+          copy={copy}
+          user={user}
+          credits={credits}
+          creditsLoading={creditsLoading}
+          locale={locale}
           collapsed={collapsed}
         />
       </aside>
@@ -760,7 +1226,15 @@ function WorkspaceSidebarChrome({
             copy={copy}
             locale={locale}
             onSelect={onSelect}
+            onRename={onRename}
             onDelete={onDelete}
+          />
+          <WorkspaceUserCenter
+            copy={copy}
+            user={user}
+            credits={credits}
+            creditsLoading={creditsLoading}
+            locale={locale}
           />
         </SheetContent>
       </Sheet>
@@ -1521,12 +1995,328 @@ function Welcome({
   );
 }
 
-function StatusPanel({
+function PlanningStatusPanel({
+  copy,
+  phase,
+}: {
+  copy: CreatorWorkspaceCopy;
+  phase: AnimationPlanningPhase;
+}) {
+  const activeIndex = PLANNING_PHASES.indexOf(phase);
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="bg-card relative overflow-hidden rounded-xl border p-4"
+    >
+      <span
+        aria-hidden
+        className="curvg-blueprint-scan via-primary/12 pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-transparent to-transparent"
+      />
+      <div className="relative flex items-start gap-3">
+        <span className="border-primary/20 bg-primary/6 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg border">
+          <ListTree className="size-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-muted-foreground font-mono text-[9px] tracking-[0.12em] uppercase">
+            {copy.planningEyebrow}
+          </p>
+          <p className="mt-1 text-sm font-semibold">{copy.planningTitle}</p>
+          <p className="text-muted-foreground mt-1 text-xs leading-5">
+            {copy.planningDescription}
+          </p>
+        </div>
+      </div>
+      <ol className="relative mt-4 grid gap-2 sm:grid-cols-2">
+        {PLANNING_PHASES.map((item, index) => {
+          const completed = index < activeIndex;
+          const active = item === phase;
+          return (
+            <li
+              key={item}
+              aria-current={active ? 'step' : undefined}
+              className={cn(
+                'flex min-h-9 items-center gap-2 rounded-lg border px-2.5 py-2 text-xs transition-colors motion-reduce:transition-none',
+                completed && 'border-primary/12 bg-primary/[0.035]',
+                active && 'border-primary/30 bg-primary/[0.07] text-foreground',
+                !completed &&
+                  !active &&
+                  'border-border/70 text-muted-foreground'
+              )}
+            >
+              <span
+                className={cn(
+                  'flex size-5 shrink-0 items-center justify-center rounded-md border',
+                  completed &&
+                    'border-primary bg-primary text-primary-foreground',
+                  active && 'border-primary/50 text-primary',
+                  !completed && !active && 'border-border'
+                )}
+              >
+                {completed ? (
+                  <Check className="size-3" />
+                ) : active ? (
+                  <span className="bg-primary curvg-blueprint-node size-1.5 rounded-full" />
+                ) : (
+                  <span className="size-1 rounded-full bg-current opacity-35" />
+                )}
+              </span>
+              <span className={active ? 'font-medium' : undefined}>
+                {copy.planningPhases[item]}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+function SceneBlueprintLoader({
   detail,
   copy,
+  phase,
+  streamingText,
+}: {
+  detail?: AnimationDetail;
+  copy: CreatorWorkspaceCopy;
+  phase: AnimationPlanningPhase;
+  streamingText?: string;
+}) {
+  const activeIndex = PLANNING_PHASES.indexOf(phase);
+  const layers = [
+    { label: copy.objectsLabel, icon: Box, readyAt: 1 },
+    { label: copy.timelineLabel, icon: ListTree, readyAt: 1 },
+    { label: copy.layout, icon: LayoutGrid, readyAt: 2 },
+  ];
+
+  return (
+    <div className="relative flex min-h-full flex-col overflow-hidden px-4 pt-3 pb-5 sm:px-6">
+      <div className="curvg-coordinate-grid pointer-events-none absolute inset-0 opacity-70" />
+      <div className="curvg-dotmatrix pointer-events-none absolute -top-8 -right-8 size-72 opacity-30" />
+      <span
+        aria-hidden
+        className="curvg-blueprint-scan via-primary/10 pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-transparent to-transparent"
+      />
+
+      <div className="relative mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center py-10">
+        <div className="text-center">
+          <p className="text-primary font-mono text-[9px] tracking-[0.18em] uppercase">
+            {copy.planningEyebrow} / {String(activeIndex + 1).padStart(2, '0')}
+          </p>
+          <h2 className="mt-2 text-lg font-semibold">{copy.planningTitle}</h2>
+          <p className="text-muted-foreground mx-auto mt-1.5 max-w-lg text-xs leading-5">
+            {copy.planningPhases[phase]}
+          </p>
+        </div>
+
+        <div className="mt-7 grid items-stretch gap-3 md:grid-cols-[minmax(0,1.2fr)_44px_minmax(0,0.8fr)]">
+          <div className="bg-card/75 relative min-h-48 overflow-hidden rounded-xl border p-4 shadow-[0_18px_48px_-40px_color-mix(in_oklab,var(--primary)_70%,transparent)] backdrop-blur-sm">
+            <div className="curvg-coordinate-grid pointer-events-none absolute inset-0 opacity-75" />
+            <div className="relative flex items-center justify-between gap-3">
+              <span className="text-muted-foreground font-mono text-[9px] tracking-[0.12em] uppercase">
+                {copy.planningSemanticMap}
+              </span>
+              <span className="border-primary/20 bg-primary/5 text-primary rounded-md border px-2 py-1 font-mono text-[9px]">
+                {copy.planningPhases[phase]}
+              </span>
+            </div>
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 360 150"
+              className="relative mt-2 h-32 w-full overflow-visible"
+            >
+              <path
+                d="M16 76H344M62 18V134"
+                fill="none"
+                stroke="currentColor"
+                strokeOpacity="0.12"
+              />
+              <path
+                d="M24 77C48 77 48 40 72 40S96 112 120 112s24-72 48-72 24 72 48 72 24-72 48-72 24 37 72 37"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="text-primary"
+              />
+              <circle
+                cx="62"
+                cy="76"
+                r="35"
+                fill="none"
+                stroke="currentColor"
+                strokeOpacity="0.32"
+              />
+              <g className="curvg-blueprint-orbit">
+                <circle
+                  cx="62"
+                  cy="41"
+                  r="4"
+                  fill="currentColor"
+                  className="text-primary"
+                />
+                <path
+                  d="M62 41V76H97"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeDasharray="4 4"
+                  strokeOpacity="0.55"
+                  className="text-primary"
+                />
+              </g>
+              <circle
+                cx="180"
+                cy="76"
+                r="4"
+                fill="currentColor"
+                className="text-primary curvg-blueprint-flow"
+              />
+            </svg>
+            <p className="relative line-clamp-2 text-sm leading-6 font-medium">
+              {detail?.prompt || copy.planningDescription}
+            </p>
+          </div>
+
+          <div className="relative hidden items-center justify-center md:flex">
+            <span className="bg-border absolute inset-x-1 h-px" />
+            <ChevronRight className="bg-background text-primary relative size-5" />
+          </div>
+
+          <div className="grid gap-2">
+            {layers.map(({ label, icon: Icon, readyAt }) => {
+              const ready = activeIndex >= readyAt;
+              const active =
+                (phase === 'structuring' && readyAt === 1) ||
+                (phase === 'auditing' && readyAt === 2) ||
+                phase === 'finalizing';
+              return (
+                <div
+                  key={label}
+                  className={cn(
+                    'bg-card/75 relative flex items-center gap-3 overflow-hidden rounded-xl border px-3.5 py-3 transition-[border-color,background-color] motion-reduce:transition-none',
+                    ready ? 'border-primary/25' : 'border-border/75',
+                    active && 'bg-primary/[0.045]'
+                  )}
+                >
+                  {active && (
+                    <span
+                      aria-hidden
+                      className="bg-primary absolute inset-y-2 left-0 w-0.5 rounded-full"
+                    />
+                  )}
+                  <span
+                    className={cn(
+                      'flex size-8 shrink-0 items-center justify-center rounded-lg border',
+                      ready
+                        ? 'border-primary/20 bg-primary/6 text-primary'
+                        : 'border-border text-muted-foreground'
+                    )}
+                  >
+                    <Icon className="size-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium">{label}</p>
+                    <div className="mt-1.5 flex gap-1">
+                      {[0, 1, 2].map((index) => (
+                        <span
+                          key={index}
+                          className={cn(
+                            'h-1 rounded-full transition-colors motion-reduce:transition-none',
+                            index === 0 ? 'w-10' : index === 1 ? 'w-6' : 'w-3',
+                            ready ? 'bg-primary/35' : 'bg-muted'
+                          )}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  {ready ? (
+                    <Check className="text-primary size-3.5" />
+                  ) : (
+                    <span className="border-muted-foreground/25 size-2 rounded-full border" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="bg-card/70 mt-3 min-h-16 rounded-xl border px-4 py-3 backdrop-blur-sm">
+          <p className="text-muted-foreground font-mono text-[9px] tracking-[0.12em] uppercase">
+            {copy.planningLiveSummary}
+          </p>
+          <p
+            className="mt-1.5 line-clamp-3 text-xs leading-5"
+            aria-live="polite"
+          >
+            {streamingText || copy.planningDescription}
+            {streamingText && (
+              <span className="curvg-cursor" aria-hidden="true" />
+            )}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SceneBlueprintFailure({
+  detail,
+  copy,
+  retrying,
+  onRetry,
 }: {
   detail: AnimationDetail;
   copy: CreatorWorkspaceCopy;
+  retrying: boolean;
+  onRetry?: () => void;
+}) {
+  return (
+    <div className="relative flex min-h-full items-center justify-center overflow-hidden px-6 py-20">
+      <div className="curvg-coordinate-grid pointer-events-none absolute inset-0 opacity-65" />
+      <div className="curvg-dotmatrix pointer-events-none absolute -top-8 -right-8 size-72 opacity-25" />
+      <div className="bg-card/85 border-destructive/25 relative w-full max-w-md rounded-2xl border p-6 text-center shadow-[0_24px_70px_-52px_color-mix(in_oklab,var(--destructive)_70%,transparent)] backdrop-blur-sm">
+        <span className="border-destructive/25 bg-destructive/6 text-destructive mx-auto flex size-11 items-center justify-center rounded-xl border">
+          <AlertCircle className="size-5" />
+        </span>
+        <p className="text-muted-foreground mt-4 font-mono text-[9px] tracking-[0.14em] uppercase">
+          {copy.planningEyebrow}
+        </p>
+        <h2 className="mt-2 text-base font-semibold">{copy.failed}</h2>
+        <p className="text-destructive mt-2 text-sm leading-6">
+          {localizedFailure(copy, detail.parts.failure)}
+        </p>
+        {detail.parts.failure?.retryable && onRetry && (
+          <Button
+            type="button"
+            className="mt-5"
+            disabled={retrying}
+            onClick={onRetry}
+          >
+            {retrying ? (
+              <LoaderCircle className="animate-spin motion-reduce:animate-none" />
+            ) : (
+              <Sparkles />
+            )}
+            {copy.retryPlan}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatusPanel({
+  detail,
+  copy,
+  planningPhase,
+  retryingPlan = false,
+  onRetryPlan,
+}: {
+  detail: AnimationDetail;
+  copy: CreatorWorkspaceCopy;
+  planningPhase: AnimationPlanningPhase;
+  retryingPlan?: boolean;
+  onRetryPlan?: () => void;
 }) {
   const queryClient = useQueryClient();
   const cancelMutation = useMutation({
@@ -1549,6 +2339,9 @@ function StatusPanel({
   ) {
     return null;
   }
+  if (detail.status === 'generating_spec') {
+    return <PlanningStatusPanel copy={copy} phase={planningPhase} />;
+  }
   const failed = detail.status === 'failed';
   const renderStage = detail.parts.render?.stage;
   const renderStages = [
@@ -1556,6 +2349,7 @@ function StatusPanel({
     'validating',
     'compiling',
     'transcoding',
+    'reviewing',
     'uploading',
   ] as const;
   const stageIndex = renderStage
@@ -1613,7 +2407,7 @@ function StatusPanel({
       )}
       {['queued', 'rendering'].includes(detail.status) && (
         <div className="mt-4 border-t pt-4">
-          <ol className="grid gap-2 sm:grid-cols-5">
+          <ol className="grid gap-2 sm:grid-cols-6">
             {renderStages.map((stage, index) => {
               const completed = stageIndex > index;
               const active = stageIndex === index;
@@ -1667,6 +2461,26 @@ function StatusPanel({
           </div>
         </div>
       )}
+      {failed &&
+        detail.parts.failure?.stage === 'spec' &&
+        detail.parts.failure.retryable &&
+        onRetryPlan && (
+          <div className="mt-4 flex justify-end border-t pt-3">
+            <Button
+              type="button"
+              size="sm"
+              disabled={retryingPlan}
+              onClick={onRetryPlan}
+            >
+              {retryingPlan ? (
+                <LoaderCircle className="animate-spin motion-reduce:animate-none" />
+              ) : (
+                <Sparkles />
+              )}
+              {copy.retryPlan}
+            </Button>
+          </div>
+        )}
     </div>
   );
 }
@@ -1827,83 +2641,6 @@ function PythonCodeView({
   );
 }
 
-function pipelineActiveIndex(detail?: AnimationDetail): number {
-  const status = detail?.status;
-  if (status === 'completed') return 3;
-  if (
-    status === 'generating_code' ||
-    status === 'code_ready' ||
-    status === 'canceled' ||
-    status === 'queued' ||
-    status === 'rendering'
-  ) {
-    return 2;
-  }
-  if (status === 'awaiting_approval') return 1;
-  if (status === 'failed') {
-    return detail?.parts.code ? 2 : detail?.parts.spec ? 1 : 0;
-  }
-  return 0;
-}
-
-function PipelineDots({
-  detail,
-  copy,
-}: {
-  detail?: AnimationDetail;
-  copy: CreatorWorkspaceCopy;
-}) {
-  const stages = [
-    copy.pipelineSpec,
-    copy.pipelineApprove,
-    copy.pipelineProcess,
-    copy.pipelineDone,
-  ];
-  const status = detail?.status;
-  const activeIndex = pipelineActiveIndex(detail);
-
-  return (
-    <ol
-      aria-label={copy.pipelineLabel}
-      className="flex items-center gap-1 px-1.5"
-    >
-      {stages.map((stage, index) => {
-        const completed = status === 'completed' || index < activeIndex;
-        const active = index === activeIndex && status !== 'completed';
-        const failed = status === 'failed' && active;
-        return (
-          <li key={stage} className="flex items-center gap-1">
-            {index > 0 && (
-              <span
-                aria-hidden
-                className={cn(
-                  'h-px w-2',
-                  completed || active ? 'bg-primary/55' : 'bg-foreground/15'
-                )}
-              />
-            )}
-            <span
-              aria-current={active ? 'step' : undefined}
-              title={stage}
-              className={cn(
-                'block size-1.5 rounded-full border',
-                completed && 'border-primary bg-primary',
-                active &&
-                  !failed &&
-                  'border-primary bg-primary/30 motion-safe:animate-pulse',
-                !completed && !active && 'border-foreground/25',
-                failed && 'border-destructive bg-destructive/40'
-              )}
-            >
-              <span className="sr-only">{stage}</span>
-            </span>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
 function SpecificationView({
   detail,
   copy,
@@ -1913,7 +2650,7 @@ function SpecificationView({
 }) {
   const spec = detail.parts.spec;
   if (!spec) return null;
-  if (isAnimationSpecV2(spec)) {
+  if (isAnimationSpecRenderable(spec)) {
     return <V2SpecificationEditor detail={detail} copy={copy} />;
   }
   return (
@@ -2082,7 +2819,7 @@ function V2SpecificationEditor({
 }) {
   const queryClient = useQueryClient();
   const source = detail.parts.spec;
-  if (!source || !isAnimationSpecV2(source)) return null;
+  if (!source || !isAnimationSpecRenderable(source)) return null;
   const [draft, setDraft] = useState(source);
   const [selectedVersion, setSelectedVersion] = useState<string>('');
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -2099,7 +2836,7 @@ function V2SpecificationEditor({
   >(undefined);
 
   useEffect(() => {
-    if (detail.parts.spec && isAnimationSpecV2(detail.parts.spec)) {
+    if (detail.parts.spec && isAnimationSpecRenderable(detail.parts.spec)) {
       setDraft(detail.parts.spec);
     }
   }, [detail.id, detail.parts.spec]);
@@ -2280,6 +3017,91 @@ function V2SpecificationEditor({
         </label>
       </section>
 
+      {isAnimationSpecDirected(draft) && (
+        <section className="bg-card rounded-xl border p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold">{copy.directorIntent}</h3>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="secondary">{draft.direction.preset}</Badge>
+              <Badge variant="outline">{draft.direction.frame}</Badge>
+              <Badge variant="outline">{draft.direction.pacing}</Badge>
+              {isAnimationSpecV4(draft) && (
+                <Badge variant="outline">
+                  {copy.cinematography}: {draft.cinematography.scene}
+                </Badge>
+              )}
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            {[
+              [copy.learningGoal, draft.intent.learningGoal],
+              [copy.hook, draft.intent.hook],
+              [copy.takeaway, draft.intent.takeaway],
+            ].map(([label, value]) => (
+              <div key={label} className="bg-muted/35 rounded-lg border p-3">
+                <p className="text-muted-foreground text-[10px] font-semibold tracking-wide uppercase">
+                  {label}
+                </p>
+                <p className="mt-2 text-sm leading-6">{value}</p>
+              </div>
+            ))}
+          </div>
+          {isAnimationSpecV4(draft) && (
+            <div className="bg-muted/25 mt-5 rounded-lg border p-3">
+              <h4 className="text-sm font-semibold">{copy.mathDossier}</h4>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                {[
+                  [copy.coreClaim, draft.mathDossier.coreClaim],
+                  [copy.commonMisreading, draft.mathDossier.commonMisreading],
+                  [copy.visualProof, draft.mathDossier.visualProof],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <p className="text-muted-foreground text-[10px] font-semibold tracking-wide uppercase">
+                      {label}
+                    </p>
+                    <p className="mt-1 text-xs leading-5">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="text-muted-foreground mt-3 text-[10px] font-semibold tracking-wide uppercase">
+                {copy.invariants}
+              </p>
+              <p className="mt-1 text-xs leading-5">
+                {draft.mathDossier.invariants.join(' · ')}
+              </p>
+            </div>
+          )}
+          <div className="mt-5">
+            <h4 className="text-sm font-semibold">{copy.shotPlan}</h4>
+            <div className="mt-3 grid gap-3">
+              {draft.shots.map((shot) => (
+                <div
+                  key={shot.id}
+                  className="grid gap-3 rounded-lg border p-3 sm:grid-cols-[7rem_1fr_8rem]"
+                >
+                  <div>
+                    <Badge variant="outline">{shot.beat}</Badge>
+                    <p className="text-muted-foreground mt-2 font-mono text-[10px]">
+                      {shot.startAt}s–{shot.endAt}s
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm leading-6">{shot.purpose}</p>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      {copy.acceptance}: {shot.acceptance.join(' · ')}
+                    </p>
+                  </div>
+                  <div className="text-muted-foreground font-mono text-[10px] sm:text-right">
+                    <p>{shot.focusRef}</p>
+                    <p className="mt-1">{shot.transition}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       <section className="overflow-hidden rounded-xl border">
         <div className="bg-muted/35 border-b px-4 py-3">
           <h3 className="text-sm font-semibold">{copy.objectsLabel}</h3>
@@ -2302,7 +3124,9 @@ function V2SpecificationEditor({
                   value={
                     object.kind === 'text'
                       ? object.label || ''
-                      : object.expr || ''
+                      : object.parts?.map((part) => part.latex).join('') ||
+                        object.expr ||
+                        ''
                   }
                   onChange={(event) =>
                     updateObject(
@@ -2312,7 +3136,11 @@ function V2SpecificationEditor({
                         : { expr: event.target.value }
                     )
                   }
-                  disabled={object.kind === 'axes' || object.kind === 'matrix'}
+                  disabled={
+                    object.kind === 'axes' ||
+                    object.kind === 'matrix' ||
+                    !!object.parts?.length
+                  }
                   className="border-input bg-background h-10 min-w-0 rounded-lg border px-3 font-mono text-sm disabled:opacity-45"
                 />
               </label>
@@ -2331,6 +3159,34 @@ function V2SpecificationEditor({
                   className="border-input bg-background h-10 w-full rounded-lg border p-1.5"
                 />
               </label>
+              {object.parts?.length ? (
+                <div className="sm:col-start-2 sm:col-end-4">
+                  <p className="text-muted-foreground text-[10px] font-semibold tracking-wide uppercase">
+                    {copy.formulaParts}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {object.parts.map((part) => (
+                      <span
+                        key={part.id}
+                        className="bg-muted/45 inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs"
+                        title={part.meaning}
+                      >
+                        <span
+                          aria-hidden
+                          className="size-2 rounded-full"
+                          style={{
+                            backgroundColor: part.color || object.color,
+                          }}
+                        />
+                        <span className="font-mono">{part.latex}</span>
+                        <span className="text-muted-foreground">
+                          {part.meaning}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
@@ -2644,9 +3500,15 @@ function AnimationPreview({
           : copy.previewEmpty;
   const previewFormula =
     detail?.parts.sourceFormula ||
-    (detail?.parts.spec && isAnimationSpecV2(detail.parts.spec)
-      ? detail.parts.spec.objects.find((object) => object.kind === 'formula')
-          ?.expr
+    (detail?.parts.spec && isAnimationSpecRenderable(detail.parts.spec)
+      ? (() => {
+          const formula = detail.parts.spec.objects.find(
+            (object) => object.kind === 'formula'
+          );
+          return (
+            formula?.expr || formula?.parts?.map((part) => part.latex).join('')
+          );
+        })()
       : detail?.parts.spec?.formulas?.[0]);
 
   return (
@@ -2773,7 +3635,7 @@ function AnimationPreview({
                 {previewFormula}
               </code>
             )}
-            {(busy || loading) && (
+            {(busy || loading) && detail?.status !== 'generating_spec' && (
               <Progress
                 className="mt-5 w-56 bg-white/10"
                 value={detail ? progressByStatus[detail.status] : 12}
@@ -2783,51 +3645,53 @@ function AnimationPreview({
         )}
       </div>
       {detail?.status === 'completed' && detail.parts.videoUrl && (
-        <div className="bg-card flex flex-wrap gap-2 border-t p-3">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void downloadVideo()}
-          >
-            <Download /> {copy.downloadVideo}
-          </Button>
-          {detail.parts.code && (
+        <div className="bg-card border-t">
+          <div className="flex flex-wrap gap-2 p-3">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={downloadPython}
+              onClick={() => void downloadVideo()}
             >
-              <Code2 /> {copy.downloadCode}
+              <Download /> {copy.downloadVideo}
             </Button>
-          )}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={!!detail.parts.publishedAt || publishMutation.isPending}
-            onClick={() => publishMutation.mutate()}
-          >
-            {publishMutation.isPending ? (
-              <LoaderCircle className="animate-spin" />
-            ) : (
-              <LayoutGrid />
+            {detail.parts.code && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={downloadPython}
+              >
+                <Code2 /> {copy.downloadCode}
+              </Button>
             )}
-            {detail.parts.publishedAt
-              ? copy.publishedGallery
-              : copy.publishGallery}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            className="bg-foreground text-background hover:bg-primary ml-auto"
-            onClick={() =>
-              document.getElementById('creator-revision-input')?.focus()
-            }
-          >
-            <Plus /> {copy.editAgain}
-          </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!!detail.parts.publishedAt || publishMutation.isPending}
+              onClick={() => publishMutation.mutate()}
+            >
+              {publishMutation.isPending ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <LayoutGrid />
+              )}
+              {detail.parts.publishedAt
+                ? copy.publishedGallery
+                : copy.publishGallery}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="bg-foreground text-background hover:bg-primary ml-auto"
+              onClick={() =>
+                document.getElementById('creator-revision-input')?.focus()
+              }
+            >
+              <Plus /> {copy.editAgain}
+            </Button>
+          </div>
         </div>
       )}
     </section>
@@ -2840,6 +3704,9 @@ function ArtifactInspector({
   loading = false,
   error = false,
   compact = false,
+  planningPhase = 'understanding',
+  retryingPlan = false,
+  onRetryPlan,
   streamingText,
 }: {
   detail?: AnimationDetail;
@@ -2847,13 +3714,19 @@ function ArtifactInspector({
   loading?: boolean;
   error?: boolean;
   compact?: boolean;
+  planningPhase?: AnimationPlanningPhase;
+  retryingPlan?: boolean;
+  onRetryPlan?: () => void;
   streamingText?: string;
 }) {
   const [tab, setTab] = useState<ArtifactTab>(() =>
     preferredArtifactTab(detail)
   );
   const previousStateRef = useRef('');
-  const specStreaming = streamingText !== undefined;
+  const specStreaming =
+    streamingText !== undefined || detail?.status === 'generating_spec';
+  const specFailed =
+    detail?.status === 'failed' && detail.parts.failure?.stage === 'spec';
 
   useEffect(() => {
     const stateKey = `${detail?.id || 'empty'}:${detail?.status || 'idle'}`;
@@ -2879,33 +3752,27 @@ function ArtifactInspector({
       >
         <TabsContent
           value="specification"
-          className="absolute inset-0 overflow-y-auto px-4 pt-16 pb-5 sm:px-5"
+          className={cn(
+            'absolute inset-0 overflow-y-auto',
+            specStreaming ? 'pt-14' : 'px-4 pt-16 pb-5 sm:px-5'
+          )}
         >
           {detail?.parts.spec ? (
             <SpecificationView detail={detail} copy={copy} />
           ) : specStreaming ? (
-            <div className="bg-card rounded-xl border p-4 sm:p-5">
-              <div className="text-muted-foreground mb-3 flex items-center gap-2 font-mono text-[10px] tracking-[0.12em] uppercase">
-                <LoaderCircle className="text-primary size-3.5 animate-spin motion-reduce:animate-none" />
-                {copy.statuses.generating_spec}
-              </div>
-              {streamingText ? (
-                <p className="text-foreground/85 font-mono text-xs leading-6 whitespace-pre-wrap">
-                  {streamingText}
-                  <span className="curvg-cursor" aria-hidden="true" />
-                </p>
-              ) : (
-                <div
-                  className="animate-pulse space-y-2.5 motion-reduce:animate-none"
-                  aria-hidden
-                >
-                  <div className="bg-muted h-3.5 w-3/4 rounded" />
-                  <div className="bg-muted h-3.5 w-full rounded" />
-                  <div className="bg-muted h-3.5 w-5/6 rounded" />
-                  <div className="bg-muted h-3.5 w-2/3 rounded" />
-                </div>
-              )}
-            </div>
+            <SceneBlueprintLoader
+              detail={detail}
+              copy={copy}
+              phase={planningPhase}
+              streamingText={streamingText}
+            />
+          ) : specFailed ? (
+            <SceneBlueprintFailure
+              detail={detail}
+              copy={copy}
+              retrying={retryingPlan}
+              onRetry={onRetryPlan}
+            />
           ) : (
             <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
               {copy.statuses.generating_spec}
@@ -2964,32 +3831,43 @@ function ArtifactInspector({
 
         <div className="absolute inset-x-0 top-3 z-30 flex justify-start overflow-x-auto px-3 sm:justify-center">
           <TabsList
+            variant="line"
             aria-label={copy.preview}
-            className="border-foreground/8 bg-card/92 h-10 min-w-max items-center gap-1 rounded-full border p-1 shadow-[0_8px_28px_-10px_color-mix(in_oklab,var(--foreground)_35%,transparent)] backdrop-blur-md"
+            className="h-10 min-w-max items-center gap-0 rounded-xl border border-white/[0.09] bg-[#14151d]/80 px-1.5 py-1 text-white/50 shadow-[0_10px_28px_-18px_rgba(0,0,0,0.9)] backdrop-blur-xl"
           >
-            <PipelineDots detail={detail} copy={copy} />
-            <span aria-hidden className="bg-foreground/10 mx-0.5 h-4 w-px" />
             <TabsTrigger
               value="specification"
-              disabled={!detail?.parts.spec && !specStreaming}
-              className="text-foreground/55 hover:text-foreground data-active:bg-foreground data-active:text-background h-8 flex-none rounded-full px-3 text-xs data-active:shadow-sm"
+              disabled={!detail?.parts.spec && !specStreaming && !specFailed}
+              className="group/artifact-tab h-8 flex-none rounded-lg border-0 px-3 text-xs text-white/45 after:hidden hover:bg-white/[0.04] hover:text-white/80 focus-visible:border-white/20 focus-visible:ring-white/15 data-active:bg-transparent data-active:text-white"
             >
               <Sparkles /> {copy.specification}
+              <span
+                aria-hidden
+                className="bg-primary absolute bottom-0 left-1/2 h-0.5 w-4 -translate-x-1/2 rounded-full opacity-0 transition-opacity group-data-active/artifact-tab:opacity-100"
+              />
             </TabsTrigger>
             <TabsTrigger
               value="code"
               disabled={
                 !detail?.parts.code && detail?.status !== 'generating_code'
               }
-              className="text-foreground/55 hover:text-foreground data-active:bg-foreground data-active:text-background h-8 flex-none rounded-full px-3 text-xs data-active:shadow-sm"
+              className="group/artifact-tab h-8 flex-none rounded-lg border-0 px-3 text-xs text-white/45 after:hidden hover:bg-white/[0.04] hover:text-white/80 focus-visible:border-white/20 focus-visible:ring-white/15 data-active:bg-transparent data-active:text-white"
             >
               <Code2 /> {copy.code}
+              <span
+                aria-hidden
+                className="bg-primary absolute bottom-0 left-1/2 h-0.5 w-4 -translate-x-1/2 rounded-full opacity-0 transition-opacity group-data-active/artifact-tab:opacity-100"
+              />
             </TabsTrigger>
             <TabsTrigger
               value="video"
-              className="text-foreground/55 hover:text-foreground data-active:bg-foreground data-active:text-background h-8 flex-none rounded-full px-3 text-xs data-active:shadow-sm"
+              className="group/artifact-tab h-8 flex-none rounded-lg border-0 px-3 text-xs text-white/45 after:hidden hover:bg-white/[0.04] hover:text-white/80 focus-visible:border-white/20 focus-visible:ring-white/15 data-active:bg-transparent data-active:text-white"
             >
               <Film /> {copy.video}
+              <span
+                aria-hidden
+                className="bg-primary absolute bottom-0 left-1/2 h-0.5 w-4 -translate-x-1/2 rounded-full opacity-0 transition-opacity group-data-active/artifact-tab:opacity-100"
+              />
             </TabsTrigger>
           </TabsList>
         </div>
@@ -3001,26 +3879,22 @@ function ArtifactInspector({
 function ArtifactNudge({
   detail,
   copy,
-  approving,
-  modelUnavailable,
-  onApprove,
+  retrying,
+  onRetry,
 }: {
   detail: AnimationDetail;
   copy: CreatorWorkspaceCopy;
-  approving: boolean;
-  modelUnavailable?: boolean;
-  onApprove: () => void;
+  retrying: boolean;
+  onRetry: () => void;
 }) {
   const spec = detail.parts.spec;
   const code = detail.parts.code;
   if (!spec && !code) return null;
-  const canApprove =
-    !!spec &&
-    isAnimationSpecV2(spec) &&
-    (['awaiting_approval', 'code_ready'].includes(detail.status) ||
-      (detail.status === 'failed' &&
-        detail.parts.failure?.retryable === true &&
-        detail.parts.failure.stage !== 'spec'));
+  const canRetry =
+    detail.status === 'code_ready' ||
+    (detail.status === 'failed' &&
+      detail.parts.failure?.retryable === true &&
+      detail.parts.failure.stage !== 'spec');
 
   return (
     <div className="bg-card flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3">
@@ -3037,29 +3911,27 @@ function ArtifactNudge({
         </p>
         <p className="text-muted-foreground mt-0.5 truncate text-xs">
           {spec
-            ? `${isAnimationSpecV2(spec) ? copy.objectsLabel : copy.scenes} ${isAnimationSpecV2(spec) ? spec.objects.length : spec.scenes?.length || 0} · ${copy.duration} ${spec.durationSeconds}s`
+            ? `${isAnimationSpecRenderable(spec) ? copy.objectsLabel : copy.scenes} ${isAnimationSpecRenderable(spec) ? spec.objects.length : spec.scenes?.length || 0} · ${copy.duration} ${spec.durationSeconds}s`
             : copy.codeReadyTitle}
           {code ? ` · ${copy.code}` : ''}
         </p>
       </div>
-      {canApprove && (
+      {canRetry && (
         <Button
           size="sm"
-          onClick={onApprove}
-          disabled={approving}
+          onClick={onRetry}
+          disabled={retrying}
           className="bg-foreground text-background hover:bg-primary"
         >
-          {approving ? (
+          {retrying ? (
             <LoaderCircle className="animate-spin motion-reduce:animate-none" />
           ) : (
-            <Check />
+            <Play />
           )}
           {detail.status === 'code_ready' ||
           detail.parts.failure?.stage === 'render'
             ? copy.retryRender
-            : detail.parts.failure?.stage === 'code'
-              ? copy.retryCode
-              : copy.approve}
+            : copy.retryCode}
         </Button>
       )}
     </div>
@@ -3097,8 +3969,11 @@ export function CreatorWorkspace({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [guestDraftReady, setGuestDraftReady] = useState(false);
   const [streamingAnimationId, setStreamingAnimationId] = useState<string>();
   const [streamingText, setStreamingText] = useState('');
+  const [planningPhase, setPlanningPhase] =
+    useState<AnimationPlanningPhase>('understanding');
   const [pendingAnimation, setPendingAnimation] = useState<AnimationDetail>();
   const [splitRatio, setSplitRatio] = useState(DEFAULT_SPLIT_RATIO);
   const [isXlViewport, setIsXlViewport] = useState(false);
@@ -3134,6 +4009,13 @@ export function CreatorWorkspace({
     staleTime: 60_000,
   });
 
+  const creditsQuery = useQuery({
+    queryKey: ['user-credits', 'balance'],
+    queryFn: () => apiGet<{ balance: number }>('/api/credits'),
+    enabled: !!user,
+    staleTime: 30_000,
+  });
+
   const detailQuery = useQuery({
     queryKey: detailQueryKey,
     queryFn: () => apiGet<AnimationDetail>(`/api/animations/${selectedId}`),
@@ -3144,6 +4026,19 @@ export function CreatorWorkspace({
   const detail = pendingAnimation || detailQuery.data;
   const detailLoading =
     !hydrated || sessionPending || (!pendingAnimation && detailQuery.isLoading);
+
+  useEffect(() => {
+    if (
+      !detail ||
+      !['completed', 'failed', 'canceled'].includes(detail.status)
+    ) {
+      return;
+    }
+    queryClient.invalidateQueries({
+      queryKey: ['user-credits', 'balance'],
+    });
+  }, [detail?.status, queryClient]);
+
   const conversationTurns = useMemo<AnimationMessage[][]>(() => {
     const messages =
       detail?.messages.filter((message) => message.status !== 'failed') ?? [];
@@ -3162,7 +4057,8 @@ export function CreatorWorkspace({
     (preset) => {
       const match = catalog?.options.find(
         (option) =>
-          option.provider === 'yunwu' && preset.models.includes(option.model)
+          option.provider === preset.provider &&
+          preset.models.includes(option.model)
       );
       const content = copy.curatedModels[preset.key];
       return {
@@ -3180,7 +4076,7 @@ export function CreatorWorkspace({
               : copy.modelPro,
         requiredTier: match?.requiredTier || preset.tier,
         locked: !!match && !match.entitled,
-        disabled: !match || !match.entitled,
+        disabled: !match,
       };
     }
   );
@@ -3196,6 +4092,14 @@ export function CreatorWorkspace({
     },
     ...curatedModelOptions,
   ];
+  const handleModelChange = (value: string) => {
+    const option = modelOptions.find((candidate) => candidate.value === value);
+    if (option?.locked) {
+      router.push('/pricing');
+      return;
+    }
+    if (!option?.disabled) setModelValue(value);
+  };
   const persistedSelection = detail?.parts.modelSelection;
   const detailModelValue =
     persistedSelection?.choice === 'auto'
@@ -3230,8 +4134,10 @@ export function CreatorWorkspace({
     });
   }
   const detailModelPresetKey = detail
-    ? CURATED_MODEL_PRESETS.find((preset) =>
-        preset.models.includes(detail.model)
+    ? CURATED_MODEL_PRESETS.find(
+        (preset) =>
+          preset.provider === detail.provider &&
+          preset.models.includes(detail.model)
       )?.key
     : undefined;
   const displayedDetailModel = detailModelPresetKey
@@ -3244,8 +4150,65 @@ export function CreatorWorkspace({
   }, []);
 
   useEffect(() => {
+    if (!hydrated || sessionPending || guestDraftReady) return;
+    const draft = readGuestCreatorDraft();
+    if (draft) {
+      setCreationMode(draft.creationMode);
+      setPrompt(draft.prompt);
+      setFormula(draft.formula);
+      setFormulaIntent(draft.formulaIntent);
+      setMathObjectType(draft.mathObjectType);
+      setMathTypeOverridden(true);
+      setSelectedTemplateId(draft.selectedTemplateId);
+      setTemplateValues(draft.templateValues);
+      setSubject(draft.subject);
+    }
+    if (user) window.sessionStorage.removeItem(GUEST_DRAFT_STORAGE_KEY);
+    setGuestDraftReady(true);
+  }, [guestDraftReady, hydrated, sessionPending, user]);
+
+  useEffect(() => {
+    if (!guestDraftReady || user) return;
+    const hasMeaningfulDraft =
+      (creationMode === 'description' && !!prompt.trim()) ||
+      (creationMode === 'formula' &&
+        (!!formulaIntent.trim() || formula.trim() !== 'sin(x)')) ||
+      creationMode === 'template';
+    if (!hasMeaningfulDraft) {
+      window.sessionStorage.removeItem(GUEST_DRAFT_STORAGE_KEY);
+      return;
+    }
+    const draft: GuestCreatorDraft = {
+      savedAt: Date.now(),
+      creationMode,
+      prompt,
+      formula,
+      formulaIntent,
+      mathObjectType,
+      selectedTemplateId,
+      templateValues,
+      subject,
+    };
+    window.sessionStorage.setItem(
+      GUEST_DRAFT_STORAGE_KEY,
+      JSON.stringify(draft)
+    );
+  }, [
+    creationMode,
+    formula,
+    formulaIntent,
+    guestDraftReady,
+    mathObjectType,
+    prompt,
+    selectedTemplateId,
+    subject,
+    templateValues,
+    user,
+  ]);
+
+  useEffect(() => {
     const first = templatesQuery.data?.[0];
-    if (!first || selectedTemplateId) return;
+    if (!guestDraftReady || !first || selectedTemplateId) return;
     setSelectedTemplateId(first.id);
     setTemplateValues(
       Object.fromEntries(
@@ -3255,7 +4218,7 @@ export function CreatorWorkspace({
         ])
       )
     );
-  }, [selectedTemplateId, templatesQuery.data]);
+  }, [guestDraftReady, selectedTemplateId, templatesQuery.data]);
 
   useEffect(() => {
     const stored = Number(window.localStorage.getItem(SPLIT_RATIO_STORAGE_KEY));
@@ -3390,6 +4353,7 @@ export function CreatorWorkspace({
     setFormulaIntent('');
     queryClient.setQueryData(['animation', user?.id, next.id], next);
     queryClient.invalidateQueries({ queryKey: animationsQueryKey });
+    queryClient.invalidateQueries({ queryKey: ['user-credits', 'balance'] });
     router.replace(`/creator?animationId=${encodeURIComponent(next.id)}`);
   }
 
@@ -3419,7 +4383,10 @@ export function CreatorWorkspace({
             generationStartedRef.current = true;
             setStreamingAnimationId(event.animation.id);
             setStreamingText('');
+            setPlanningPhase('understanding');
             acceptDetail(event.animation);
+          } else if (event.type === 'phase') {
+            setPlanningPhase(event.phase);
           } else if (event.type === 'delta') {
             setStreamingText((current) => current + event.delta);
           } else if (event.type === 'completed') {
@@ -3427,6 +4394,7 @@ export function CreatorWorkspace({
             acceptDetail(event.animation);
             setStreamingAnimationId(undefined);
             setStreamingText('');
+            setPlanningPhase('understanding');
           } else {
             streamError = new Error(event.message);
             if (event.failure) {
@@ -3434,6 +4402,7 @@ export function CreatorWorkspace({
             }
             setStreamingAnimationId(undefined);
             setStreamingText('');
+            setPlanningPhase('understanding');
           }
         },
         { signal: abortController.signal }
@@ -3485,6 +4454,7 @@ export function CreatorWorkspace({
     setPrompt('');
     setStreamingAnimationId(id);
     setStreamingText('');
+    setPlanningPhase('understanding');
   }
 
   function beginOptimisticRevision(request: CreatorGenerationRequest) {
@@ -3510,6 +4480,10 @@ export function CreatorWorkspace({
           code: undefined,
           videoUrl: undefined,
           thumbnailUrl: undefined,
+          contactSheetUrl: undefined,
+          qaReportUrl: undefined,
+          visualQa: undefined,
+          visualReview: undefined,
           render: undefined,
           error: undefined,
           failure: undefined,
@@ -3529,6 +4503,7 @@ export function CreatorWorkspace({
     setPrompt('');
     setStreamingAnimationId(detail.id);
     setStreamingText('');
+    setPlanningPhase('understanding');
   }
 
   const createMutation = useMutation({
@@ -3556,6 +4531,7 @@ export function CreatorWorkspace({
       else if (request.mode === 'description') setPrompt(request.prompt);
       setStreamingAnimationId(undefined);
       setStreamingText('');
+      setPlanningPhase('understanding');
       generationStartedRef.current = false;
       queryClient.invalidateQueries({ queryKey: animationsQueryKey });
       toast.error(requestFailureMessage(copy, error));
@@ -3577,6 +4553,7 @@ export function CreatorWorkspace({
       setPrompt(request.prompt);
       setStreamingAnimationId(undefined);
       setStreamingText('');
+      setPlanningPhase('understanding');
       generationStartedRef.current = false;
       queryClient.invalidateQueries({ queryKey: detailQueryKey });
       queryClient.invalidateQueries({ queryKey: animationsQueryKey });
@@ -3584,13 +4561,9 @@ export function CreatorWorkspace({
     },
   });
 
-  const approveMutation = useMutation({
-    mutationFn: () => {
-      return apiPost<AnimationDetail>(
-        `/api/animations/${selectedId}/approve`,
-        {}
-      );
-    },
+  const retryProductionMutation = useMutation({
+    mutationFn: () =>
+      apiPost<AnimationDetail>(`/api/animations/${selectedId}/approve`, {}),
     onSuccess: acceptDetail,
     onError: (error: Error) => {
       queryClient.invalidateQueries({ queryKey: detailQueryKey });
@@ -3611,10 +4584,29 @@ export function CreatorWorkspace({
     onError: () => toast.error(copy.deleteFailed),
   });
 
+  const renameMutation = useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) =>
+      apiPatch<AnimationDetail>(`/api/animations/${id}`, { title }),
+    onSuccess: (next) => {
+      queryClient.setQueryData<AnimationSummary[]>(
+        animationsQueryKey,
+        (current) =>
+          current?.map((item) =>
+            item.id === next.id
+              ? { ...item, title: next.title, updatedAt: next.updatedAt }
+              : item
+          )
+      );
+      queryClient.setQueryData(['animation', user?.id, next.id], next);
+      queryClient.invalidateQueries({ queryKey: animationsQueryKey });
+    },
+    onError: () => toast.error(copy.renameFailed),
+  });
+
   const processing =
     createMutation.isPending ||
     reviseMutation.isPending ||
-    approveMutation.isPending ||
+    retryProductionMutation.isPending ||
     isAnimationBusy(detail?.status);
 
   function startNew() {
@@ -3630,6 +4622,7 @@ export function CreatorWorkspace({
     setModelValue('auto');
     setStreamingAnimationId(undefined);
     setStreamingText('');
+    setPlanningPhase('understanding');
     generationStartedRef.current = false;
     setHistoryOpen(false);
     router.replace('/creator');
@@ -3641,13 +4634,37 @@ export function CreatorWorkspace({
     setSelectedId(id);
     setStreamingAnimationId(undefined);
     setStreamingText('');
+    setPlanningPhase('understanding');
     generationStartedRef.current = false;
     setHistoryOpen(false);
     router.replace(`/creator?animationId=${encodeURIComponent(id)}`);
   }
 
-  function remove(id: string) {
-    deleteMutation.mutate(id);
+  async function rename(id: string, title: string) {
+    await renameMutation.mutateAsync({ id, title });
+  }
+
+  async function remove(id: string) {
+    await deleteMutation.mutateAsync(id);
+  }
+
+  function retryFailedPlan() {
+    if (
+      !detail ||
+      detail.status !== 'failed' ||
+      detail.parts.failure?.stage !== 'spec' ||
+      !detail.parts.failure.retryable
+    ) {
+      return;
+    }
+    const request: CreatorGenerationRequest = {
+      prompt: detail.parts.prompt || detail.prompt,
+      subject: detail.subject,
+      mode: 'description',
+      ...selectedModelRequest(),
+    };
+    beginOptimisticRevision(request);
+    reviseMutation.mutate(request);
   }
 
   function submit(event: React.FormEvent) {
@@ -3715,7 +4732,7 @@ export function CreatorWorkspace({
       ? copy.loading
       : copy.loadFailed;
   const legacyArchive =
-    !!detail?.parts.spec && !isAnimationSpecV2(detail.parts.spec);
+    !!detail?.parts.spec && !isAnimationSpecRenderable(detail.parts.spec);
   const templateArchive = detail?.parts.creationMode === 'template';
 
   if ((!hydrated || sessionPending) && selectedId) {
@@ -3729,7 +4746,10 @@ export function CreatorWorkspace({
 
   if (!hydrated || sessionPending || !user) {
     return (
-      <div className="curvg-stage curvg-frame bg-background flex min-h-svh">
+      <div className="curvg-stage curvg-frame bg-background flex h-svh min-h-0 flex-col overflow-hidden">
+        {hydrated && !sessionPending && !user && (
+          <GuestWorkspaceHeader copy={copy} />
+        )}
         <Welcome
           copy={copy}
           locale={locale}
@@ -3746,7 +4766,7 @@ export function CreatorWorkspace({
           modelsError={hasHydratedUser && modelsQuery.isError}
           viewerTier={catalog?.viewerTier}
           onRetryModels={() => void modelsQuery.refetch()}
-          onModelChange={setModelValue}
+          onModelChange={handleModelChange}
           processing={processing}
           user={false}
           formula={formula}
@@ -3781,12 +4801,16 @@ export function CreatorWorkspace({
           history={history}
           selectedId={selectedId}
           locale={locale}
+          user={user}
+          credits={creditsQuery.data?.balance}
+          creditsLoading={creditsQuery.isPending}
           collapsed={sidebarCollapsed}
           historyOpen={historyOpen}
           onToggleCollapsed={toggleSidebar}
           onHistoryOpenChange={setHistoryOpen}
           onCreate={startNew}
           onSelect={selectAnimation}
+          onRename={rename}
           onDelete={remove}
         />
         <section className="flex min-w-0 flex-1 flex-col">
@@ -3823,7 +4847,7 @@ export function CreatorWorkspace({
             modelsError={modelsQuery.isError}
             viewerTier={catalog?.viewerTier}
             onRetryModels={() => void modelsQuery.refetch()}
-            onModelChange={setModelValue}
+            onModelChange={handleModelChange}
             processing={processing}
             user
             formula={formula}
@@ -3858,12 +4882,16 @@ export function CreatorWorkspace({
         history={history}
         selectedId={selectedId}
         locale={locale}
+        user={user}
+        credits={creditsQuery.data?.balance}
+        creditsLoading={creditsQuery.isPending}
         collapsed={sidebarCollapsed}
         historyOpen={historyOpen}
         onToggleCollapsed={toggleSidebar}
         onHistoryOpenChange={setHistoryOpen}
         onCreate={startNew}
         onSelect={selectAnimation}
+        onRename={rename}
         onDelete={remove}
       />
 
@@ -3995,31 +5023,22 @@ export function CreatorWorkspace({
                           </div>
                         ))}
                         {streamingAnimationId === detail.id &&
+                          streamingText &&
                           turnIndex === conversationTurns.length - 1 && (
                             <div className="flex items-start justify-start gap-2.5">
                               <div className="bg-card max-w-[90%] rounded-xl border px-4 py-3 text-sm leading-6 sm:max-w-[84%]">
                                 <div className="text-muted-foreground mb-1.5 flex items-center gap-1.5 font-mono text-[9px] tracking-[0.12em] uppercase">
-                                  <LoaderCircle className="text-primary size-3 animate-spin motion-reduce:animate-none" />
+                                  <span className="bg-primary curvg-blueprint-node size-1.5 rounded-full" />
                                   {copy.assistantLabel} ·{' '}
-                                  {copy.statuses.generating_spec}
+                                  {copy.planningPhases[planningPhase]}
                                 </div>
-                                {streamingText ? (
-                                  <p className="whitespace-pre-wrap">
-                                    {streamingText}
-                                    <span
-                                      className="curvg-cursor"
-                                      aria-hidden="true"
-                                    />
-                                  </p>
-                                ) : (
-                                  <div
-                                    className="animate-pulse space-y-2 motion-reduce:animate-none"
-                                    aria-hidden
-                                  >
-                                    <div className="bg-muted h-3 w-4/5 rounded" />
-                                    <div className="bg-muted h-3 w-3/5 rounded" />
-                                  </div>
-                                )}
+                                <p className="whitespace-pre-wrap">
+                                  {streamingText}
+                                  <span
+                                    className="curvg-cursor"
+                                    aria-hidden="true"
+                                  />
+                                </p>
                               </div>
                             </div>
                           )}
@@ -4027,19 +5046,27 @@ export function CreatorWorkspace({
                     ))}
                     <div ref={messageEndRef} />
                   </div>
-                  <StatusPanel detail={detail} copy={copy} />
+                  <StatusPanel
+                    detail={detail}
+                    copy={copy}
+                    planningPhase={planningPhase}
+                    retryingPlan={reviseMutation.isPending}
+                    onRetryPlan={retryFailedPlan}
+                  />
                   <ArtifactNudge
                     detail={detail}
                     copy={copy}
-                    approving={approveMutation.isPending}
-                    modelUnavailable={persistedSelectionUnavailable}
-                    onApprove={() => approveMutation.mutate()}
+                    retrying={retryProductionMutation.isPending}
+                    onRetry={() => retryProductionMutation.mutate()}
                   />
                   <div className="xl:hidden">
                     <ArtifactInspector
                       detail={detail}
                       copy={copy}
                       compact
+                      planningPhase={planningPhase}
+                      retryingPlan={reviseMutation.isPending}
+                      onRetryPlan={retryFailedPlan}
                       streamingText={
                         streamingAnimationId === detail.id
                           ? streamingText
@@ -4088,7 +5115,7 @@ export function CreatorWorkspace({
                   modelsError={modelsQuery.isError}
                   viewerTier={catalog?.viewerTier}
                   onRetryModels={() => void modelsQuery.refetch()}
-                  onModelChange={setModelValue}
+                  onModelChange={handleModelChange}
                   processing={processing}
                   hasDetail={!!detail}
                   user={hasHydratedUser}
@@ -4129,6 +5156,9 @@ export function CreatorWorkspace({
               copy={copy}
               loading={detailLoading}
               error={detailQuery.isError}
+              planningPhase={planningPhase}
+              retryingPlan={reviseMutation.isPending}
+              onRetryPlan={retryFailedPlan}
               streamingText={
                 detail && streamingAnimationId === detail.id
                   ? streamingText

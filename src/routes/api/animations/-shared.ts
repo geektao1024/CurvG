@@ -3,19 +3,22 @@ import { and, eq, isNull, lte, or } from 'drizzle-orm';
 import {
   ChatModelCircuitBreaker,
   ChatProviderError,
-  FailoverChatProvider,
-  OpenAICompatibleChatProvider,
+  ProviderFailoverChatProvider,
   type ChatProvider,
 } from '@/core/ai/chat';
+import { KieChatProvider } from '@/core/ai/kie-chat';
 import { HttpAnimationRenderer } from '@/core/animation-renderer';
 import { db } from '@/core/db';
 import {
   animationModelPolicies,
   canUseAnimationModel,
   decideAnimationModelAccess,
-  DEFAULT_ANIMATION_MODEL,
-  PRO_AUTO_FALLBACK_MODELS,
+  FREE_AUTO_MODEL_TARGETS,
+  getAnimationModelPolicy,
+  getAnimationReasoningEffort,
+  PRO_AUTO_MODEL_TARGETS,
   type AnimationAccessTier,
+  type AnimationModelPolicy,
 } from '@/config/animation-models';
 import { animationGenerationLease } from '@/config/db/schema';
 import { AnimationConflictError } from '@/modules/animations/service';
@@ -27,7 +30,7 @@ import type {
   AnimationModelOption,
   AnimationSubject,
 } from '@/lib/animation';
-import { getUuid, md5 } from '@/lib/hash';
+import { getUuid } from '@/lib/hash';
 
 const subjects = new Set<AnimationSubject>([
   'general',
@@ -39,7 +42,7 @@ const subjects = new Set<AnimationSubject>([
   'economics',
 ]);
 
-const modelChoices = new Set<AnimationModelChoice>(['auto', 'yunwu']);
+const modelChoices = new Set<AnimationModelChoice>(['auto', 'kie']);
 
 export class AnimationApiError extends Error {
   constructor(
@@ -182,18 +185,24 @@ export function parseModelChoice(value: unknown): AnimationModelChoice {
   throw new AnimationApiError('Invalid animation model', 'INVALID_MODEL', 400);
 }
 
-function yunwuProvider(configs: ConfigMap) {
-  if (!configs.yunwu_api_key) {
+function kieProvider(configs: ConfigMap) {
+  if (!configs.kie_api_key) {
     throw new AnimationApiError(
-      'Animation AI provider is not configured',
+      'Kie chat provider is not configured',
       'MODEL_UNAVAILABLE',
       503
     );
   }
-  return new OpenAICompatibleChatProvider({
-    apiKey: configs.yunwu_api_key,
-    baseUrl: configs.yunwu_base_url || 'https://yunwu.ai/v1',
-    name: 'yunwu',
+  return new KieChatProvider({
+    apiKey: configs.kie_api_key,
+    baseUrl: configs.kie_base_url || 'https://api.kie.ai',
+    maxAttempts: 1,
+    // Explicit models do not have Auto's fallback budget. Give a large v5
+    // scene plan enough time to stream and finish its mathematical audit while
+    // the service-level 5 minute deadline remains the hard upper bound.
+    requestTimeoutMs: 240_000,
+    overallTimeoutMs: 300_000,
+    reasoningOnlyTimeoutMs: 60_000,
   });
 }
 
@@ -202,147 +211,39 @@ interface ProviderResolution {
   model: string;
 }
 
-interface ModelCacheEntry {
-  expiresAt: number;
-  models: DiscoveredModel[];
-  stale: boolean;
-}
-
-interface DiscoveredModel {
-  id: string;
-  description?: string;
-}
-
-const modelCache = new Map<string, ModelCacheEntry>();
-const modelRefreshes = new Map<
-  string,
-  Promise<{ models: DiscoveredModel[]; stale: boolean }>
->();
-const MODEL_CACHE_TTL = 5 * 60_000;
-const MODEL_CACHE_FAILURE_TTL = 30_000;
-const MODEL_ID_PATTERN = /^[A-Za-z0-9._:/-]{1,180}$/;
 const autoModelCircuitBreaker = new ChatModelCircuitBreaker();
-
-function discoverableModels(values: unknown[]): DiscoveredModel[] {
-  const models = new Map<string, DiscoveredModel>();
-  for (const value of values) {
-    if (!value || typeof value !== 'object') continue;
-    const record = value as Record<string, unknown>;
-    const id = record.id;
-    if (typeof id !== 'string' || !MODEL_ID_PATTERN.test(id)) continue;
-    const endpointTypes = Array.isArray(record.supported_endpoint_types)
-      ? record.supported_endpoint_types
-      : [];
-    if (endpointTypes.length > 0 && !endpointTypes.includes('openai')) continue;
-    if (typeof record.model_type === 'string' && record.model_type !== '文本') {
-      continue;
-    }
-    const tags =
-      typeof record.tags === 'string'
-        ? record.tags
-            .split(/[,，]/)
-            .map((tag) => tag.trim())
-            .filter(Boolean)
-        : [];
-    if (tags.includes('弃用')) continue;
-    if (tags.length > 0 && !tags.includes('对话')) continue;
-    const description =
-      typeof record.description === 'string'
-        ? record.description.trim().slice(0, 240)
-        : undefined;
-    models.set(id, { id, description: description || undefined });
-  }
-  return [...models.values()];
-}
-
-async function discoverYunwuModels(configs: ConfigMap): Promise<{
-  models: DiscoveredModel[];
-  stale: boolean;
-}> {
-  if (!configs.yunwu_api_key) return { models: [], stale: true };
-  const baseUrl = (configs.yunwu_base_url || 'https://yunwu.ai/v1').replace(
-    /\/+$/,
-    ''
-  );
-  // Catalog visibility may differ between Yunwu credentials. Key the cache by
-  // a one-way credential fingerprint so rotating keys never inherits another
-  // account's five-minute catalog without storing or logging the secret.
-  const cacheKey = `${baseUrl}|${md5(configs.yunwu_api_key)}`;
-  const cached = modelCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return { models: cached.models, stale: cached.stale };
-  }
-  const inFlight = modelRefreshes.get(cacheKey);
-  if (inFlight) return inFlight;
-  const refresh = (async () => {
-    try {
-      const response = await fetch(`${baseUrl}/models`, {
-        headers: { Authorization: `Bearer ${configs.yunwu_api_key}` },
-        signal: AbortSignal.timeout(20_000),
-      });
-      const data = (await response.json().catch(() => ({}))) as Record<
-        string,
-        unknown
-      >;
-      if (!response.ok) {
-        throw new Error(`Yunwu model discovery failed (${response.status})`);
-      }
-      const models = discoverableModels(
-        Array.isArray(data.data) ? data.data.slice(0, 5_000) : []
-      );
-      if (models.length === 0) {
-        throw new Error('Yunwu returned an empty model catalog');
-      }
-      modelCache.set(cacheKey, {
-        models,
-        expiresAt: Date.now() + MODEL_CACHE_TTL,
-        stale: false,
-      });
-      return { models, stale: false };
-    } catch (error) {
-      console.error('[animation-models] catalog refresh failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      const models = cached?.models || [];
-      modelCache.set(cacheKey, {
-        models,
-        expiresAt: Date.now() + MODEL_CACHE_FAILURE_TTL,
-        stale: true,
-      });
-      return { models, stale: true };
-    }
-  })();
-  modelRefreshes.set(cacheKey, refresh);
-  try {
-    return await refresh;
-  } finally {
-    if (modelRefreshes.get(cacheKey) === refresh) {
-      modelRefreshes.delete(cacheKey);
-    }
-  }
-}
 
 function policyOptions(
   tier: AnimationAccessTier,
-  discovered: DiscoveredModel[],
-  useStaticFallback: boolean
+  provider: AnimationModelOption['provider']
 ): AnimationModelOption[] {
-  const discoveredById = new Map(discovered.map((model) => [model.id, model]));
-  return animationModelPolicies.flatMap((policy) => {
-    const live = discoveredById.get(policy.model);
-    if (!useStaticFallback && !live) return [];
-    return [
-      {
-        provider: policy.provider,
-        model: policy.model,
-        isDefault: policy.model === DEFAULT_ANIMATION_MODEL,
-        description: live?.description,
-        presetKey: policy.presetKey,
-        requiredTier: policy.requiredTier,
-        entitled: canUseAnimationModel(tier, policy),
-      },
-    ];
+  return animationModelPolicies
+    .filter((policy) => policy.provider === provider)
+    .map((policy) => ({
+      provider: policy.provider,
+      model: policy.model,
+      isDefault: false,
+      presetKey: policy.presetKey,
+      requiredTier: policy.requiredTier,
+      entitled: canUseAnimationModel(tier, policy),
+    }));
+}
+
+function autoModelPolicies(tier: AnimationAccessTier): AnimationModelPolicy[] {
+  const targets =
+    tier === 'pro' ? PRO_AUTO_MODEL_TARGETS : FREE_AUTO_MODEL_TARGETS;
+  return targets.flatMap((target) => {
+    const policy = getAnimationModelPolicy(target.provider, target.model);
+    return policy && canUseAnimationModel(tier, policy) ? [policy] : [];
   });
+}
+
+function policyKey(policy: Pick<AnimationModelOption, 'provider' | 'model'>) {
+  return `${policy.provider}:${policy.model}`;
+}
+
+function policyAvailable(policy: AnimationModelPolicy, configs: ConfigMap) {
+  return policy.provider === 'kie' && !!configs.kie_api_key;
 }
 
 export async function listAnimationModels(
@@ -350,33 +251,31 @@ export async function listAnimationModels(
   userId: string
 ): Promise<AnimationModelCatalog> {
   const viewerTier = await getAnimationAccessTier(userId);
-  const discovery = await discoverYunwuModels(configs);
-  // Only fall back to the last verified static catalog when discovery itself
-  // failed. A successful live catalog that omits a model is authoritative and
-  // that model must disappear instead of being reintroduced as "available".
-  const catalogStale = discovery.stale;
-  const discoveredOptions = configs.yunwu_api_key
-    ? policyOptions(viewerTier, discovery.models, catalogStale)
+  // Kie does not document a shared `/models` discovery endpoint. Its catalog
+  // is the intersection of our reviewed endpoint allowlist and a configured
+  // credential, never an invented discovery request.
+  const kieOptions = configs.kie_api_key
+    ? policyOptions(viewerTier, 'kie')
     : [];
-  const entitledModels = new Set(
-    discoveredOptions
-      .filter((option) => option.entitled)
-      .map((option) => option.model)
+  const discoveredOptions = kieOptions;
+  const entitledTargets = new Set(
+    discoveredOptions.filter((option) => option.entitled).map(policyKey)
   );
-  const effectiveDefault = [
-    DEFAULT_ANIMATION_MODEL,
-    ...(viewerTier === 'pro' ? PRO_AUTO_FALLBACK_MODELS : []),
-  ].find((model) => entitledModels.has(model));
+  const effectiveDefault = autoModelPolicies(viewerTier).find((policy) =>
+    entitledTargets.has(policyKey(policy))
+  );
   const options = discoveredOptions.map((option) => ({
     ...option,
-    isDefault: option.model === effectiveDefault,
+    isDefault:
+      option.provider === effectiveDefault?.provider &&
+      option.model === effectiveDefault.model,
   }));
   return {
     options,
-    defaultProvider: effectiveDefault ? 'yunwu' : undefined,
-    defaultModel: effectiveDefault,
+    defaultProvider: effectiveDefault?.provider,
+    defaultModel: effectiveDefault?.model,
     viewerTier,
-    catalogStale,
+    catalogStale: false,
   };
 }
 
@@ -412,41 +311,46 @@ export async function resolveChatProvider(
     throw new AnimationApiError(error.message, decision.reason, error.status);
   }
 
-  const isAuto = decision.auto;
-  let model: string = decision.policy.model;
-  let fallbackModels: string[] =
-    isAuto && tier === 'pro' ? [...PRO_AUTO_FALLBACK_MODELS] : [];
-  const baseProvider = yunwuProvider(configs);
-  const discovery = await discoverYunwuModels(configs);
-  if (!discovery.stale) {
-    const liveModels = new Set(discovery.models.map((item) => item.id));
-    if (isAuto) {
-      const candidates = [model, ...fallbackModels].filter((candidate) =>
-        liveModels.has(candidate)
-      );
-      if (candidates.length === 0) {
-        throw new AnimationApiError(
-          'Animation model is not currently available',
-          'MODEL_UNAVAILABLE',
-          503
-        );
-      }
-      [model, ...fallbackModels] = candidates;
-    } else if (!liveModels.has(model)) {
+  if (!decision.auto) {
+    if (!policyAvailable(decision.policy, configs)) {
       throw new AnimationApiError(
         'Animation model is not currently available',
         'MODEL_UNAVAILABLE',
         503
       );
     }
+    return { provider: kieProvider(configs), model: decision.policy.model };
   }
-  const provider = new FailoverChatProvider(
-    baseProvider,
-    fallbackModels,
+
+  const policies = autoModelPolicies(tier)
+    .filter((policy) => policyAvailable(policy, configs))
+    .slice(0, 3);
+  if (policies.length === 0) {
+    throw new AnimationApiError(
+      'Animation model is not currently available',
+      'MODEL_UNAVAILABLE',
+      503
+    );
+  }
+  const providers = new Map<string, ChatProvider>();
+  const targets = policies.map((policy) => {
+    let provider = providers.get(policy.provider);
+    if (!provider) {
+      provider = kieProvider(configs);
+      providers.set(policy.provider, provider);
+    }
+    return {
+      provider,
+      model: policy.model,
+      reasoningEffort: getAnimationReasoningEffort(policy.model),
+    };
+  });
+  const provider = new ProviderFailoverChatProvider(
+    targets,
     300_000,
     autoModelCircuitBreaker
   );
-  return { provider, model };
+  return { provider, model: policies[0].model };
 }
 
 interface AnimationCapacityState {
@@ -629,6 +533,13 @@ export function callbackUrl(request: Request, appUrl: string, id: string) {
     ? new URL(appUrl).origin
     : new URL(request.url).origin;
   return `${origin}/api/animations/${encodeURIComponent(id)}/render-callback`;
+}
+
+export function qualityGateUrl(request: Request, appUrl: string, id: string) {
+  const origin = appUrl?.trim()
+    ? new URL(appUrl).origin
+    : new URL(request.url).origin;
+  return `${origin}/api/animations/${encodeURIComponent(id)}/quality-gate`;
 }
 
 export function hasBearerToken(request: Request, expected: string): boolean {

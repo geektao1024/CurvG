@@ -186,6 +186,38 @@
     right: max(0px, calc(50% - 720px));
   }
 
+  .curvg-pricing-shell::before,
+  .curvg-pricing-shell::after {
+    position: absolute;
+    z-index: 1;
+    inset-block: 0;
+    width: 20px;
+    content: '';
+    pointer-events: none;
+    border-inline: 1px solid color-mix(in oklab, var(--border) 88%, transparent);
+    background-image: repeating-linear-gradient(
+      135deg,
+      color-mix(in oklab, var(--foreground) 8%, transparent) 0 1px,
+      transparent 1px 4px
+    );
+    opacity: 0.48;
+  }
+
+  .curvg-pricing-shell::before {
+    left: max(0px, calc(50% - 720px));
+  }
+
+  .curvg-pricing-shell::after {
+    right: max(0px, calc(50% - 720px));
+  }
+
+  @media (min-width: 640px) {
+    .curvg-pricing-shell::before,
+    .curvg-pricing-shell::after {
+      width: 40px;
+    }
+  }
+
   .curvg-stage {
     width: min(1360px, calc(100% - 80px));
     margin-inline: auto;
@@ -466,6 +498,21 @@
     line-height: 22.4px;
   }
 
+  .curvg-pixel-reveal-link[data-variant='pricing'] {
+    min-height: 53px;
+    gap: 8px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    padding: 14px 16px;
+    color: var(--foreground);
+    font-size: 18px;
+    line-height: 25.2px;
+    box-shadow:
+      0 0.5px 0.5px color-mix(in oklab, var(--foreground) 3%, transparent),
+      0 2px 4px -2px color-mix(in oklab, var(--foreground) 9%, transparent),
+      inset 0 1px 0 color-mix(in oklab, white 24%, transparent);
+  }
+
   .curvg-pixel-reveal-link[data-variant='nav-item'] {
     min-height: 38px;
     overflow: visible;
@@ -515,6 +562,12 @@
     background: #fff;
   }
 
+  .curvg-pixel-reveal-link[data-variant='pricing'] .curvg-pixel-reveal-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    background: var(--background);
+  }
+
   .curvg-pixel-reveal-cell {
     min-width: 0;
     min-height: 0;
@@ -526,6 +579,10 @@
 
   .curvg-pixel-reveal-link[data-variant='navigation'] .curvg-pixel-reveal-cell {
     background: #f3f3f9;
+  }
+
+  .curvg-pixel-reveal-link[data-variant='pricing'] .curvg-pixel-reveal-cell {
+    background: var(--card);
   }
 
   .curvg-pixel-reveal-link[data-active='true'] .curvg-pixel-reveal-cell {
@@ -568,6 +625,7 @@
   }
 
   .curvg-pixel-reveal-link[data-variant='navigation'] .curvg-pixel-label-noise,
+  .curvg-pixel-reveal-link[data-variant='pricing'] .curvg-pixel-label-noise,
   .curvg-pixel-reveal-link[data-variant='nav-item'] .curvg-pixel-label-noise {
     color: #a1a1a1;
   }
@@ -639,6 +697,81 @@
     color: var(--success);
   }
 
+  .curvg-blueprint-scan {
+    animation: curvg-blueprint-scan 3.8s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+    will-change: transform, opacity;
+  }
+
+  .curvg-blueprint-node {
+    animation: curvg-blueprint-pulse 1.8s ease-in-out infinite;
+    will-change: transform, opacity;
+  }
+
+  .curvg-blueprint-flow {
+    animation: curvg-blueprint-flow 2.8s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+    transform-box: fill-box;
+    will-change: transform, opacity;
+  }
+
+  .curvg-blueprint-orbit {
+    animation: curvg-blueprint-orbit 6s linear infinite;
+    transform-box: view-box;
+    transform-origin: 62px 76px;
+    will-change: transform;
+  }
+
+  @keyframes curvg-blueprint-scan {
+    0%,
+    12% {
+      opacity: 0;
+      transform: translateY(-120%);
+    }
+    25% {
+      opacity: 1;
+    }
+    82% {
+      opacity: 0.45;
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(720%);
+    }
+  }
+
+  @keyframes curvg-blueprint-pulse {
+    0%,
+    100% {
+      opacity: 0.55;
+      transform: scale(0.82);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes curvg-blueprint-flow {
+    0%,
+    18% {
+      opacity: 0;
+      transform: translateX(-72px) scale(0.8);
+    }
+    42% {
+      opacity: 1;
+    }
+    82%,
+    100% {
+      opacity: 0;
+      transform: translateX(74px) scale(1);
+    }
+  }
+
+  @keyframes curvg-blueprint-orbit {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .curvg-cursor {
       animation: none;
@@ -686,6 +819,19 @@
       transform: none;
       box-shadow: none;
       transition: none;
+    }
+
+    .curvg-blueprint-scan {
+      display: none;
+    }
+
+    .curvg-blueprint-node,
+    .curvg-blueprint-flow,
+    .curvg-blueprint-orbit {
+      animation: none;
+      opacity: 1;
+      transform: none;
+      will-change: auto;
     }
   }
 

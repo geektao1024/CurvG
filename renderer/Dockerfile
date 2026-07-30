@@ -21,6 +21,7 @@ ENV PATH="/usr/local/python/bin:${PATH}"
 
 RUN mkdir -p /opt/curvg /workspace
 COPY validate_scene.py /opt/curvg/validate_scene.py
+COPY analyze_contact_sheet.py /opt/curvg/analyze_contact_sheet.py
 
 WORKDIR /workspace
 EXPOSE 8080

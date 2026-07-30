@@ -12,6 +12,7 @@ import {
 } from '@/lib/request-body';
 import { respData, respErr } from '@/lib/resp';
 
+import { startSilentAnimationProduction } from '../-production';
 import {
   animationErrorInit,
   animationErrorResponse,
@@ -81,7 +82,7 @@ async function POST({
     const modelSelection = { choice: modelChoice, model: requestedModel };
     if (request.headers.get('accept')?.includes('text/event-stream')) {
       return animationEventStream(async (send, signal) => {
-        const animation = await withAnimationGenerationCapacity(
+        const planned = await withAnimationGenerationCapacity(
           session.user.id,
           () =>
             reviseAnimation({
@@ -95,25 +96,44 @@ async function POST({
               hooks: {
                 onStarted: (started) =>
                   send({ type: 'started', animation: started }),
+                onPhase: (phase) => send({ type: 'phase', phase }),
                 onSummaryDelta: (delta) => send({ type: 'delta', delta }),
               },
             })
         );
+        const animation = await startSilentAnimationProduction({
+          request,
+          configs,
+          userId: session.user.id,
+          animation: planned,
+          provider: provider.provider,
+          model: provider.model,
+          signal,
+        });
         send({ type: 'completed', animation });
       });
     }
+    const planned = await withAnimationGenerationCapacity(session.user.id, () =>
+      reviseAnimation({
+        userId: session.user.id,
+        id: params.id,
+        prompt,
+        subject,
+        modelSelection,
+        ...provider,
+        signal: request.signal,
+      })
+    );
     return respData(
-      await withAnimationGenerationCapacity(session.user.id, () =>
-        reviseAnimation({
-          userId: session.user.id,
-          id: params.id,
-          prompt,
-          subject,
-          modelSelection,
-          ...provider,
-          signal: request.signal,
-        })
-      )
+      await startSilentAnimationProduction({
+        request,
+        configs,
+        userId: session.user.id,
+        animation: planned,
+        provider: provider.provider,
+        model: provider.model,
+        signal: request.signal,
+      })
     );
   } catch (error) {
     if (isRequestBodyTooLargeError(error)) {

@@ -37,7 +37,7 @@ function PricingPage() {
   return (
     <div className="bg-background text-foreground flex min-h-screen flex-col">
       <Header />
-      <main className="flex-1 pt-14">
+      <main className="flex-1">
         <Pricing />
         <PricingFaq />
       </main>

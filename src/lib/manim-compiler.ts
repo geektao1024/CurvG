@@ -1,5 +1,7 @@
 import {
-  isAnimationSpecV2,
+  isAnimationSpecDirected,
+  isAnimationSpecRenderable,
+  isAnimationSpecV4,
   type AnimationLayoutSpec,
   type AnimationObjectSpec,
   type AnimationSpec,
@@ -104,19 +106,30 @@ function compileColor(value: string | undefined, fallback: string): string {
 function positionStatement(
   variable: string,
   object: AnimationObjectSpec,
-  layout: AnimationLayoutSpec
+  layout: AnimationLayoutSpec,
+  frame: '16:9' | '9:16'
 ): string {
+  const portrait = frame === '9:16';
   if (object.region === 'title') {
-    return `${variable}.scale_to_fit_width(12.2).to_edge(UP, buff=0.32)`;
+    return portrait
+      ? `${variable}.scale_to_fit_width(7.4).move_to([0, 5.25, 0])`
+      : `${variable}.scale_to_fit_width(12.0).move_to([0, 3.15, 0])`;
   }
   if (object.region === 'formula') {
+    if (portrait) {
+      return `${variable}.scale_to_fit_width(7.4).move_to([0, 4.45, 0])`;
+    }
     if (layout.regions === 'left|right') {
       return `${variable}.scale_to_fit_width(5.4).move_to(LEFT * 3.55)`;
     }
     if (layout.regions === 'top|bottom') {
-      return `${variable}.scale_to_fit_width(11.8).to_edge(UP, buff=0.55)`;
+      return `${variable}.scale_to_fit_width(11.8).move_to([0, 2.7, 0])`;
     }
-    return `${variable}.scale_to_fit_width(11.8).to_edge(UP, buff=0.5)`;
+    return `${variable}.scale_to_fit_width(11.8).move_to([0, 2.75, 0])`;
+  }
+  if (portrait) {
+    const scale = object.importance === 'hero' ? 0.82 : 0.68;
+    return `${variable}.scale(${scale}).move_to(DOWN * 0.4)`;
   }
   if (layout.regions === 'left|right') {
     return `${variable}.scale(0.72).move_to(RIGHT * 3.35 + DOWN * 0.2)`;
@@ -130,15 +143,23 @@ function positionStatement(
 function compileObject(
   object: AnimationObjectSpec,
   layout: AnimationLayoutSpec,
-  axesVariable: string
+  axesVariable: string,
+  frame: '16:9' | '9:16',
+  palette: string[]
 ): string[] {
   const variable = variableName(object.id);
-  const color = compileColor(object.color, 'BLUE');
+  const fallbackColor = ['formula', 'series', 'text'].includes(object.kind)
+    ? '#F4EDE1'
+    : palette[0] || 'BLUE';
+  const color = compileColor(object.color, compileColor(fallbackColor, 'BLUE'));
   const domain = object.domain ?? [-6, 6];
   let constructor: string;
   switch (object.kind) {
     case 'axes':
-      constructor = `${variable} = Axes(x_range=[-6, 6, 1], y_range=[-4, 4, 1], x_length=8.6, y_length=5.4, tips=False, axis_config={"include_numbers": True, "font_size": 22})`;
+      constructor =
+        frame === '9:16'
+          ? `${variable} = Axes(x_range=[-6, 6, 1], y_range=[-4, 4, 1], x_length=7.4, y_length=7.2, tips=False, axis_config={"include_numbers": True, "font_size": 24, "stroke_opacity": 0.72})`
+          : `${variable} = Axes(x_range=[-6, 6, 1], y_range=[-4, 4, 1], x_length=8.6, y_length=5.4, tips=False, axis_config={"include_numbers": True, "font_size": 22, "stroke_opacity": 0.72})`;
       break;
     case 'curve':
       constructor = `${variable} = ${axesVariable}.plot(lambda x: ${compileExpression(object.expr || 'x')}, x_range=[${domain[0]}, ${domain[1]}], color=${color}, stroke_width=5)`;
@@ -150,35 +171,99 @@ function compileObject(
         `${variable} = ${axesVariable}.get_area(${helper}, x_range=[${domain[0]}, ${domain[1]}], color=${color}, opacity=0.32)`,
       ];
     }
-    case 'formula':
-      constructor = `${variable} = MathTex(${pythonString(object.expr || '')}, color=${color}, font_size=48)`;
-      break;
+    case 'formula': {
+      const expressions = object.parts?.length
+        ? object.parts.map((part) => pythonString(part.latex)).join(', ')
+        : pythonString(object.expr || '');
+      const lines = [
+        `${variable} = MathTex(${expressions}, color=${color}, font_size=48)`,
+      ];
+      for (const [index, part] of (object.parts || []).entries()) {
+        lines.push(
+          `${variable}[${index}].set_color(${compileColor(part.color, color)})`
+        );
+      }
+      lines.push(positionStatement(variable, object, layout, frame));
+      return lines;
+    }
     case 'text':
       constructor = `${variable} = Text(${pythonString(object.label || '')}, color=${color}, font_size=38)`;
       break;
-    case 'series':
-      constructor = `${variable} = MathTex(${pythonString(object.expr || '')}, color=${color}, font_size=46)`;
-      break;
+    case 'series': {
+      const expressions = object.parts?.length
+        ? object.parts.map((part) => pythonString(part.latex)).join(', ')
+        : pythonString(object.expr || '');
+      const lines = [
+        `${variable} = MathTex(${expressions}, color=${color}, font_size=46)`,
+      ];
+      for (const [index, part] of (object.parts || []).entries()) {
+        lines.push(
+          `${variable}[${index}].set_color(${compileColor(part.color, color)})`
+        );
+      }
+      lines.push(positionStatement(variable, object, layout, frame));
+      return lines;
+    }
     case 'matrix':
       constructor = `${variable} = Matrix(${JSON.stringify(object.values || [[1]])}, element_to_mobject_config={"font_size": 38}).set_color(${color})`;
       break;
   }
-  return [constructor, positionStatement(variable, object, layout)];
+  return [constructor, positionStatement(variable, object, layout, frame)];
 }
 
-function animationExpression(event: AnimationTimelineSpec): string | null {
+function eventTarget(
+  event: AnimationTimelineSpec,
+  objectsById: Map<string, AnimationObjectSpec>
+): string {
   const variable = variableName(event.ref);
+  if (!event.partId) return variable;
+  const index = objectsById
+    .get(event.ref)
+    ?.parts?.findIndex((part) => part.id === event.partId);
+  if (index === undefined || index < 0) {
+    throw new Error(`Unknown formula part: ${event.ref}.${event.partId}`);
+  }
+  return `${variable}[${index}]`;
+}
+
+function eventColor(
+  event: AnimationTimelineSpec,
+  objectsById: Map<string, AnimationObjectSpec>
+): string {
+  const object = objectsById.get(event.ref);
+  const part = event.partId
+    ? object?.parts?.find((candidate) => candidate.id === event.partId)
+    : undefined;
+  return compileColor(part?.color || object?.color, 'YELLOW');
+}
+
+function animationExpression(
+  event: AnimationTimelineSpec,
+  objectsById: Map<string, AnimationObjectSpec>
+): string | null {
+  const variable = variableName(event.ref);
+  const target = eventTarget(event, objectsById);
   switch (event.op) {
     case 'draw':
-      return `Create(${variable})`;
+      return `Create(${target})`;
     case 'write':
-      return `Write(${variable})`;
+      return `Write(${target})`;
     case 'fade_in':
-      return `FadeIn(${variable})`;
+      return `FadeIn(${target}, shift=UP * 0.18)`;
     case 'fade_out':
-      return `FadeOut(${variable})`;
+      return `FadeOut(${target})`;
     case 'transform':
       return `Transform(${variable}, ${variableName(event.targetRef || '')}.copy())`;
+    case 'emphasize':
+      return `Indicate(${target}, color=${eventColor(event, objectsById)}, scale_factor=1.06)`;
+    case 'spotlight':
+      return `Circumscribe(${target}, color=${eventColor(event, objectsById)}, fade_out=True, buff=0.12, stroke_width=6)`;
+    case 'glow':
+      return `Circumscribe(${target}, color=${eventColor(event, objectsById)}, fade_in=True, fade_out=True, time_width=0.55, buff=0.18, stroke_width=10)`;
+    case 'camera_focus':
+      return `self.camera.frame.animate.move_to(${target}).set(width=config.frame_width / ${event.zoom || 1.8})`;
+    case 'camera_reset':
+      return 'Restore(self.camera.frame)';
     case 'hold':
       return null;
   }
@@ -190,30 +275,64 @@ function rateFunction(event: AnimationTimelineSpec): string {
   return 'smooth';
 }
 
-/** Compile validated v2 IR into reproducible Manim source. */
+/** Compile validated v2/v3/v4 IR into reproducible Manim source. */
 export function compileAnimationSpec(input: AnimationSpec): string {
   const spec = validateAnimationSpec(input);
-  if (!isAnimationSpecV2(spec)) {
-    throw new Error('Only v2 animation specifications can be compiled');
+  if (!isAnimationSpecRenderable(spec)) {
+    throw new Error(
+      'Only v2, v3 or v4 animation specifications can be compiled'
+    );
   }
+  const frame = isAnimationSpecDirected(spec) ? spec.direction.frame : '16:9';
+  const movingCamera =
+    isAnimationSpecV4(spec) && spec.cinematography.scene === 'moving-camera';
   const axes = spec.objects.find((object) => object.kind === 'axes');
   const needsAxes = spec.objects.some((object) =>
     ['curve', 'area'].includes(object.kind)
   );
   const axesVariable = axes ? variableName(axes.id) : 'obj_auto_axes';
+  const frameConfig =
+    frame === '9:16'
+      ? [
+          'config.pixel_width = 1080',
+          'config.pixel_height = 1920',
+          'config.frame_width = 9',
+          'config.frame_height = 16',
+        ]
+      : [
+          'config.pixel_width = 1920',
+          'config.pixel_height = 1080',
+          'config.frame_width = 14.222',
+          'config.frame_height = 8',
+        ];
   const lines = [
     'from manim import *',
     'import numpy as np',
     '',
-    'class CurvGScene(Scene):',
+    ...frameConfig,
+    '',
+    `class CurvGScene(${movingCamera ? 'MovingCameraScene' : 'Scene'}):`,
     '    def construct(self):',
     `        self.camera.background_color = ${compileColor(spec.style.background, 'BLACK')}`,
   ];
+  if (movingCamera) {
+    lines.push('        self.camera.frame.save_state()');
+  }
   if (needsAxes && !axes) {
-    lines.push(
-      `        ${axesVariable} = Axes(x_range=[-6, 6, 1], y_range=[-4, 4, 1], x_length=8.6, y_length=5.4, tips=False, axis_config={"include_numbers": True, "font_size": 22})`,
-      `        ${axesVariable}.scale(0.78).move_to(DOWN * 0.35)`
-    );
+    const autoAxes: AnimationObjectSpec = {
+      id: 'auto-axes',
+      kind: 'axes',
+      region: 'graph',
+      importance: 'supporting',
+    };
+    const autoAxesLines = compileObject(
+      autoAxes,
+      spec.layout,
+      axesVariable,
+      frame,
+      spec.style.palette
+    ).map((line) => line.replace(variableName(autoAxes.id), axesVariable));
+    lines.push(...autoAxesLines.map((line) => `        ${line}`));
   }
   const sortedObjects = [...spec.objects].sort((left, right) => {
     if (left.kind === 'axes' && right.kind !== 'axes') return -1;
@@ -221,11 +340,25 @@ export function compileAnimationSpec(input: AnimationSpec): string {
     return left.id.localeCompare(right.id);
   });
   for (const object of sortedObjects) {
-    for (const line of compileObject(object, spec.layout, axesVariable)) {
+    for (const line of compileObject(
+      object,
+      spec.layout,
+      axesVariable,
+      frame,
+      spec.style.palette
+    )) {
       lines.push(`        ${line}`);
     }
   }
 
+  const objectsById = new Map(
+    spec.objects.map((object) => [object.id, object])
+  );
+  const shotsById = new Map(
+    isAnimationSpecDirected(spec)
+      ? spec.shots.map((shot) => [shot.id, shot] as const)
+      : []
+  );
   const events = [...spec.timeline].sort(
     (left, right) => left.at - right.at || left.id.localeCompare(right.id)
   );
@@ -241,13 +374,19 @@ export function compileAnimationSpec(input: AnimationSpec): string {
       lines.push(`        self.wait(${Number((at - cursor).toFixed(3))})`);
       cursor = at;
     }
+    const shot = group[0].shotId ? shotsById.get(group[0].shotId) : undefined;
+    if (shot) {
+      lines.push(
+        `        # Shot ${shot.id}: ${shot.beat} — ${shot.purpose.replace(/[\r\n]+/g, ' ').slice(0, 180)}`
+      );
+    }
     const holdOnly = group.every((event) => event.op === 'hold');
     const duration = Math.max(...group.map((event) => event.runTime));
     if (holdOnly) {
       lines.push(`        self.wait(${Number(duration.toFixed(3))})`);
     } else {
       const animations = group
-        .map(animationExpression)
+        .map((event) => animationExpression(event, objectsById))
         .filter((value): value is string => !!value);
       const rate = rateFunction(group[0]);
       lines.push(
