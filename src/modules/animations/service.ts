@@ -306,20 +306,60 @@ async function reviewAnimationMathematics(params: {
   signal?: AbortSignal;
   deadlineAt?: number;
 }): Promise<AnimationMathReview> {
+  const auditSpec = {
+    schemaVersion: params.spec.schemaVersion,
+    title: params.spec.title,
+    durationSeconds: params.spec.durationSeconds,
+    assumptions: params.spec.assumptions,
+    intent: params.spec.intent,
+    mathDossier: params.spec.mathDossier,
+    curriculum: params.spec.curriculum?.map((beat) => ({
+      learningJob: beat.learningJob,
+      visualEvidence: beat.visualEvidence,
+    })),
+    shots: params.spec.shots?.map((shot) => ({
+      id: shot.id,
+      purpose: shot.purpose,
+      focusRef: shot.focusRef,
+      acceptance: shot.acceptance,
+    })),
+    objects: params.spec.objects?.map((object) => ({
+      id: object.id,
+      kind: object.kind,
+      expr: object.expr,
+      position: object.position,
+      center: object.center,
+      start: object.start,
+      end: object.end,
+      radius: object.radius,
+      parts: object.parts,
+    })),
+    timeline: params.spec.timeline?.map((event) => ({
+      shotId: event.shotId,
+      op: event.op,
+      ref: event.ref,
+      targetRef: event.targetRef,
+      pathRef: event.pathRef,
+      partId: event.partId,
+    })),
+  };
   const input = {
     model: params.model,
     messages: [
       { role: 'system' as const, content: MATH_REVIEW_SYSTEM_PROMPT },
       {
         role: 'user' as const,
-        content: `ORIGINAL REQUEST:\n${params.prompt}\n\nPROPOSED SPECIFICATION:\n${JSON.stringify(params.spec)}`,
+        content: `ORIGINAL REQUEST:\n${params.prompt}\n\nMATHEMATICS AND VISUAL-EVIDENCE PROJECTION:\n${JSON.stringify(auditSpec)}`,
       },
     ],
     temperature: 0,
     maxTokens: 3_000,
     reasoningEffort: getAnimationReasoningEffort(params.model),
     signal: params.signal,
-    deadlineAt: params.deadlineAt,
+    // Planning is resumable and may legitimately consume the original
+    // request window. The independent audit therefore receives its own
+    // provider budget instead of inheriting an already-expired deadline.
+    deadlineAt: Math.max(params.deadlineAt || 0, animationStageDeadlineAt()),
   };
   return parseAnimationMathReviewWithRepairs({
     provider: params.provider,

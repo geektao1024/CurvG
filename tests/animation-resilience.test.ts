@@ -8,7 +8,12 @@ import {
 } from '../src/core/ai/chat';
 import type { AnimationOrchestrationPlan } from '../src/core/animation-orchestrator';
 import { animationFailureCodeFromHttpStatus } from '../src/lib/animation';
-import type { AnimationPlanningArtifacts } from '../src/lib/animation-pipeline';
+import {
+  buildDeterministicSceneArtifact,
+  composeAnimationSpecFromArtifacts,
+  type AnimationPlanningArtifacts,
+} from '../src/lib/animation-pipeline';
+import { compileAnimationSpec } from '../src/lib/manim-compiler';
 import { enforceMinIntervalRateLimit } from '../src/lib/rate-limit';
 import { validateAnimationPlanningStageSemantics } from '../src/modules/animations/planning';
 import {
@@ -304,6 +309,87 @@ test('storyboard checkpoints reject an impossible static term tour', () => {
       }),
     /term-tour emphasis requires a moving-camera/
   );
+});
+
+test('deterministic scene fallback composes a renderable approved contract', () => {
+  const artifacts = planningArtifacts();
+  const scene = buildDeterministicSceneArtifact({
+    intent: artifacts.intent,
+    knowledge: artifacts.knowledge,
+    curriculum: artifacts.curriculum,
+    mathematics: artifacts.mathematics,
+    storyboard: artifacts.storyboard,
+  });
+  const spec = composeAnimationSpecFromArtifacts({ ...artifacts, scene });
+  const code = compileAnimationSpec(spec);
+
+  assert.deepEqual(
+    new Set(scene.objects.map((object) => object.id)),
+    new Set(artifacts.storyboard.shots.map((shot) => shot.focusRef))
+  );
+  assert.match(code, /class CurvGScene\(Scene\):/);
+  assert.match(code, /MathTex/);
+});
+
+test('quadratic tangent fallback preserves exact curve and tangent geometry', () => {
+  const artifacts = planningArtifacts();
+  artifacts.intent.title = 'y=x² at x=1';
+  artifacts.intent.summary = 'Secants approach the tangent at x=1.';
+  artifacts.intent.intent.learningGoal =
+    'See why the derivative and tangent slope equal 2.';
+  artifacts.mathematics.mathDossier.coreClaim =
+    'For y=x² at x=1, secant slopes approach 2 and the tangent is y=2x-1.';
+  artifacts.mathematics.mathDossier.derivationSteps = [
+    'For h not equal to zero, expand the numerator.',
+    '[(1+h)^2-1]/h=2+h tends to 2.',
+  ];
+  const scene = buildDeterministicSceneArtifact({
+    intent: artifacts.intent,
+    knowledge: artifacts.knowledge,
+    curriculum: artifacts.curriculum,
+    mathematics: artifacts.mathematics,
+    storyboard: artifacts.storyboard,
+  });
+  const spec = composeAnimationSpecFromArtifacts({ ...artifacts, scene });
+  const code = compileAnimationSpec(spec);
+
+  assert.ok(
+    scene.objects.some(
+      (object) => object.kind === 'curve' && object.expr === 'x^2'
+    )
+  );
+  assert.ok(
+    scene.objects.some(
+      (object) =>
+        object.kind === 'line' &&
+        object.start?.[0] === 0 &&
+        object.start?.[1] === -1
+    )
+  );
+  assert.match(code, /lambda x: x\*\*2/);
+  assert.match(code, /y=2x-1/);
+});
+
+test('term-tour fallback keeps the camera grammar valid', () => {
+  const artifacts = planningArtifacts();
+  artifacts.storyboard.cinematography = {
+    scene: 'moving-camera',
+    emphasis: 'term-tour',
+  };
+  const scene = buildDeterministicSceneArtifact({
+    intent: artifacts.intent,
+    knowledge: artifacts.knowledge,
+    curriculum: artifacts.curriculum,
+    mathematics: artifacts.mathematics,
+    storyboard: artifacts.storyboard,
+  });
+  const spec = composeAnimationSpecFromArtifacts({ ...artifacts, scene });
+  const code = compileAnimationSpec(spec);
+
+  assert.ok(scene.timeline.some((event) => event.op === 'camera_focus'));
+  assert.equal(scene.timeline.at(-1)?.op, 'camera_reset');
+  assert.match(code, /class CurvGScene\(MovingCameraScene\):/);
+  assert.match(code, /Restore\(self\.camera\.frame\)/);
 });
 
 test('every generated specification can repair a validator-level timeline conflict', async () => {
