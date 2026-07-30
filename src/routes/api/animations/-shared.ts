@@ -230,7 +230,11 @@ export interface AnimationProviderTargetPlan {
   reasoningEffort?: 'high';
 }
 
-const KIE_RESILIENCE_MODEL = 'gpt-5-6-sol' satisfies KieChatModel;
+// KIE's GPT-5.6 route currently returns a provider-side "Server exception"
+// even for the smallest authenticated request. Keep Kuaipao GPT-5.6 as the
+// product model, but use the independently healthy Gemini route for disaster
+// recovery so the fallback is not coupled to the same model outage.
+const KIE_RESILIENCE_MODEL = 'gemini-3.6-flash' satisfies KieChatModel;
 
 /**
  * Keep the public product choice pinned to GPT-5.6 while giving both Auto and
