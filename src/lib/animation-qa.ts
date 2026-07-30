@@ -81,6 +81,25 @@ export function isAnimationVisualQaReviewable(
   return !hasHardIssue;
 }
 
+/**
+ * Delivery fallback after at least one autonomous repair. A short, low-motion
+ * teaching hold is acceptable when the rendered video is otherwise healthy;
+ * retrying another large model repair is more likely to hit the Worker runtime
+ * ceiling than to improve this already-rendered candidate.
+ */
+export function isAnimationVisualQaSafeAfterRepair(
+  qa: AnimationVisualQaReport
+): boolean {
+  return (
+    qa.score >= 70 &&
+    qa.blackSegments.length === 0 &&
+    qa.flashTimestamps.length === 0 &&
+    qa.frames.every((frame) => !frame.edgeRisk) &&
+    qa.issues.every((issue) => issue.severity === 'info') &&
+    qa.frozenSegments.every(([start, end]) => end - start <= 3)
+  );
+}
+
 export const animationVisualQaReportSchema = z.object({
   analyzerVersion: z.literal(1),
   status: z.enum(['pass', 'review']),
@@ -304,6 +323,14 @@ export function decideAnimationQualityGate(params: {
   if (
     deterministicPass &&
     params.review.status === 'approved' &&
+    !severe &&
+    !blocking
+  ) {
+    return 'approve';
+  }
+  if (
+    params.attempt > 0 &&
+    isAnimationVisualQaSafeAfterRepair(params.qa) &&
     !severe &&
     !blocking
   ) {

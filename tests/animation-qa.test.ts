@@ -279,6 +279,52 @@ test('quality gate repairs defects within budget and rejects after exhaustion', 
   );
 });
 
+test('quality gate delivers a safe best candidate after one visual repair', () => {
+  const qa = validateAnimationVisualQaReport({
+    ...qaReport,
+    status: 'review',
+    score: 75,
+    frozenSegments: [
+      [4.867, 7],
+      [7.867, 10],
+    ],
+    issues: [
+      {
+        code: 'static_sequence',
+        severity: 'info',
+        frames: [6, 7, 8, 9],
+        message: 'The teaching beat contains a deliberate hold.',
+      },
+      {
+        code: 'frozen_segment',
+        severity: 'info',
+        frames: [6, 9],
+        message: 'Two short low-motion intervals were detected.',
+      },
+    ],
+  });
+  const review = deterministicReviewFromQa({ qa, jobId: 'job-repaired' });
+
+  assert.equal(
+    decideAnimationQualityGate({
+      qa,
+      review,
+      attempt: 0,
+      maxRepairs: 2,
+    }),
+    'repair'
+  );
+  assert.equal(
+    decideAnimationQualityGate({
+      qa,
+      review,
+      attempt: 1,
+      maxRepairs: 2,
+    }),
+    'approve'
+  );
+});
+
 test('full-timeline black intervals become a major repair issue', () => {
   const qa = validateAnimationVisualQaReport({
     ...qaReport,
