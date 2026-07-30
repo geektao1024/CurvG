@@ -28,6 +28,7 @@ import {
   buildDeterministicSceneArtifact,
   composeAnimationSpecFromArtifacts,
   parseAnimationPlanningArtifact,
+  supportsDeterministicSceneProfile,
   validateAnimationPlanningArtifact,
   type AnimationPlanningArtifacts,
   type AnimationPlanningStageDefinition,
@@ -47,7 +48,7 @@ const PIPELINE_VERSION = 1;
 const MAX_STAGE_FORMAT_REPAIRS = 1;
 const MAX_INTEGRATION_REPAIRS = 2;
 const MAX_MATH_REVISIONS = 2;
-const STAGE_PROVIDER_TIMEOUT_MS = 300_000;
+const STAGE_PROVIDER_TIMEOUT_MS = 60_000;
 
 const STAGE_CONTRACTS: Record<AnimationPlanningStageName, string> = {
   intent: `{
@@ -412,6 +413,67 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
     }
   }
 
+  if (
+    definition.name === 'scene' &&
+    params.artifacts.intent &&
+    params.artifacts.knowledge &&
+    params.artifacts.curriculum &&
+    params.artifacts.mathematics &&
+    params.artifacts.storyboard &&
+    supportsDeterministicSceneProfile({
+      intent: params.artifacts.intent,
+      knowledge: params.artifacts.knowledge,
+      curriculum: params.artifacts.curriculum,
+      mathematics: params.artifacts.mathematics,
+      storyboard: params.artifacts.storyboard,
+    })
+  ) {
+    const approvedArtifacts = {
+      intent: params.artifacts.intent,
+      knowledge: params.artifacts.knowledge,
+      curriculum: params.artifacts.curriculum,
+      mathematics: params.artifacts.mathematics,
+      storyboard: params.artifacts.storyboard,
+    };
+    const latestRow = await startPlanningStage({
+      userId: planning.context.userId,
+      chatId: planning.context.chatId,
+      runId: planning.context.runId,
+      stage: definition.name,
+      sequence: definition.sequence,
+      inputHash,
+      provider: 'curvg',
+      model: 'deterministic-scene-v1',
+    });
+    planning.context.onStage?.(planningStageSummary(latestRow));
+    const artifact = buildDeterministicSceneArtifact(approvedArtifacts);
+    validateAnimationPlanningStageSemantics(
+      'scene',
+      artifact,
+      params.artifacts
+    );
+    const completed = await completePlanningStage({
+      id: latestRow.id,
+      artifact,
+      outputHash: md5(JSON.stringify(artifact)),
+      provider: 'curvg',
+      model: 'deterministic-scene-v1',
+    });
+    planning.context.onStage?.(planningStageSummary(completed));
+    console.info('[animation-planning] used deterministic scene profile', {
+      chatId: planning.context.chatId,
+      runId: planning.context.runId,
+    });
+    return {
+      artifact: artifact as AnimationPlanningArtifacts[Name],
+      result: {
+        content: JSON.stringify(artifact),
+        provider: 'curvg',
+        model: 'deterministic-scene-v1',
+      },
+    };
+  }
+
   const input: ChatCompletionInput = {
     model: planning.model,
     messages: [
@@ -429,13 +491,10 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
         ? getAnimationCompositionReasoningEffort(planning.model)
         : getAnimationReasoningEffort(planning.model),
     signal: planning.signal,
-    // A durable stage receives its own provider budget. Reusing the original
-    // request deadline here would make later stages fail immediately after a
-    // long first stage even though their artifacts can be resumed safely.
-    deadlineAt: Math.max(
-      planning.deadlineAt || 0,
-      Date.now() + STAGE_PROVIDER_TIMEOUT_MS
-    ),
+    // Keep every provider call below the Worker's five-minute execution cap.
+    // Durable retries resume from completed checkpoints instead of letting one
+    // slow upstream request terminate the whole Workflow invocation.
+    deadlineAt: Date.now() + STAGE_PROVIDER_TIMEOUT_MS,
   };
   let latestRow = await startPlanningStage({
     userId: planning.context.userId,

@@ -11,6 +11,7 @@ import { animationFailureCodeFromHttpStatus } from '../src/lib/animation';
 import {
   buildDeterministicSceneArtifact,
   composeAnimationSpecFromArtifacts,
+  supportsDeterministicSceneProfile,
   type AnimationPlanningArtifacts,
 } from '../src/lib/animation-pipeline';
 import { compileAnimationSpec } from '../src/lib/manim-compiler';
@@ -405,6 +406,33 @@ test('quadratic tangent fallback preserves exact curve and tangent geometry', ()
     })?.status,
     'approved'
   );
+});
+
+test('quadratic tangent proof selects the deterministic scene before provider composition', () => {
+  const artifacts = planningArtifacts();
+  artifacts.intent.title = 'y=x² at x=1';
+  artifacts.intent.summary = 'Secants approach the tangent at x=1.';
+  artifacts.intent.intent.learningGoal =
+    'See why the derivative and tangent slope equal 2.';
+  artifacts.mathematics.mathDossier.coreClaim =
+    'For y=x² at x=1, secant slopes approach 2 and the tangent is y=2x-1.';
+  artifacts.mathematics.mathDossier.derivationSteps = [
+    'For h not equal to zero, expand the numerator.',
+    '[(1+h)^2-1]/h=2+h tends to 2.',
+  ];
+  assert.equal(supportsDeterministicSceneProfile(artifacts), true);
+
+  const unrelated = structuredClone(artifacts);
+  unrelated.intent.title = 'Area under a curve';
+  unrelated.intent.summary = 'Accumulate rectangles into an integral.';
+  unrelated.intent.intent.learningGoal = 'Understand area accumulation.';
+  unrelated.mathematics.mathDossier.coreClaim =
+    'A Riemann sum converges to a definite integral.';
+  unrelated.mathematics.mathDossier.derivationSteps = [
+    'Partition the interval.',
+    'Take the mesh size to zero.',
+  ];
+  assert.equal(supportsDeterministicSceneProfile(unrelated), false);
 });
 
 test('deterministic math approval rejects unrecognized fallback geometry', () => {

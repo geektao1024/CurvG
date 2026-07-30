@@ -193,7 +193,9 @@ function addTermTourCameraEvents(params: {
   });
 }
 
-function isQuadraticTangentPlan(artifacts: ApprovedPlanningArtifacts) {
+export function supportsDeterministicSceneProfile(
+  artifacts: ApprovedPlanningArtifacts
+) {
   const evidence = [
     artifacts.intent.title,
     artifacts.intent.summary,
@@ -459,7 +461,7 @@ function buildQuadraticTangentScene(
     layout: { regions: 'left|right' },
     dependencies: ['Manim Community', 'LaTeX'],
     notes: [
-      'CurvG assembled this validated scene deterministically after the scene model was unavailable.',
+      'CurvG assembled this validated scene deterministically from the approved planning artifacts.',
       'The curve, secants, tangent, and formulas preserve the approved mathematics dossier.',
     ],
   };
@@ -546,7 +548,7 @@ function buildGenericScene(
 export function buildDeterministicSceneArtifact(
   artifacts: ApprovedPlanningArtifacts
 ): AnimationPlanningArtifacts['scene'] {
-  const scene = isQuadraticTangentPlan(artifacts)
+  const scene = supportsDeterministicSceneProfile(artifacts)
     ? buildQuadraticTangentScene(artifacts)
     : buildGenericScene(artifacts);
   return sceneArtifactSchema.parse(scene);
