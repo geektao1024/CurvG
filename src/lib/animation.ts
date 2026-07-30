@@ -522,6 +522,9 @@ export type AnimationFailureCode =
   | 'UPSTREAM_UNAVAILABLE'
   | 'UPSTREAM_AUTH'
   | 'UPSTREAM_QUOTA'
+  | 'UPSTREAM_INVALID_REQUEST'
+  | 'OUTPUT_TRUNCATED'
+  | 'MALFORMED_STREAM'
   | 'INVALID_OUTPUT'
   | 'STREAM_INTERRUPTED'
   | 'RENDER_FAILED'
@@ -544,6 +547,49 @@ export interface AnimationFailure {
   message: string;
   retryable: boolean;
   requestId?: string;
+}
+
+export type AnimationPlanningStageName =
+  | 'intent'
+  | 'knowledge'
+  | 'curriculum'
+  | 'mathematics'
+  | 'storyboard'
+  | 'scene';
+
+export type AnimationPlanningStageStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'cached'
+  | 'failed';
+
+export interface AnimationPlanningStageSummary {
+  name: AnimationPlanningStageName;
+  sequence: number;
+  status: AnimationPlanningStageStatus;
+  attempt: number;
+  errorCode?: string;
+  requestId?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export interface AnimationPlanningPipeline {
+  runId: string;
+  currentStage?: AnimationPlanningStageName;
+  stages: AnimationPlanningStageSummary[];
+}
+
+export interface AnimationOrchestrationState {
+  status: 'ready' | 'degraded';
+  provider: 'python-orchestrator' | 'in-worker';
+  protocolVersion?: 'curvg.orchestrator/v1';
+  visualContractVersion?: 'curvg.visual/v1';
+  templateIds: string[];
+  blockingDiagnostics: number;
+  preparedAt: string;
+  reason?: string;
 }
 
 export interface AnimationParts {
@@ -569,6 +615,8 @@ export interface AnimationParts {
   failure?: AnimationFailure;
   versions: AnimationVersion[];
   render?: AnimationRenderState;
+  pipeline?: AnimationPlanningPipeline;
+  orchestration?: AnimationOrchestrationState;
 }
 
 export interface AnimationSummary {
@@ -609,7 +657,9 @@ export type AnimationPlanningPhase =
 
 export type AnimationGenerationEvent =
   | { type: 'started'; animation: AnimationDetail }
+  | { type: 'accepted'; animation: AnimationDetail }
   | { type: 'phase'; phase: AnimationPlanningPhase }
+  | { type: 'pipeline-stage'; stage: AnimationPlanningStageSummary }
   | { type: 'delta'; delta: string }
   | { type: 'completed'; animation: AnimationDetail }
   | { type: 'error'; message: string; failure?: AnimationFailure };

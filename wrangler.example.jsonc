@@ -16,6 +16,9 @@
     // sync with .env.production (better-auth trustedOrigins, payment callbacks).
     "VITE_APP_URL": "https://curvg.com",
     "VITE_APP_NAME": "CurvG",
+    // Optional Python orchestration service. Keep the bearer token in a
+    // Wrangler secret named ANIMATION_ORCHESTRATOR_TOKEN.
+    // "ANIMATION_ORCHESTRATOR_URL": "https://orchestrator.example.com",
   },
   "d1_databases": [
     {
@@ -23,6 +26,13 @@
       "database_name": "curvg-db",
       "database_id": "REPLACE_WITH_OUTPUT_OF_WRANGLER_D1_CREATE",
       "migrations_dir": "drizzle",
+    },
+  ],
+  "workflows": [
+    {
+      "binding": "ANIMATION_WORKFLOW",
+      "name": "curvg-animation-pipeline",
+      "class_name": "AnimationWorkflow",
     },
   ],
   // ── Postgres via Hyperdrive (instead of D1) ────────────────────────────────

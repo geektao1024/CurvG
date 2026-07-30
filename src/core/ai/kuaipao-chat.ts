@@ -5,6 +5,7 @@ import {
   type ChatCompletionResult,
   type ChatFailureCode,
   type ChatProvider,
+  type ChatProviderDiagnostic,
   type ChatTurn,
 } from './chat';
 
@@ -137,6 +138,45 @@ function businessStatus(data: Record<string, unknown>): number | undefined {
   return code >= 100 && code <= 599 ? code : 502;
 }
 
+function boundedString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim()
+    ? value.trim().slice(0, 160)
+    : undefined;
+}
+
+function nestedRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function responseDiagnostic(
+  data: Record<string, unknown>,
+  eventType?: string
+): ChatProviderDiagnostic {
+  const record = responseRecord(data);
+  const error = nestedRecord(record.error) || nestedRecord(data.error);
+  const incomplete =
+    nestedRecord(record.incomplete_details) ||
+    nestedRecord(data.incomplete_details);
+  const choices = Array.isArray(record.choices) ? record.choices : [];
+  const firstChoice = nestedRecord(choices[0]);
+  return {
+    eventType: boundedString(eventType || data.type),
+    upstreamType: boundedString(error?.type),
+    upstreamCode: boundedString(error?.code ?? data.code),
+    incompleteReason: boundedString(incomplete?.reason),
+    finishReason: boundedString(firstChoice?.finish_reason),
+  };
+}
+
+function inputCharacterCount(input: ChatCompletionInput) {
+  return input.messages.reduce(
+    (total, message) => total + message.content.length,
+    0
+  );
+}
+
 function classifyFailure(
   status: number | undefined,
   message: string
@@ -159,6 +199,15 @@ function classifyFailure(
   }
   if (status === 401 || status === 403 || /invalid api key/.test(normalized)) {
     return { code: 'upstream_auth', retryable: false };
+  }
+  if (
+    status === 400 ||
+    status === 422 ||
+    /invalid (?:request|parameter)|unsupported (?:parameter|field)|bad request/i.test(
+      normalized
+    )
+  ) {
+    return { code: 'upstream_invalid_request', retryable: false };
   }
   if (
     status === 429 ||
@@ -187,6 +236,7 @@ function providerError(params: {
   requestId?: string;
   partialOutput?: boolean;
   cause?: unknown;
+  diagnostic?: ChatProviderDiagnostic;
 }) {
   return new ChatProviderError(params.message, {
     ...classifyFailure(params.status, params.message),
@@ -195,6 +245,7 @@ function providerError(params: {
     provider: 'kuaipao',
     model: params.model,
     partialOutput: params.partialOutput,
+    diagnostic: params.diagnostic,
     cause: params.cause,
   });
 }
@@ -243,6 +294,7 @@ function normalizedError(
         provider: 'kuaipao',
         model,
         partialOutput: true,
+        diagnostic: error.diagnostic,
         cause: error,
       });
     }
@@ -331,6 +383,7 @@ export class KuaipaoChatProvider implements ChatProvider {
     const deadlineAt = this.deadline(input);
     let lastError: ChatProviderError | undefined;
     for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
+      const attemptStartedAt = Date.now();
       try {
         const response = await this.fetchImpl(this.url, {
           method: 'POST',
@@ -346,25 +399,46 @@ export class KuaipaoChatProvider implements ChatProvider {
           string,
           unknown
         >;
+        const record = responseRecord(data);
         const status = response.ok ? businessStatus(data) : response.status;
-        if (status !== undefined) {
+        const diagnostic: ChatProviderDiagnostic = {
+          ...responseDiagnostic(data),
+          responseStatus: response.status,
+          inputChars: inputCharacterCount(input),
+          elapsedMs: Date.now() - attemptStartedAt,
+        };
+        if (
+          status !== undefined ||
+          data.error ||
+          record.error ||
+          record.status === 'failed'
+        ) {
           throw providerError({
-            message: errorMessage(data, `Kuaipao request failed (${status})`),
+            message: errorMessage(
+              data,
+              status === undefined
+                ? 'Kuaipao request failed'
+                : `Kuaipao request failed (${status})`
+            ),
             model: input.model,
             status,
             requestId: requestId(response, data),
+            diagnostic,
           });
         }
-        const record = responseRecord(data);
         if (record.status === 'incomplete') {
+          const truncated = /max_output_tokens|context_length|token/i.test(
+            diagnostic.incompleteReason || ''
+          );
           throw new ChatProviderError(
             'Kuaipao response stopped before final output completed',
             {
-              code: 'invalid_response',
+              code: truncated ? 'output_truncated' : 'invalid_response',
               retryable: false,
               requestId: requestId(response, data),
               provider: this.name,
               model: input.model,
+              diagnostic,
             }
           );
         }
@@ -376,12 +450,18 @@ export class KuaipaoChatProvider implements ChatProvider {
             requestId: requestId(response, data),
             provider: this.name,
             model: input.model,
+            diagnostic,
           });
         }
         return {
           content,
           model: typeof record.model === 'string' ? record.model : input.model,
           provider: this.name,
+          diagnostic: {
+            ...diagnostic,
+            outputChars: content.length,
+            elapsedMs: Date.now() - attemptStartedAt,
+          },
         };
       } catch (error) {
         if (input.signal?.aborted) {
@@ -416,6 +496,7 @@ export class KuaipaoChatProvider implements ChatProvider {
     let lastError: ChatProviderError | undefined;
     let emitted = false;
     for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
+      const attemptStartedAt = Date.now();
       let response: Response | undefined;
       try {
         response = await this.fetchImpl(this.url, {
@@ -441,6 +522,12 @@ export class KuaipaoChatProvider implements ChatProvider {
             model: input.model,
             status: response.status,
             requestId: requestId(response, data),
+            diagnostic: {
+              ...responseDiagnostic(data, 'http_error'),
+              responseStatus: response.status,
+              inputChars: inputCharacterCount(input),
+              elapsedMs: Date.now() - attemptStartedAt,
+            },
           });
         }
         if (!response.body) {
@@ -450,6 +537,12 @@ export class KuaipaoChatProvider implements ChatProvider {
             requestId: requestId(response),
             provider: this.name,
             model: input.model,
+            diagnostic: {
+              eventType: 'empty_stream',
+              responseStatus: response.status,
+              inputChars: inputCharacterCount(input),
+              elapsedMs: Date.now() - attemptStartedAt,
+            },
           });
         }
 
@@ -459,11 +552,27 @@ export class KuaipaoChatProvider implements ChatProvider {
         let content = '';
         let finalContent = '';
         let responseModel = input.model;
+        let pendingEventType = '';
+        let malformedEventCount = 0;
+        let finalDiagnostic: ChatProviderDiagnostic = {
+          responseStatus: response.status,
+          inputChars: inputCharacterCount(input),
+        };
 
         const consumeData = (data: Record<string, unknown>) => {
           const record = responseRecord(data);
-          const type = typeof data.type === 'string' ? data.type : '';
+          const type =
+            typeof data.type === 'string' ? data.type : pendingEventType;
+          pendingEventType = '';
           const status = businessStatus(data);
+          const diagnostic: ChatProviderDiagnostic = {
+            ...responseDiagnostic(data, type),
+            responseStatus: response!.status,
+            inputChars: inputCharacterCount(input),
+            elapsedMs: Date.now() - attemptStartedAt,
+            malformedEventCount,
+          };
+          finalDiagnostic = { ...finalDiagnostic, ...diagnostic };
           if (
             status !== undefined ||
             data.error ||
@@ -480,21 +589,30 @@ export class KuaipaoChatProvider implements ChatProvider {
               status,
               requestId: requestId(response!, data),
               partialOutput: emitted,
+              diagnostic,
             });
           }
           if (
             type === 'response.incomplete' ||
             record.status === 'incomplete'
           ) {
+            const truncated = /max_output_tokens|context_length|token/i.test(
+              diagnostic.incompleteReason || ''
+            );
             throw new ChatProviderError(
               'Kuaipao response stopped before final output completed',
               {
-                code: emitted ? 'stream_interrupted' : 'invalid_response',
-                retryable: !emitted,
+                code: truncated
+                  ? 'output_truncated'
+                  : emitted
+                    ? 'stream_interrupted'
+                    : 'invalid_response',
+                retryable: !truncated && !emitted,
                 requestId: requestId(response!, data),
                 provider: this.name,
                 model: input.model,
                 partialOutput: emitted,
+                diagnostic,
               }
             );
           }
@@ -527,7 +645,11 @@ export class KuaipaoChatProvider implements ChatProvider {
 
         const consumeLine = (line: string) => {
           const trimmed = line.trim();
-          if (!trimmed || trimmed.startsWith('event:')) return;
+          if (!trimmed) return;
+          if (trimmed.startsWith('event:')) {
+            pendingEventType = trimmed.slice(6).trim().slice(0, 160);
+            return;
+          }
           const payload = trimmed.startsWith('data:')
             ? trimmed.slice(5).trim()
             : trimmed;
@@ -536,7 +658,7 @@ export class KuaipaoChatProvider implements ChatProvider {
             consumeData(JSON.parse(payload) as Record<string, unknown>);
           } catch (error) {
             if (error instanceof ChatProviderError) throw error;
-            // Ignore non-JSON SSE metadata, but never swallow provider errors.
+            malformedEventCount += 1;
           }
         };
 
@@ -564,18 +686,40 @@ export class KuaipaoChatProvider implements ChatProvider {
           onDelta(finalContent);
         }
         if (!content.trim()) {
-          throw new ChatProviderError('Kuaipao returned an empty response', {
-            code: 'empty_response',
-            retryable: true,
-            requestId: requestId(response),
-            provider: this.name,
-            model: input.model,
-          });
+          throw new ChatProviderError(
+            malformedEventCount > 0
+              ? 'Kuaipao returned malformed stream events'
+              : 'Kuaipao returned an empty response',
+            {
+              code:
+                malformedEventCount > 0 ? 'malformed_stream' : 'empty_response',
+              retryable: true,
+              requestId: requestId(response),
+              provider: this.name,
+              model: input.model,
+              diagnostic: {
+                ...finalDiagnostic,
+                eventType:
+                  finalDiagnostic.eventType ||
+                  (malformedEventCount > 0
+                    ? 'malformed_stream'
+                    : 'empty_stream'),
+                malformedEventCount,
+                elapsedMs: Date.now() - attemptStartedAt,
+              },
+            }
+          );
         }
         return {
           content: content.trim(),
           model: responseModel,
           provider: this.name,
+          diagnostic: {
+            ...finalDiagnostic,
+            outputChars: content.trim().length,
+            malformedEventCount,
+            elapsedMs: Date.now() - attemptStartedAt,
+          },
         };
       } catch (error) {
         if (input.signal?.aborted) {

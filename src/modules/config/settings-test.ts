@@ -63,6 +63,8 @@ export async function runTest(
         return await testKie(inputs, configs);
       case 'anthropic':
         return await testAnthropic(inputs, configs);
+      case 'animation_orchestrator':
+        return await testAnimationOrchestrator(configs);
       case 'replicate':
         return await testReplicate(inputs, configs);
       case 'fal':
@@ -442,6 +444,50 @@ async function testKie(
     details: {
       Model: result.model,
       Reply: result.content.slice(0, 200),
+    },
+  };
+}
+
+async function testAnimationOrchestrator(
+  configs: Record<string, string>
+): Promise<TestResult> {
+  const missing = need(configs, [
+    'animation_orchestrator_url',
+    'animation_orchestrator_token',
+  ]);
+  if (missing) return { success: false, message: missing };
+  const url = new URL(configs.animation_orchestrator_url.replace(/\/+$/, ''));
+  const isLocal = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLocal)) {
+    return {
+      success: false,
+      message: 'Orchestrator URL must use HTTPS outside localhost',
+    };
+  }
+  const response = await fetch(`${url.toString().replace(/\/+$/, '')}/health`, {
+    headers: {
+      Authorization: `Bearer ${configs.animation_orchestrator_token}`,
+    },
+    signal: AbortSignal.timeout(15_000),
+  });
+  const data = (await response.json().catch(() => ({}))) as Record<
+    string,
+    unknown
+  >;
+  if (!response.ok || data.status !== 'ok') {
+    return {
+      success: false,
+      message:
+        typeof data.detail === 'string'
+          ? data.detail
+          : `Orchestrator health check failed (${response.status})`,
+    };
+  }
+  return {
+    success: true,
+    message: 'Animation orchestrator is ready',
+    details: {
+      Protocol: String(data.protocolVersion || 'unknown'),
     },
   };
 }

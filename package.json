@@ -14,6 +14,10 @@
     "renderer:typecheck": "tsc --noEmit -p renderer/tsconfig.json",
     "renderer:dev": "wrangler dev --config renderer/wrangler.jsonc",
     "renderer:deploy": "wrangler deploy --config renderer/wrangler.jsonc",
+    "orchestrator:typecheck": "tsc --noEmit -p orchestrator/tsconfig.json",
+    "orchestrator:dev": "wrangler dev --config orchestrator/wrangler.jsonc",
+    "orchestrator:deploy": "wrangler deploy --config orchestrator/wrangler.jsonc",
+    "orchestrator:test": "PYTHONPATH=orchestrator python3 -m unittest discover -s orchestrator/tests -p 'test_*.py'",
     "postinstall": "mkdir -p data && (test -f src/config/db/schema.ts || node scripts/db-setup.mjs)",
     "db:setup": "node scripts/db-setup.mjs",
     "db:push": "tsx scripts/with-env.ts drizzle-kit push --config=drizzle.config.ts",
@@ -24,7 +28,7 @@
     "rbac:assign": "tsx scripts/with-env.ts tsx scripts/assign-role.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "node --import tsx --test tests/core-ai-chat.test.ts tests/kuaipao-chat.test.ts tests/animation-models.test.ts tests/animation-resilience.test.ts tests/animation-ir.test.ts tests/animation-math.test.ts tests/animation-qa.test.ts tests/renderer-validator.test.ts tests/config-cache.test.ts tests/credit-revocation.test.ts tests/request-body.test.ts tests/subscription-access.test.ts tests/payment-policy.test.ts tests/payment-provider-events.test.ts",
+    "test": "node --import tsx --test tests/core-ai-chat.test.ts tests/kuaipao-chat.test.ts tests/animation-models.test.ts tests/animation-orchestrator.test.ts tests/animation-resilience.test.ts tests/animation-ir.test.ts tests/animation-math.test.ts tests/animation-qa.test.ts tests/renderer-validator.test.ts tests/config-cache.test.ts tests/credit-revocation.test.ts tests/request-body.test.ts tests/subscription-access.test.ts tests/payment-policy.test.ts tests/payment-provider-events.test.ts",
     "seo:check": "node scripts/seo-check.mjs",
     "prepare": "husky"
   },
@@ -34,6 +38,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
+    "@cloudflare/containers": "0.3.7",
     "@cloudflare/sandbox": "0.12.4",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/modifiers": "^9.0.0",

@@ -84,11 +84,13 @@ test('Kuaipao GPT-5.6 uses the reviewed Responses endpoint and high reasoning', 
       content: [{ type: 'input_text', text: 'Build a scene.' }],
     },
   ]);
-  assert.deepEqual(result, {
-    content: 'Scene ready',
-    model: KUAIPAO_GPT_56_MODEL,
-    provider: 'kuaipao',
-  });
+  assert.equal(result.content, 'Scene ready');
+  assert.equal(result.model, KUAIPAO_GPT_56_MODEL);
+  assert.equal(result.provider, 'kuaipao');
+  assert.equal(result.diagnostic?.responseStatus, 200);
+  assert.equal(result.diagnostic?.inputChars, 39);
+  assert.equal(result.diagnostic?.outputChars, 11);
+  assert.equal(typeof result.diagnostic?.elapsedMs, 'number');
 });
 
 test('Kuaipao response parsing accepts the gateway documented Chat shape', () => {
@@ -190,7 +192,9 @@ test('Kuaipao rejects incomplete output and HTTP-200 business errors', async () 
       messages: [{ role: 'user', content: 'Reply.' }],
     }),
     (error: unknown) =>
-      error instanceof ChatProviderError && error.code === 'invalid_response'
+      error instanceof ChatProviderError &&
+      error.code === 'output_truncated' &&
+      error.diagnostic?.incompleteReason === 'max_output_tokens'
   );
 
   const businessError = new KuaipaoChatProvider({
@@ -212,6 +216,65 @@ test('Kuaipao rejects incomplete output and HTTP-200 business errors', async () 
     ),
     (error: unknown) =>
       error instanceof ChatProviderError && error.code === 'upstream_auth'
+  );
+});
+
+test('Kuaipao preserves invalid-request diagnostics instead of reporting invalid model output', async () => {
+  const provider = new KuaipaoChatProvider({
+    apiKey: 'test-kuaipao-key',
+    maxAttempts: 1,
+    fetch: (async () =>
+      Response.json(
+        {
+          error: {
+            type: 'invalid_request_error',
+            code: 'unsupported_parameter',
+            message: 'Unsupported parameter: reasoning.effort',
+          },
+        },
+        {
+          status: 422,
+          headers: { 'x-request-id': 'req_invalid_shape' },
+        }
+      )) as typeof globalThis.fetch,
+  });
+
+  await assert.rejects(
+    provider.complete({
+      model: KUAIPAO_GPT_56_MODEL,
+      messages: [{ role: 'user', content: 'Reply.' }],
+    }),
+    (error: unknown) =>
+      error instanceof ChatProviderError &&
+      error.code === 'upstream_invalid_request' &&
+      error.requestId === 'req_invalid_shape' &&
+      error.diagnostic?.upstreamCode === 'unsupported_parameter' &&
+      error.diagnostic?.responseStatus === 422
+  );
+});
+
+test('Kuaipao identifies a wholly malformed event stream', async () => {
+  const provider = new KuaipaoChatProvider({
+    apiKey: 'test-kuaipao-key',
+    maxAttempts: 1,
+    fetch: (async () =>
+      new Response('data: {not-json}\n\n', {
+        headers: { 'content-type': 'text/event-stream' },
+      })) as typeof globalThis.fetch,
+  });
+
+  await assert.rejects(
+    provider.stream!(
+      {
+        model: KUAIPAO_GPT_56_MODEL,
+        messages: [{ role: 'user', content: 'Reply.' }],
+      },
+      () => {}
+    ),
+    (error: unknown) =>
+      error instanceof ChatProviderError &&
+      error.code === 'malformed_stream' &&
+      error.diagnostic?.malformedEventCount === 1
   );
 });
 

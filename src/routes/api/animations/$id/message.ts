@@ -1,9 +1,17 @@
 import { createFileRoute } from '@tanstack/react-router';
 
 import { getAuth } from '@/core/auth';
-import { reviseAnimation } from '@/modules/animations/service';
+import {
+  planAnimation,
+  reviseAnimation,
+  reviseAnimationDraft,
+} from '@/modules/animations/service';
 import { getAllConfigs } from '@/modules/config/service';
 import type { AnimationSubject } from '@/lib/animation';
+import {
+  getAnimationWorkflowBinding,
+  startAnimationWorkflow,
+} from '@/lib/cloudflare-workflow';
 import { enforceMinIntervalRateLimit } from '@/lib/rate-limit';
 import {
   isRequestBodyTooLargeError,
@@ -80,6 +88,95 @@ async function POST({
       requestedModel
     );
     const modelSelection = { choice: modelChoice, model: requestedModel };
+    const workflowBinding = getAnimationWorkflowBinding();
+    if (workflowBinding) {
+      const createDraft = () =>
+        reviseAnimationDraft({
+          userId: session.user.id,
+          id: params.id,
+          prompt,
+          subject,
+          modelSelection,
+          model: provider.model,
+          providerName: provider.provider.name,
+        });
+      const enqueue = async (
+        started: Awaited<ReturnType<typeof createDraft>>
+      ) => {
+        await startAnimationWorkflow(
+          workflowBinding,
+          {
+            userId: session.user.id,
+            animationId: started.id,
+            origin: new URL(request.url).origin,
+          },
+          started.parts.pipeline?.runId
+        );
+        return started;
+      };
+      if (request.headers.get('accept')?.includes('text/event-stream')) {
+        return animationEventStream(async (send, signal) => {
+          const started = await createDraft();
+          send({ type: 'started', animation: started });
+          try {
+            send({ type: 'accepted', animation: await enqueue(started) });
+          } catch {
+            const planned = await withAnimationGenerationCapacity(
+              session.user.id,
+              () =>
+                planAnimation({
+                  userId: session.user.id,
+                  id: started.id,
+                  ...provider,
+                  signal,
+                  hooks: {
+                    onPhase: (phase) => send({ type: 'phase', phase }),
+                    onPipelineStage: (stage) =>
+                      send({ type: 'pipeline-stage', stage }),
+                    onSummaryDelta: (delta) => send({ type: 'delta', delta }),
+                  },
+                })
+            );
+            const animation = await startSilentAnimationProduction({
+              request,
+              configs,
+              userId: session.user.id,
+              animation: planned,
+              provider: provider.provider,
+              model: provider.model,
+              signal,
+            });
+            send({ type: 'completed', animation });
+          }
+        });
+      }
+      const started = await createDraft();
+      try {
+        return respData(await enqueue(started));
+      } catch {
+        const planned = await withAnimationGenerationCapacity(
+          session.user.id,
+          () =>
+            planAnimation({
+              userId: session.user.id,
+              id: started.id,
+              ...provider,
+              signal: request.signal,
+            })
+        );
+        return respData(
+          await startSilentAnimationProduction({
+            request,
+            configs,
+            userId: session.user.id,
+            animation: planned,
+            provider: provider.provider,
+            model: provider.model,
+            signal: request.signal,
+          })
+        );
+      }
+    }
     if (request.headers.get('accept')?.includes('text/event-stream')) {
       return animationEventStream(async (send, signal) => {
         const planned = await withAnimationGenerationCapacity(
@@ -97,6 +194,8 @@ async function POST({
                 onStarted: (started) =>
                   send({ type: 'started', animation: started }),
                 onPhase: (phase) => send({ type: 'phase', phase }),
+                onPipelineStage: (stage) =>
+                  send({ type: 'pipeline-stage', stage }),
                 onSummaryDelta: (delta) => send({ type: 'delta', delta }),
               },
             })

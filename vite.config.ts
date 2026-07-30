@@ -47,6 +47,16 @@ const workersDb = isCloudflareBuild ? workersDbProvider() : '';
 const keepPostgres = workersDb === 'postgresql' || workersDb === 'postgres';
 
 export default defineConfig({
+  build: isCloudflareBuild
+    ? {
+        rolldownOptions: {
+          external: ['cloudflare:workers', 'cloudflare:workflows'],
+        },
+      }
+    : undefined,
+  ssr: isCloudflareBuild
+    ? { external: ['cloudflare:workers', 'cloudflare:workflows'] }
+    : undefined,
   server: {
     port: 3000,
   },

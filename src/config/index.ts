@@ -81,6 +81,8 @@ export const envConfigs: Record<string, string> = {
   // Renderer credentials normally live in admin settings. These server-only
   // fallbacks let an infrastructure deploy wire two Workers together without
   // storing the shared token in D1 or exposing it to the client bundle.
+  animation_orchestrator_url: procEnv.ANIMATION_ORCHESTRATOR_URL ?? '',
+  animation_orchestrator_token: procEnv.ANIMATION_ORCHESTRATOR_TOKEN ?? '',
   animation_renderer_url: procEnv.ANIMATION_RENDERER_URL ?? '',
   animation_renderer_token: procEnv.ANIMATION_RENDERER_TOKEN ?? '',
   animation_render_credits: procEnv.ANIMATION_RENDER_CREDITS ?? '20',

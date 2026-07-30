@@ -203,6 +203,10 @@ export const testSpecs: Record<string, TestSpec> = {
       },
     ],
   },
+  animation_orchestrator: {
+    group: 'animation_orchestrator',
+    fields: [],
+  },
   anthropic: {
     group: 'anthropic',
     fields: [

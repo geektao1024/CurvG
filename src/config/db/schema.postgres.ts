@@ -486,6 +486,54 @@ export const chat = table(
   (table) => [index('idx_chat_user_status').on(table.userId, table.status)]
 );
 
+// Durable, inspectable planning artifacts for AI animation generation.
+export const animationPlanningStage = table(
+  'animation_planning_stage',
+  {
+    id: text('id').primaryKey(),
+    chatId: text('chat_id')
+      .notNull()
+      .references(() => chat.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    runId: text('run_id').notNull(),
+    stage: text('stage').notNull(),
+    sequence: integer('sequence').notNull(),
+    status: text('status').notNull(),
+    attempt: integer('attempt').notNull().default(0),
+    inputHash: text('input_hash').notNull(),
+    outputHash: text('output_hash'),
+    artifact: text('artifact'),
+    diagnostic: text('diagnostic'),
+    errorCode: text('error_code'),
+    errorMessage: text('error_message'),
+    requestId: text('request_id'),
+    provider: text('provider').notNull(),
+    model: text('model').notNull(),
+    startedAt: timestamp('started_at'),
+    completedAt: timestamp('completed_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_animation_planning_run_stage').on(
+      table.runId,
+      table.stage
+    ),
+    index('idx_animation_planning_chat_status').on(table.chatId, table.status),
+    index('idx_animation_planning_reuse').on(
+      table.chatId,
+      table.stage,
+      table.inputHash,
+      table.status
+    ),
+  ]
+);
+
 // Parameterized, human-verified scenes. Kept separate from AI animation chats.
 export const animationTemplate = table(
   'animation_template',
@@ -593,6 +641,9 @@ export type AiTask = typeof aiTask.$inferSelect;
 export type NewAiTask = typeof aiTask.$inferInsert;
 export type Chat = typeof chat.$inferSelect;
 export type NewChat = typeof chat.$inferInsert;
+export type AnimationPlanningStage = typeof animationPlanningStage.$inferSelect;
+export type NewAnimationPlanningStage =
+  typeof animationPlanningStage.$inferInsert;
 export type AnimationTemplate = typeof animationTemplate.$inferSelect;
 export type NewAnimationTemplate = typeof animationTemplate.$inferInsert;
 export type AnimationGenerationLease =

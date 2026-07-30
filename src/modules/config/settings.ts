@@ -177,6 +177,12 @@ export function getSettingGroups(): SettingGroup[] {
       tab: 'ai',
     },
     {
+      name: 'animation_orchestrator',
+      title: 'Animation Orchestrator',
+      description: 'Deterministic Python planning and validation service',
+      tab: 'ai',
+    },
+    {
       name: 'animation_renderer',
       title: 'Animation Renderer',
       description: 'Isolated Manim renderer service',
@@ -841,6 +847,23 @@ export function getSettings(): Setting[] {
       type: 'password',
       placeholder: 'sk-ant-xxx',
       group: 'anthropic',
+      tab: 'ai',
+    },
+    {
+      name: 'animation_orchestrator_url',
+      title: 'Orchestrator URL',
+      type: 'text',
+      placeholder: 'https://orchestrator.example.com',
+      tip: 'Optional. CurvG automatically falls back to the in-Worker compiler when this service is unavailable.',
+      group: 'animation_orchestrator',
+      tab: 'ai',
+    },
+    {
+      name: 'animation_orchestrator_token',
+      title: 'Orchestrator Token',
+      type: 'password',
+      placeholder: '',
+      group: 'animation_orchestrator',
       tab: 'ai',
     },
     {

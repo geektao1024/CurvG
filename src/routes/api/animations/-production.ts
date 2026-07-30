@@ -1,4 +1,5 @@
 import type { ChatProvider } from '@/core/ai/chat';
+import type { AnimationOrchestrationPlan } from '@/core/animation-orchestrator';
 import {
   AITaskStatus,
   createTask,
@@ -15,6 +16,7 @@ import {
   AnimationApiError,
   callbackUrl,
   qualityGateUrl,
+  resolveAnimationOrchestrator,
   resolveRenderer,
   withAnimationGenerationCapacity,
 } from './-shared';
@@ -26,9 +28,12 @@ export async function startSilentAnimationProduction(params: {
   animation: AnimationDetail;
   provider?: ChatProvider;
   model?: string;
+  orchestrationPlan?: AnimationOrchestrationPlan | null;
   signal?: AbortSignal;
 }): Promise<AnimationDetail> {
   let renderer: ReturnType<typeof resolveRenderer>;
+  let orchestrator: ReturnType<typeof resolveAnimationOrchestrator>;
+  let orchestrationPlan = params.orchestrationPlan;
   try {
     renderer = resolveRenderer(params.configs);
   } catch (error) {
@@ -38,6 +43,15 @@ export async function startSilentAnimationProduction(params: {
       error,
     }).catch(() => undefined);
     throw error;
+  }
+  try {
+    orchestrator = resolveAnimationOrchestrator(params.configs);
+  } catch (error) {
+    orchestrationPlan = null;
+    console.error('[animation-orchestrator] configuration degraded', {
+      animationId: params.animation.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
   let creditTaskId: string | undefined;
   if (renderer) {
@@ -88,6 +102,8 @@ export async function startSilentAnimationProduction(params: {
       provider: params.provider,
       model: params.model,
       renderer,
+      orchestrator,
+      orchestrationPlan,
       callbackUrl: callbackUrl(
         params.request,
         params.configs.app_url,

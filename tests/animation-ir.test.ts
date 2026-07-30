@@ -14,6 +14,7 @@ import {
   parseMatrix,
   seriesParts,
 } from '../src/lib/math-preview';
+import { parseStructuredJsonObject } from '../src/lib/structured-json';
 import { auditedGeometrySpec } from './animation-spec-fixture';
 
 function validSpec(): AnimationSpec {
@@ -77,6 +78,19 @@ function validSpec(): AnimationSpec {
     notes: [],
   };
 }
+
+test('structured JSON extraction ignores braces inside strings and surrounding prose', () => {
+  assert.deepEqual(
+    parseStructuredJsonObject(
+      'Result follows:\n```json\n{"title":"Set {x}","nested":{"ok":true}}\n```\nDone.'
+    ),
+    { title: 'Set {x}', nested: { ok: true } }
+  );
+  assert.throws(
+    () => parseStructuredJsonObject('No complete object: {"title":"oops"'),
+    /invalid JSON/
+  );
+});
 
 function validDirectorSpec(): AnimationSpec {
   return {

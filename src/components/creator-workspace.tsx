@@ -54,6 +54,8 @@ import {
   type AnimationModelCatalog,
   type AnimationModelProvider,
   type AnimationPlanningPhase,
+  type AnimationPlanningPipeline,
+  type AnimationPlanningStageName,
   type AnimationStatus,
   type AnimationSubject,
   type AnimationSummary,
@@ -247,6 +249,7 @@ export interface CreatorWorkspaceCopy {
   planningSemanticMap: string;
   planningLiveSummary: string;
   planningPhases: Record<AnimationPlanningPhase, string>;
+  planningStages: Record<AnimationPlanningStageName, string>;
   resizePanels: string;
   noCode: string;
   noVideo: string;
@@ -1955,9 +1958,11 @@ function Welcome({
 function PlanningStatusPanel({
   copy,
   phase,
+  pipeline,
 }: {
   copy: CreatorWorkspaceCopy;
   phase: AnimationPlanningPhase;
+  pipeline?: AnimationPlanningPipeline;
 }) {
   const activeIndex = PLANNING_PHASES.indexOf(phase);
   return (
@@ -1985,45 +1990,99 @@ function PlanningStatusPanel({
         </div>
       </div>
       <ol className="relative mt-4 grid gap-2 sm:grid-cols-2">
-        {PLANNING_PHASES.map((item, index) => {
-          const completed = index < activeIndex;
-          const active = item === phase;
-          return (
-            <li
-              key={item}
-              aria-current={active ? 'step' : undefined}
-              className={cn(
-                'flex min-h-9 items-center gap-2 rounded-lg border px-2.5 py-2 text-xs transition-colors motion-reduce:transition-none',
-                completed && 'border-primary/12 bg-primary/[0.035]',
-                active && 'border-primary/30 bg-primary/[0.07] text-foreground',
-                !completed &&
-                  !active &&
-                  'border-border/70 text-muted-foreground'
-              )}
-            >
-              <span
-                className={cn(
-                  'flex size-5 shrink-0 items-center justify-center rounded-md border',
-                  completed &&
-                    'border-primary bg-primary text-primary-foreground',
-                  active && 'border-primary/50 text-primary',
-                  !completed && !active && 'border-border'
-                )}
-              >
-                {completed ? (
-                  <Check className="size-3" />
-                ) : active ? (
-                  <span className="bg-primary curvg-blueprint-node size-1.5 rounded-full" />
-                ) : (
-                  <span className="size-1 rounded-full bg-current opacity-35" />
-                )}
-              </span>
-              <span className={active ? 'font-medium' : undefined}>
-                {copy.planningPhases[item]}
-              </span>
-            </li>
-          );
-        })}
+        {pipeline
+          ? pipeline.stages.map((stage) => {
+              const completed =
+                stage.status === 'completed' || stage.status === 'cached';
+              const active = stage.status === 'running';
+              const failed = stage.status === 'failed';
+              return (
+                <li
+                  key={stage.name}
+                  aria-current={active ? 'step' : undefined}
+                  className={cn(
+                    'flex min-h-9 items-center gap-2 rounded-lg border px-2.5 py-2 text-xs transition-colors motion-reduce:transition-none',
+                    completed && 'border-primary/12 bg-primary/[0.035]',
+                    active &&
+                      'border-primary/30 bg-primary/[0.07] text-foreground',
+                    failed && 'border-destructive/30 bg-destructive/[0.06]',
+                    !completed &&
+                      !active &&
+                      !failed &&
+                      'border-border/70 text-muted-foreground'
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'flex size-5 shrink-0 items-center justify-center rounded-md border',
+                      completed &&
+                        'border-primary bg-primary text-primary-foreground',
+                      active && 'border-primary/50 text-primary',
+                      failed && 'border-destructive/50 text-destructive',
+                      !completed && !active && !failed && 'border-border'
+                    )}
+                  >
+                    {completed ? (
+                      <Check className="size-3" />
+                    ) : active ? (
+                      <span className="bg-primary curvg-blueprint-node size-1.5 rounded-full" />
+                    ) : failed ? (
+                      <AlertCircle className="size-3" />
+                    ) : (
+                      <span className="size-1 rounded-full bg-current opacity-35" />
+                    )}
+                  </span>
+                  <span className={active ? 'font-medium' : undefined}>
+                    {copy.planningStages[stage.name]}
+                  </span>
+                  {stage.attempt > 1 && (
+                    <span className="text-muted-foreground ml-auto font-mono text-[9px]">
+                      ×{stage.attempt}
+                    </span>
+                  )}
+                </li>
+              );
+            })
+          : PLANNING_PHASES.map((item, index) => {
+              const completed = index < activeIndex;
+              const active = item === phase;
+              return (
+                <li
+                  key={item}
+                  aria-current={active ? 'step' : undefined}
+                  className={cn(
+                    'flex min-h-9 items-center gap-2 rounded-lg border px-2.5 py-2 text-xs transition-colors motion-reduce:transition-none',
+                    completed && 'border-primary/12 bg-primary/[0.035]',
+                    active &&
+                      'border-primary/30 bg-primary/[0.07] text-foreground',
+                    !completed &&
+                      !active &&
+                      'border-border/70 text-muted-foreground'
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'flex size-5 shrink-0 items-center justify-center rounded-md border',
+                      completed &&
+                        'border-primary bg-primary text-primary-foreground',
+                      active && 'border-primary/50 text-primary',
+                      !completed && !active && 'border-border'
+                    )}
+                  >
+                    {completed ? (
+                      <Check className="size-3" />
+                    ) : active ? (
+                      <span className="bg-primary curvg-blueprint-node size-1.5 rounded-full" />
+                    ) : (
+                      <span className="size-1 rounded-full bg-current opacity-35" />
+                    )}
+                  </span>
+                  <span className={active ? 'font-medium' : undefined}>
+                    {copy.planningPhases[item]}
+                  </span>
+                </li>
+              );
+            })}
       </ol>
     </div>
   );
@@ -2297,7 +2356,13 @@ function StatusPanel({
     return null;
   }
   if (detail.status === 'generating_spec') {
-    return <PlanningStatusPanel copy={copy} phase={planningPhase} />;
+    return (
+      <PlanningStatusPanel
+        copy={copy}
+        phase={planningPhase}
+        pipeline={detail.parts.pipeline}
+      />
+    );
   }
   const failed = detail.status === 'failed';
   const renderStage = detail.parts.render?.stage;
@@ -4331,6 +4396,7 @@ export function CreatorWorkspace({
     generationStartedRef.current = false;
     let completed: AnimationDetail | undefined;
     let streamError: Error | undefined;
+    let activeAnimationId: string | undefined;
     try {
       await apiPostEventStream<AnimationGenerationEvent>(
         url,
@@ -4338,12 +4404,47 @@ export function CreatorWorkspace({
         (event) => {
           if (event.type === 'started') {
             generationStartedRef.current = true;
+            activeAnimationId = event.animation.id;
             setStreamingAnimationId(event.animation.id);
             setStreamingText('');
             setPlanningPhase('understanding');
             acceptDetail(event.animation);
+          } else if (event.type === 'accepted') {
+            completed = event.animation;
+            acceptDetail(event.animation);
+            setStreamingAnimationId(undefined);
+            setStreamingText('');
+            setPlanningPhase('understanding');
           } else if (event.type === 'phase') {
             setPlanningPhase(event.phase);
+          } else if (event.type === 'pipeline-stage') {
+            if (activeAnimationId) {
+              queryClient.setQueryData<AnimationDetail>(
+                ['animation', user?.id, activeAnimationId],
+                (current) => {
+                  const pipeline = current?.parts.pipeline;
+                  if (!current || !pipeline) return current;
+                  return {
+                    ...current,
+                    parts: {
+                      ...current.parts,
+                      pipeline: {
+                        ...pipeline,
+                        currentStage:
+                          event.stage.status === 'running'
+                            ? event.stage.name
+                            : pipeline.currentStage === event.stage.name
+                              ? undefined
+                              : pipeline.currentStage,
+                        stages: pipeline.stages.map((stage) =>
+                          stage.name === event.stage.name ? event.stage : stage
+                        ),
+                      },
+                    },
+                  };
+                }
+              );
+            }
           } else if (event.type === 'delta') {
             setStreamingText((current) => current + event.delta);
           } else if (event.type === 'completed') {
@@ -4352,7 +4453,7 @@ export function CreatorWorkspace({
             setStreamingAnimationId(undefined);
             setStreamingText('');
             setPlanningPhase('understanding');
-          } else {
+          } else if (event.type === 'error') {
             streamError = new Error(event.message);
             if (event.failure) {
               Object.assign(streamError, { failure: event.failure });

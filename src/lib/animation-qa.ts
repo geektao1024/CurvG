@@ -7,6 +7,7 @@ import type {
   AnimationVisualReview,
   AnimationVisualReviewIssue,
 } from '@/lib/animation';
+import { parseStructuredJsonObject } from '@/lib/structured-json';
 
 const frameNumberSchema = z.number().int().min(1).max(12);
 const timeSegmentSchema = z.tuple([
@@ -159,20 +160,10 @@ export const animationVisualReviewDraftSchema = z.object({
 });
 
 function extractJson(value: string): unknown {
-  const unfenced = value
-    .trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/, '')
-    .trim();
   try {
-    return JSON.parse(unfenced);
-  } catch {
-    const start = unfenced.indexOf('{');
-    const end = unfenced.lastIndexOf('}');
-    if (start < 0 || end <= start) {
-      throw new Error('Visual reviewer returned invalid JSON');
-    }
-    return JSON.parse(unfenced.slice(start, end + 1));
+    return parseStructuredJsonObject(value);
+  } catch (error) {
+    throw new Error('Visual reviewer returned invalid JSON', { cause: error });
   }
 }
 

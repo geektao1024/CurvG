@@ -15,10 +15,25 @@ export interface ChatCompletionInput {
   signal?: AbortSignal;
 }
 
+/** Safe, bounded metadata for diagnosing provider/protocol failures. */
+export interface ChatProviderDiagnostic {
+  eventType?: string;
+  upstreamType?: string;
+  upstreamCode?: string;
+  incompleteReason?: string;
+  finishReason?: string;
+  responseStatus?: number;
+  inputChars?: number;
+  outputChars?: number;
+  elapsedMs?: number;
+  malformedEventCount?: number;
+}
+
 export interface ChatCompletionResult {
   content: string;
   model: string;
   provider: string;
+  diagnostic?: ChatProviderDiagnostic;
 }
 
 export interface ChatProvider {
@@ -44,6 +59,9 @@ export type ChatFailureCode =
   | 'model_unavailable'
   | 'upstream_auth'
   | 'upstream_quota'
+  | 'upstream_invalid_request'
+  | 'output_truncated'
+  | 'malformed_stream'
   | 'invalid_response'
   | 'empty_response'
   | 'stream_interrupted'
@@ -58,6 +76,7 @@ export class ChatProviderError extends Error {
   readonly provider?: string;
   readonly model?: string;
   readonly partialOutput: boolean;
+  readonly diagnostic?: ChatProviderDiagnostic;
   /** Whether retrying the same provider/model is useful before failover. */
   readonly retrySameModel: boolean;
 
@@ -73,6 +92,7 @@ export class ChatProviderError extends Error {
       model?: string;
       partialOutput?: boolean;
       retrySameModel?: boolean;
+      diagnostic?: ChatProviderDiagnostic;
       cause?: unknown;
     }
   ) {
@@ -89,6 +109,7 @@ export class ChatProviderError extends Error {
     this.provider = options.provider;
     this.model = options.model;
     this.partialOutput = options.partialOutput ?? false;
+    this.diagnostic = options.diagnostic;
     this.retrySameModel = options.retrySameModel ?? options.retryable;
   }
 }
@@ -218,6 +239,7 @@ function normalizedError(
         provider: error.provider || provider,
         model: error.model || model,
         partialOutput: true,
+        diagnostic: error.diagnostic,
         cause: error,
       });
     }
@@ -878,9 +900,14 @@ export class ProviderFailoverChatProvider implements ChatProvider {
     if (!next || error.partialOutput || signal?.aborted) return false;
     if (error.retryable || error.code === 'model_unavailable') return true;
     if (next.provider.name === current.provider.name) return false;
-    return ['upstream_auth', 'upstream_quota', 'invalid_response'].includes(
-      error.code
-    );
+    return [
+      'upstream_auth',
+      'upstream_quota',
+      'upstream_invalid_request',
+      'output_truncated',
+      'malformed_stream',
+      'invalid_response',
+    ].includes(error.code);
   }
 
   async complete(input: ChatCompletionInput): Promise<ChatCompletionResult> {

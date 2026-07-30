@@ -6,7 +6,9 @@ import {
   ProviderFailoverChatProvider,
   type ChatProvider,
 } from '@/core/ai/chat';
+import { KieChatProvider, type KieChatModel } from '@/core/ai/kie-chat';
 import { KuaipaoChatProvider } from '@/core/ai/kuaipao-chat';
+import { HttpAnimationOrchestrator } from '@/core/animation-orchestrator';
 import { HttpAnimationRenderer } from '@/core/animation-renderer';
 import { db } from '@/core/db';
 import {
@@ -116,6 +118,9 @@ export function animationErrorResponse(error: unknown): AnimationErrorResponse {
       model_unavailable: 'The selected AI model is not currently available.',
       upstream_auth: 'The AI provider configuration is invalid.',
       upstream_quota: 'The AI provider quota is exhausted.',
+      upstream_invalid_request: 'The AI provider rejected the request shape.',
+      output_truncated: 'The AI response reached its output limit.',
+      malformed_stream: 'The AI provider returned a malformed stream.',
       invalid_response: 'The AI provider returned an invalid response.',
       empty_response: 'The AI provider returned an empty response.',
       stream_interrupted: 'The AI response was interrupted. Please retry.',
@@ -202,12 +207,66 @@ function kuaipaoProvider(configs: ConfigMap) {
   });
 }
 
+function kieProvider(configs: ConfigMap) {
+  if (!configs.kie_api_key) {
+    throw new AnimationApiError(
+      'KIE chat provider is not configured',
+      'MODEL_UNAVAILABLE',
+      503
+    );
+  }
+  return new KieChatProvider({
+    apiKey: configs.kie_api_key,
+    baseUrl: configs.kie_base_url || 'https://api.kie.ai',
+    maxAttempts: 2,
+    requestTimeoutMs: 105_000,
+    overallTimeoutMs: 210_000,
+  });
+}
+
+export interface AnimationProviderTargetPlan {
+  provider: 'kuaipao' | 'kie';
+  model: string;
+  reasoningEffort?: 'high';
+}
+
+const KIE_RESILIENCE_MODEL = 'gpt-5-5' satisfies KieChatModel;
+
+/**
+ * Keep the public product choice pinned to GPT-5.6 while giving both Auto and
+ * an explicit Kuaipao selection a genuinely independent recovery route. The
+ * fallback is intentionally server-owned: it is invoked only after the
+ * primary provider fails, and is not advertised as another selectable model.
+ */
+export function animationProviderTargetPlan(
+  configs: ConfigMap,
+  primary: Pick<AnimationModelPolicy, 'provider' | 'model'>
+): AnimationProviderTargetPlan[] {
+  const targets: AnimationProviderTargetPlan[] = [];
+  if (primary.provider === 'kuaipao' && configs.kuaipao_api_key) {
+    targets.push({
+      provider: 'kuaipao',
+      model: primary.model,
+      reasoningEffort: getAnimationReasoningEffort(primary.model),
+    });
+  }
+  if (configs.kie_api_key) {
+    targets.push({
+      provider: 'kie',
+      model: KIE_RESILIENCE_MODEL,
+      reasoningEffort: 'high',
+    });
+  }
+  return targets;
+}
+
 interface ProviderResolution {
   provider: ChatProvider;
   model: string;
 }
 
 const autoModelCircuitBreaker = new ChatModelCircuitBreaker();
+const ANIMATION_PROVIDER_TIMEOUT_MS = 105_000;
 
 function policyOptions(
   tier: AnimationAccessTier,
@@ -240,6 +299,43 @@ function policyKey(policy: Pick<AnimationModelOption, 'provider' | 'model'>) {
 
 function policyAvailable(policy: AnimationModelPolicy, configs: ConfigMap) {
   return policy.provider === 'kuaipao' && !!configs.kuaipao_api_key;
+}
+
+function resilientProvider(
+  configs: ConfigMap,
+  primary: AnimationModelPolicy
+): ChatProvider {
+  const specs = animationProviderTargetPlan(configs, primary);
+  if (specs.length === 0) {
+    throw new AnimationApiError(
+      'Animation model is not currently available',
+      'MODEL_UNAVAILABLE',
+      503
+    );
+  }
+  const providers = new Map<string, ChatProvider>();
+  const targets = specs.map((spec) => {
+    let provider = providers.get(spec.provider);
+    if (!provider) {
+      provider =
+        spec.provider === 'kuaipao'
+          ? kuaipaoProvider(configs)
+          : kieProvider(configs);
+      providers.set(spec.provider, provider);
+    }
+    return {
+      provider,
+      model: spec.model,
+      reasoningEffort: spec.reasoningEffort,
+    };
+  });
+  if (targets.length === 1) return targets[0].provider;
+  return new ProviderFailoverChatProvider(
+    targets,
+    targets.length * ANIMATION_PROVIDER_TIMEOUT_MS,
+    autoModelCircuitBreaker,
+    ANIMATION_PROVIDER_TIMEOUT_MS
+  );
 }
 
 export async function listAnimationModels(
@@ -322,7 +418,7 @@ export async function resolveChatProvider(
       );
     }
     return {
-      provider: kuaipaoProvider(configs),
+      provider: resilientProvider(configs, decision.policy),
       model: decision.policy.model,
     };
   }
@@ -337,25 +433,10 @@ export async function resolveChatProvider(
       503
     );
   }
-  const providers = new Map<string, ChatProvider>();
-  const targets = policies.map((policy) => {
-    let provider = providers.get(policy.provider);
-    if (!provider) {
-      provider = kuaipaoProvider(configs);
-      providers.set(policy.provider, provider);
-    }
-    return {
-      provider,
-      model: policy.model,
-      reasoningEffort: getAnimationReasoningEffort(policy.model),
-    };
-  });
-  const provider = new ProviderFailoverChatProvider(
-    targets,
-    300_000,
-    autoModelCircuitBreaker
-  );
-  return { provider, model: policies[0].model };
+  return {
+    provider: resilientProvider(configs, policies[0]),
+    model: policies[0].model,
+  };
 }
 
 interface AnimationCapacityState {
@@ -374,7 +455,7 @@ const ANIMATION_CAPACITY_SLOT_IDS = Array.from(
 );
 
 export interface AnimationCapacityLeaseBackend {
-  acquire(userId: string): Promise<string | null>;
+  acquire(userId: string, ownerToken?: string): Promise<string | null>;
   release(token: string): Promise<void>;
 }
 
@@ -409,7 +490,7 @@ async function ensureAnimationCapacitySlots() {
 }
 
 export const databaseAnimationCapacityLease: AnimationCapacityLeaseBackend = {
-  async acquire(userId) {
+  async acquire(userId, ownerToken) {
     await ensureAnimationCapacitySlots();
     const now = new Date();
     await db()
@@ -418,13 +499,32 @@ export const databaseAnimationCapacityLease: AnimationCapacityLeaseBackend = {
       .where(lte(animationGenerationLease.expiresAt, now));
 
     const [existingUserLease] = await db()
-      .select({ slotId: animationGenerationLease.slotId })
+      .select({
+        slotId: animationGenerationLease.slotId,
+        leaseToken: animationGenerationLease.leaseToken,
+      })
       .from(animationGenerationLease)
       .where(eq(animationGenerationLease.userId, userId))
       .limit(1);
-    if (existingUserLease) return null;
+    if (existingUserLease) {
+      if (!ownerToken || existingUserLease.leaseToken !== ownerToken) {
+        return null;
+      }
+      await db()
+        .update(animationGenerationLease)
+        .set({
+          expiresAt: new Date(now.getTime() + ANIMATION_CAPACITY_LEASE_MS),
+        })
+        .where(
+          and(
+            eq(animationGenerationLease.slotId, existingUserLease.slotId),
+            eq(animationGenerationLease.leaseToken, ownerToken)
+          )
+        );
+      return ownerToken;
+    }
 
-    const token = getUuid();
+    const token = ownerToken || getUuid();
     const expiresAt = new Date(now.getTime() + ANIMATION_CAPACITY_LEASE_MS);
     for (const slotId of ANIMATION_CAPACITY_SLOT_IDS) {
       try {
@@ -483,7 +583,8 @@ function animationCapacityState(): AnimationCapacityState {
 export async function withAnimationGenerationCapacity<T>(
   userId: string,
   task: () => Promise<T>,
-  leaseBackend: AnimationCapacityLeaseBackend = databaseAnimationCapacityLease
+  leaseBackend: AnimationCapacityLeaseBackend = databaseAnimationCapacityLease,
+  ownerToken?: string
 ): Promise<T> {
   const state = animationCapacityState();
   if (
@@ -499,7 +600,7 @@ export async function withAnimationGenerationCapacity<T>(
   state.activeUsers.add(userId);
   let leaseToken: string | null = null;
   try {
-    leaseToken = await leaseBackend.acquire(userId);
+    leaseToken = await leaseBackend.acquire(userId, ownerToken);
     if (!leaseToken) {
       throw new AnimationApiError(
         'Animation generation is busy. Please retry shortly.',
@@ -531,6 +632,16 @@ export function resolveRenderer(configs: ConfigMap) {
     throw new Error('Animation renderer configuration is incomplete');
   }
   return new HttpAnimationRenderer({ baseUrl: url, token });
+}
+
+export function resolveAnimationOrchestrator(configs: ConfigMap) {
+  const url = configs.animation_orchestrator_url?.trim();
+  const token = configs.animation_orchestrator_token?.trim();
+  if (!url && !token) return undefined;
+  if (!url || !token) {
+    throw new Error('Animation orchestrator configuration is incomplete');
+  }
+  return new HttpAnimationOrchestrator({ baseUrl: url, token });
 }
 
 export function callbackUrl(request: Request, appUrl: string, id: string) {

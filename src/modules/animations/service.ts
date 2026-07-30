@@ -7,6 +7,10 @@ import {
   type ChatProvider,
   type ChatTurn,
 } from '@/core/ai/chat';
+import type {
+  AnimationOrchestrationPlan,
+  AnimationOrchestrator,
+} from '@/core/animation-orchestrator';
 import type { AnimationRenderer } from '@/core/animation-renderer';
 import { db } from '@/core/db';
 import { getAnimationReasoningEffort } from '@/config/animation-models';
@@ -20,8 +24,10 @@ import {
   type AnimationMathObjectType,
   type AnimationMessage,
   type AnimationModelSelection,
+  type AnimationOrchestrationState,
   type AnimationParts,
   type AnimationPlanningPhase,
+  type AnimationPlanningStageSummary,
   type AnimationQualityControlState,
   type AnimationQualityGateAction,
   type AnimationSpec,
@@ -44,6 +50,12 @@ import {
 } from '@/lib/animation-schema';
 import { getUuid, md5 } from '@/lib/hash';
 import { compileAnimationSpec } from '@/lib/manim-compiler';
+
+import {
+  generatePersistentAnimationSpec,
+  type PersistentAnimationPlanningContext,
+} from './planning';
+import { listPlanningStages } from './stages';
 
 const ANIMATION_METADATA = JSON.stringify({ kind: 'animation' });
 // A worker can disappear after claiming a row. Without a durable watchdog the
@@ -68,6 +80,7 @@ export function animationStageDeadlineAt(now = Date.now()) {
 }
 
 interface StoredAnimationParts extends AnimationParts {
+  planningRunId?: string;
   operation?: {
     id: string;
     stage: 'spec' | 'code';
@@ -242,6 +255,7 @@ export interface AnimationGenerationHooks {
   onStarted?: (animation: AnimationDetail) => void;
   onPhase?: (phase: AnimationPlanningPhase) => void;
   onSummaryDelta?: (delta: string) => void;
+  onPipelineStage?: (stage: AnimationPlanningStageSummary) => void;
 }
 
 function partialJsonStringField(source: string, field: string): string {
@@ -439,7 +453,40 @@ export async function generateAnimationSpec(params: {
   deadlineAt?: number;
   onPhase?: (phase: AnimationPlanningPhase) => void;
   onSummaryDelta?: (delta: string) => void;
+  planningContext?: PersistentAnimationPlanningContext;
 }) {
+  if (params.planningContext) {
+    const planned = await generatePersistentAnimationSpec({
+      context: params.planningContext,
+      provider: params.provider,
+      model: params.model,
+      prompt: params.prompt,
+      subject: params.subject,
+      currentSpec: params.currentSpec,
+      history: params.history,
+      signal: params.signal,
+      deadlineAt: params.deadlineAt,
+      onPhase: params.onPhase,
+      onSummaryDelta: params.onSummaryDelta,
+      audit: (spec) =>
+        reviewAnimationMathematics({
+          provider: params.provider,
+          model: params.model,
+          prompt: params.prompt,
+          spec,
+          signal: params.signal,
+          deadlineAt: params.deadlineAt,
+        }),
+    });
+    if (
+      planned.mathReview &&
+      !isAnimationMathReviewApproved(planned.mathReview)
+    ) {
+      throw new AnimationMathAuditError(planned.mathReview);
+    }
+    params.onPhase?.('finalizing');
+    return { result: planned.result, spec: planned.spec };
+  }
   params.onPhase?.('understanding');
   const input = {
     model: params.model,
@@ -557,6 +604,7 @@ function codeCompositionPrompt(params: {
   spec: AnimationSpec;
   currentCode?: string;
   repairEvidence?: string;
+  orchestration?: AnimationOrchestrationPlan;
 }) {
   const repair = params.currentCode
     ? `\n\nEXISTING SCENE TO REPAIR:\n${params.currentCode}\n\nREPAIR EVIDENCE:\n${(
@@ -564,9 +612,12 @@ function codeCompositionPrompt(params: {
         'Improve the scene without changing correct work.'
       ).slice(0, 8_000)}`
     : '';
+  const orchestration = params.orchestration
+    ? `\n\nDETERMINISTIC PYTHON ORCHESTRATION BRIEF:\n${params.orchestration.generationBrief}`
+    : '';
   return `ORIGINAL USER REQUEST:\n${params.prompt}\n\nAPPROVED SPECIFICATION:\n${JSON.stringify(
     params.spec
-  )}${repair}\n\nWrite the complete final Python scene now. Preserve correct work and change only what the specification or repair evidence requires.`;
+  )}${orchestration}${repair}\n\nWrite the complete final Python scene now. Preserve correct work and change only what the specification, orchestration contract, or repair evidence requires.`;
 }
 
 async function requestAnimationCodeCompletion(
@@ -593,6 +644,7 @@ export async function composeAnimationCode(params: {
   spec: AnimationSpec;
   currentCode?: string;
   repairEvidence?: string;
+  orchestration?: AnimationOrchestrationPlan;
   signal?: AbortSignal;
 }) {
   const input = {
@@ -642,6 +694,166 @@ export async function composeAnimationCode(params: {
   return { result, code };
 }
 
+function orchestrationState(params: {
+  plan?: AnimationOrchestrationPlan;
+  degraded?: string;
+}): AnimationOrchestrationState | undefined {
+  if (params.degraded) {
+    return {
+      status: 'degraded',
+      provider: 'in-worker',
+      protocolVersion: params.plan?.protocolVersion,
+      visualContractVersion: params.plan?.visualContract.contractVersion,
+      templateIds: params.plan?.templates.map((item) => item.id) || [],
+      blockingDiagnostics:
+        params.plan?.diagnostics.filter((item) => item.severity === 'blocking')
+          .length || 0,
+      preparedAt: params.plan?.preparedAt || new Date().toISOString(),
+      reason: params.degraded,
+    };
+  }
+  if (params.plan) {
+    return {
+      status: 'ready',
+      provider: 'python-orchestrator',
+      protocolVersion: params.plan.protocolVersion,
+      visualContractVersion: params.plan.visualContract.contractVersion,
+      templateIds: params.plan.templates.map((item) => item.id),
+      blockingDiagnostics: params.plan.diagnostics.filter(
+        (item) => item.severity === 'blocking'
+      ).length,
+      preparedAt: params.plan.preparedAt,
+    };
+  }
+  return undefined;
+}
+
+export async function prepareAnimationOrchestration(params: {
+  orchestrator: AnimationOrchestrator;
+  animationId: string;
+  prompt: string;
+  spec: AnimationSpec;
+  currentCode?: string;
+  failureEvidence?: string;
+  signal?: AbortSignal;
+}) {
+  return params.orchestrator.prepare({
+    animationId: params.animationId,
+    prompt: params.prompt,
+    spec: params.spec,
+    mode: params.currentCode ? 'repair' : 'initial',
+    currentCode: params.currentCode,
+    failureEvidence: params.failureEvidence,
+    signal: params.signal,
+  });
+}
+
+export async function composeOrchestratedAnimationCode(params: {
+  animationId: string;
+  provider: ChatProvider;
+  model: string;
+  prompt: string;
+  spec: AnimationSpec;
+  currentCode?: string;
+  repairEvidence?: string;
+  orchestrator?: AnimationOrchestrator;
+  orchestrationPlan?: AnimationOrchestrationPlan | null;
+  signal?: AbortSignal;
+}): Promise<{
+  result: ChatCompletionResult;
+  code: string;
+  orchestrationPlan?: AnimationOrchestrationPlan;
+  orchestrationState?: AnimationOrchestrationState;
+}> {
+  let plan = params.orchestrationPlan || undefined;
+  let degraded =
+    params.orchestrationPlan === null
+      ? 'Python orchestration was unavailable; generation continued in Worker.'
+      : undefined;
+  if (!plan && params.orchestrationPlan === undefined && params.orchestrator) {
+    try {
+      plan = await prepareAnimationOrchestration({
+        orchestrator: params.orchestrator,
+        animationId: params.animationId,
+        prompt: params.prompt,
+        spec: params.spec,
+        currentCode: params.currentCode,
+        failureEvidence: params.repairEvidence,
+        signal: params.signal,
+      });
+    } catch (error) {
+      degraded =
+        'Python orchestration preparation failed; generation continued in Worker.';
+      console.error('[animation-orchestrator] prepare degraded', {
+        animationId: params.animationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  let composed = await composeAnimationCode({
+    provider: params.provider,
+    model: params.model,
+    prompt: params.prompt,
+    spec: params.spec,
+    currentCode: params.currentCode,
+    repairEvidence: params.repairEvidence,
+    orchestration: plan,
+    signal: params.signal,
+  });
+
+  if (plan && params.orchestrator) {
+    try {
+      let validation = await params.orchestrator.validateCode({
+        animationId: params.animationId,
+        spec: params.spec,
+        code: composed.code,
+        visualContract: plan.visualContract,
+        signal: params.signal,
+      });
+      if (!validation.valid && validation.repairDirective) {
+        composed = await composeAnimationCode({
+          provider: params.provider,
+          model: params.model,
+          prompt: params.prompt,
+          spec: params.spec,
+          currentCode: composed.code,
+          repairEvidence: validation.repairDirective,
+          orchestration: plan,
+          signal: params.signal,
+        });
+        validation = await params.orchestrator.validateCode({
+          animationId: params.animationId,
+          spec: params.spec,
+          code: composed.code,
+          visualContract: plan.visualContract,
+          signal: params.signal,
+        });
+      }
+      if (!validation.valid) {
+        // The Sandbox validator and quality gate remain authoritative and can
+        // repair the rendered candidate. Do not convert a preflight warning
+        // into a new single point of failure.
+        degraded =
+          'Python preflight still found contract issues; repair was delegated to the Sandbox quality gate.';
+      }
+    } catch (error) {
+      degraded =
+        'Python code validation failed; the Sandbox validator remained authoritative.';
+      console.error('[animation-orchestrator] validation degraded', {
+        animationId: params.animationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return {
+    ...composed,
+    orchestrationPlan: plan,
+    orchestrationState: orchestrationState({ plan, degraded }),
+  };
+}
+
 function parseJson<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback;
   try {
@@ -679,6 +891,7 @@ function animationParts(row: Chat): StoredAnimationParts {
 function publicAnimationParts(parts: StoredAnimationParts): AnimationParts {
   const {
     operation: _operation,
+    planningRunId: _planningRunId,
     renderRepair: _renderRepair,
     renderCallback: _renderCallback,
     qualityControl: _qualityControl,
@@ -925,6 +1138,9 @@ const chatFailureCodes: Record<
   model_unavailable: 'UPSTREAM_UNAVAILABLE',
   upstream_auth: 'UPSTREAM_AUTH',
   upstream_quota: 'UPSTREAM_QUOTA',
+  upstream_invalid_request: 'UPSTREAM_INVALID_REQUEST',
+  output_truncated: 'OUTPUT_TRUNCATED',
+  malformed_stream: 'MALFORMED_STREAM',
   invalid_response: 'INVALID_OUTPUT',
   empty_response: 'INVALID_OUTPUT',
   stream_interrupted: 'STREAM_INTERRUPTED',
@@ -938,6 +1154,12 @@ const failureMessages: Record<AnimationFailure['code'], string> = {
   UPSTREAM_UNAVAILABLE: 'The AI provider is temporarily unavailable.',
   UPSTREAM_AUTH: 'The AI provider configuration needs attention.',
   UPSTREAM_QUOTA: 'The AI provider quota is currently exhausted.',
+  UPSTREAM_INVALID_REQUEST:
+    'The AI provider rejected this request shape. The failure was recorded for diagnosis.',
+  OUTPUT_TRUNCATED:
+    'The AI response reached its output limit before the current stage finished.',
+  MALFORMED_STREAM:
+    'The AI provider returned a malformed response stream. Please retry.',
   INVALID_OUTPUT:
     'The AI model returned an invalid result. Retry or choose another model.',
   STREAM_INTERRUPTED: 'The AI response was interrupted. Please retry.',
@@ -1179,15 +1401,33 @@ export async function getAnimation(
   id: string
 ): Promise<AnimationDetail> {
   const row = await ownedRow(userId, id);
+  const storedParts = animationParts(row);
   const messages = await db()
     .select()
     .from(chatMessage)
     .where(eq(chatMessage.chatId, id))
     .orderBy(desc(chatMessage.createdAt))
     .limit(MAX_ANIMATION_MESSAGES);
+  const stages = storedParts.planningRunId
+    ? await listPlanningStages({
+        userId,
+        chatId: id,
+        runId: storedParts.planningRunId,
+      })
+    : [];
+  const runningStage = stages.find((stage) => stage.status === 'running');
   return {
     ...toSummary(row),
-    parts: publicAnimationParts(animationParts(row)),
+    parts: {
+      ...publicAnimationParts(storedParts),
+      pipeline: storedParts.planningRunId
+        ? {
+            runId: storedParts.planningRunId,
+            currentStage: runningStage?.name,
+            stages,
+          }
+        : undefined,
+    },
     messages: messages.reverse().map(toMessage),
   };
 }
@@ -1208,6 +1448,151 @@ export async function renameAnimation(params: {
   return getAnimation(params.userId, params.id);
 }
 
+interface CreateAnimationDraftParams {
+  userId: string;
+  prompt: string;
+  subject: AnimationSubject;
+  creationMode?: Exclude<AnimationCreationMode, 'template'>;
+  mathObjectType?: AnimationMathObjectType;
+  sourceFormula?: string;
+  modelSelection: AnimationModelSelection;
+  model: string;
+  providerName: string;
+}
+
+export async function createAnimationDraft(
+  params: CreateAnimationDraftParams
+): Promise<AnimationDetail> {
+  const id = getUuid();
+  const planningRunId = getUuid();
+  const parts: StoredAnimationParts = {
+    ...initialParts(params.prompt, params.subject, params.modelSelection, {
+      creationMode: params.creationMode || 'description',
+      mathObjectType: params.mathObjectType,
+      sourceFormula: params.sourceFormula,
+    }),
+    planningRunId,
+  };
+  await db()
+    .insert(chat)
+    .values({
+      id,
+      userId: params.userId,
+      status: 'generating_spec',
+      model: params.model,
+      provider: params.providerName,
+      title: params.prompt.slice(0, 80),
+      parts: JSON.stringify(parts),
+      metadata: ANIMATION_METADATA,
+      content: params.prompt,
+    });
+  try {
+    await insertMessage({
+      userId: params.userId,
+      chatId: id,
+      role: 'user',
+      content: params.prompt,
+      model: params.model,
+      provider: params.providerName,
+    });
+  } catch (error) {
+    const row = await ownedRow(params.userId, id);
+    const failure = await setFailure(row, parts, error, 'spec');
+    throw new AnimationGenerationError(failure, error);
+  }
+  return getAnimation(params.userId, id);
+}
+
+export async function planAnimation(params: {
+  userId: string;
+  id: string;
+  provider: ChatProvider;
+  model: string;
+  signal?: AbortSignal;
+  hooks?: AnimationGenerationHooks;
+}): Promise<AnimationDetail> {
+  let row = await ownedRow(params.userId, params.id);
+  let parts = animationParts(row);
+  if (row.status === 'failed' && parts.failure?.stage === 'spec') {
+    parts = { ...parts, error: undefined, failure: undefined };
+    await db()
+      .update(chat)
+      .set({ status: 'generating_spec', parts: JSON.stringify(parts) })
+      .where(eq(chat.id, row.id));
+    row = await ownedRow(params.userId, params.id);
+  }
+  if (row.status !== 'generating_spec') {
+    throw new Error(`Animation cannot be planned from status ${row.status}`);
+  }
+  const planningRunId = parts.planningRunId || getUuid();
+  if (!parts.planningRunId) {
+    parts = { ...parts, planningRunId };
+    await db()
+      .update(chat)
+      .set({ parts: JSON.stringify(parts) })
+      .where(eq(chat.id, row.id));
+  }
+  try {
+    const currentSpec = [...parts.versions]
+      .reverse()
+      .find((version) => version.spec)?.spec;
+    const history = currentSpec ? await conversation(row.id) : undefined;
+    if (
+      history?.at(-1)?.role === 'user' &&
+      history.at(-1)?.content === parts.prompt
+    ) {
+      history.pop();
+    }
+    const { result, spec } = await generateAnimationSpec({
+      provider: params.provider,
+      model: params.model,
+      prompt: parts.prompt,
+      subject: parts.subject,
+      currentSpec,
+      history,
+      signal: params.signal,
+      deadlineAt: animationStageDeadlineAt(),
+      onPhase: params.hooks?.onPhase,
+      onSummaryDelta: params.hooks?.onSummaryDelta,
+      planningContext: {
+        userId: params.userId,
+        chatId: row.id,
+        runId: planningRunId,
+        onStage: params.hooks?.onPipelineStage,
+      },
+    });
+    const { operation: _operation, ...completedParts } = parts;
+    await db()
+      .update(chat)
+      .set({
+        title: spec.title,
+        status: 'awaiting_approval',
+        model: result.model,
+        provider: result.provider,
+        parts: JSON.stringify({
+          ...completedParts,
+          spec,
+          error: undefined,
+          failure: undefined,
+        }),
+      })
+      .where(and(eq(chat.id, row.id), eq(chat.status, 'generating_spec')));
+    await insertMessage({
+      userId: params.userId,
+      chatId: row.id,
+      role: 'assistant',
+      content: spec.summary,
+      model: result.model,
+      provider: result.provider,
+      metadata: { kind: 'spec_ready' },
+    });
+    return getAnimation(params.userId, row.id);
+  } catch (error) {
+    const failure = await setFailure(row, parts, error, 'spec');
+    throw new AnimationGenerationError(failure, error);
+  }
+}
+
 export async function createAnimation(params: {
   userId: string;
   prompt: string;
@@ -1221,80 +1606,26 @@ export async function createAnimation(params: {
   signal?: AbortSignal;
   hooks?: AnimationGenerationHooks;
 }): Promise<AnimationDetail> {
-  const id = getUuid();
-  const parts = initialParts(
-    params.prompt,
-    params.subject,
-    params.modelSelection,
-    {
-      creationMode: params.creationMode || 'description',
-      mathObjectType: params.mathObjectType,
-      sourceFormula: params.sourceFormula,
-    }
-  );
-  const [row] = await db()
-    .insert(chat)
-    .values({
-      id,
-      userId: params.userId,
-      status: 'generating_spec',
-      model: params.model,
-      provider: params.provider.name,
-      title: params.prompt.slice(0, 80),
-      parts: JSON.stringify(parts),
-      metadata: ANIMATION_METADATA,
-      content: params.prompt,
-    })
-    .returning();
-  try {
-    await insertMessage({
-      userId: params.userId,
-      chatId: id,
-      role: 'user',
-      content: params.prompt,
-      model: params.model,
-      provider: params.provider.name,
-    });
-    params.hooks?.onStarted?.(await getAnimation(params.userId, id));
-    const { result, spec } = await generateAnimationSpec({
-      provider: params.provider,
-      model: params.model,
-      prompt: params.prompt,
-      subject: params.subject,
-      signal: params.signal,
-      deadlineAt: animationStageDeadlineAt(),
-      onPhase: params.hooks?.onPhase,
-      onSummaryDelta: params.hooks?.onSummaryDelta,
-    });
-    await db()
-      .update(chat)
-      .set({
-        title: spec.title,
-        status: 'awaiting_approval',
-        model: result.model,
-        provider: result.provider,
-        parts: JSON.stringify({
-          ...parts,
-          spec,
-          error: undefined,
-          failure: undefined,
-        }),
-      })
-      .where(and(eq(chat.id, id), eq(chat.status, 'generating_spec')));
-    await insertMessage({
-      userId: params.userId,
-      chatId: id,
-      role: 'assistant',
-      content: spec.summary,
-      model: result.model,
-      provider: result.provider,
-      metadata: { kind: 'spec_ready' },
-    });
-    return getAnimation(params.userId, id);
-  } catch (error) {
-    const failure = await setFailure(row, parts, error, 'spec');
-    throw new AnimationGenerationError(failure, error);
-  }
+  const started = await createAnimationDraft({
+    userId: params.userId,
+    prompt: params.prompt,
+    subject: params.subject,
+    creationMode: params.creationMode,
+    mathObjectType: params.mathObjectType,
+    sourceFormula: params.sourceFormula,
+    modelSelection: params.modelSelection,
+    model: params.model,
+    providerName: params.provider.name,
+  });
+  params.hooks?.onStarted?.(started);
+  return planAnimation({
+    userId: params.userId,
+    id: started.id,
+    provider: params.provider,
+    model: params.model,
+    signal: params.signal,
+    hooks: params.hooks,
+  });
 }
 
 export async function createAnimationFromTemplate(params: {
@@ -1351,16 +1682,14 @@ export async function createAnimationFromTemplate(params: {
   return getAnimation(params.userId, id);
 }
 
-export async function reviseAnimation(params: {
+export async function reviseAnimationDraft(params: {
   userId: string;
   id: string;
   prompt: string;
   subject?: AnimationSubject;
   modelSelection: AnimationModelSelection;
-  provider: ChatProvider;
+  providerName: string;
   model: string;
-  signal?: AbortSignal;
-  hooks?: AnimationGenerationHooks;
 }): Promise<AnimationDetail> {
   const row = await ownedRow(params.userId, params.id);
   const current = animationParts(row);
@@ -1379,7 +1708,7 @@ export async function reviseAnimation(params: {
   }
   const nextSubject = params.subject ?? current.subject;
   const previous = snapshot(current);
-  const history = await conversation(row.id);
+  const planningRunId = getUuid();
   const nextParts: StoredAnimationParts = {
     ...current,
     subject: nextSubject,
@@ -1399,6 +1728,7 @@ export async function reviseAnimation(params: {
     render: undefined,
     error: undefined,
     failure: undefined,
+    planningRunId,
     renderRepair: undefined,
     qualityControl: undefined,
   };
@@ -1407,7 +1737,7 @@ export async function reviseAnimation(params: {
     parts: nextParts,
     status: 'generating_spec',
     stage: 'spec',
-    provider: params.provider.name,
+    provider: params.providerName,
     model: params.model,
     content: params.prompt,
     subject: nextSubject,
@@ -1419,54 +1749,47 @@ export async function reviseAnimation(params: {
       role: 'user',
       content: params.prompt,
       model: params.model,
-      provider: params.provider.name,
+      provider: params.providerName,
       metadata: previous
         ? { kind: 'revision', version: previous.version }
         : { kind: 'revision' },
     });
-    params.hooks?.onStarted?.(await getAnimation(params.userId, row.id));
-    const { result, spec } = await generateAnimationSpec({
-      provider: params.provider,
-      model: params.model,
-      prompt: params.prompt,
-      subject: nextSubject,
-      currentSpec: current.spec,
-      history,
-      signal: params.signal,
-      deadlineAt: animationStageDeadlineAt(),
-      onPhase: params.hooks?.onPhase,
-      onSummaryDelta: params.hooks?.onSummaryDelta,
-    });
-    const { operation: _operation, ...completedParts } = claimed.parts;
-    await db()
-      .update(chat)
-      .set({
-        title: spec.title,
-        status: 'awaiting_approval',
-        model: result.model,
-        provider: result.provider,
-        parts: JSON.stringify({
-          ...completedParts,
-          spec,
-          error: undefined,
-          failure: undefined,
-        }),
-      })
-      .where(and(eq(chat.id, row.id), eq(chat.status, 'generating_spec')));
-    await insertMessage({
-      userId: params.userId,
-      chatId: row.id,
-      role: 'assistant',
-      content: spec.summary,
-      model: result.model,
-      provider: result.provider,
-      metadata: { kind: 'spec_ready' },
-    });
-    return getAnimation(params.userId, row.id);
   } catch (error) {
     const failure = await setFailure(claimed.row, claimed.parts, error, 'spec');
     throw new AnimationGenerationError(failure, error);
   }
+  return getAnimation(params.userId, claimed.row.id);
+}
+
+export async function reviseAnimation(params: {
+  userId: string;
+  id: string;
+  prompt: string;
+  subject?: AnimationSubject;
+  modelSelection: AnimationModelSelection;
+  provider: ChatProvider;
+  model: string;
+  signal?: AbortSignal;
+  hooks?: AnimationGenerationHooks;
+}): Promise<AnimationDetail> {
+  const started = await reviseAnimationDraft({
+    userId: params.userId,
+    id: params.id,
+    prompt: params.prompt,
+    subject: params.subject,
+    modelSelection: params.modelSelection,
+    model: params.model,
+    providerName: params.provider.name,
+  });
+  params.hooks?.onStarted?.(started);
+  return planAnimation({
+    userId: params.userId,
+    id: started.id,
+    provider: params.provider,
+    model: params.model,
+    signal: params.signal,
+    hooks: params.hooks,
+  });
 }
 
 export async function approveAnimation(params: {
@@ -1475,6 +1798,8 @@ export async function approveAnimation(params: {
   provider?: ChatProvider;
   model?: string;
   renderer?: AnimationRenderer;
+  orchestrator?: AnimationOrchestrator;
+  orchestrationPlan?: AnimationOrchestrationPlan | null;
   callbackUrl: string;
   qualityGateUrl: string;
   creditTaskId?: string;
@@ -1508,6 +1833,7 @@ export async function approveAnimation(params: {
     model: row.model,
   });
   let code: string | undefined;
+  let generatedOrchestration: AnimationOrchestrationState | undefined;
   let failureStage: AnimationFailureStage = 'code';
   try {
     const repairEvidence = parts.renderRepair?.regenerateCode
@@ -1520,16 +1846,20 @@ export async function approveAnimation(params: {
         !parts.code ||
         parts.renderRepair?.regenerateCode === true);
     if (shouldCompose) {
-      const composed = await composeAnimationCode({
+      const composed = await composeOrchestratedAnimationCode({
+        animationId: row.id,
         provider: params.provider!,
         model: params.model!,
         prompt: parts.prompt,
         spec: parts.spec,
         currentCode: repairEvidence ? parts.code : undefined,
         repairEvidence,
+        orchestrator: params.orchestrator,
+        orchestrationPlan: params.orchestrationPlan,
         signal: params.signal,
       });
       code = composed.code;
+      generatedOrchestration = composed.orchestrationState;
     } else {
       code = parts.code || compileAnimationSpec(parts.spec);
     }
@@ -1542,6 +1872,9 @@ export async function approveAnimation(params: {
       const nextParts: StoredAnimationParts = {
         ...completedParts,
         code,
+        ...(generatedOrchestration
+          ? { orchestration: generatedOrchestration }
+          : {}),
         error: undefined,
         failure: undefined,
       };
@@ -1588,6 +1921,9 @@ export async function approveAnimation(params: {
         parts: JSON.stringify({
           ...completedParts,
           code,
+          ...(generatedOrchestration
+            ? { orchestration: generatedOrchestration }
+            : {}),
           error: undefined,
           failure: undefined,
           render: {
@@ -1915,15 +2251,18 @@ export async function composeAnimationQualityRepair(params: {
   provider: ChatProvider;
   model: string;
   evidence: string;
+  orchestrator?: AnimationOrchestrator;
   signal?: AbortSignal;
 }) {
-  return composeAnimationCode({
+  return composeOrchestratedAnimationCode({
+    animationId: params.context.id,
     provider: params.provider,
     model: params.model,
     prompt: params.context.prompt,
     spec: params.context.spec,
     currentCode: params.context.code,
     repairEvidence: params.evidence,
+    orchestrator: params.orchestrator,
     signal: params.signal,
   });
 }
@@ -1933,6 +2272,7 @@ export async function composeAnimationMathematicalRepair(params: {
   provider: ChatProvider;
   model: string;
   review: AnimationVisualReview;
+  orchestrator?: AnimationOrchestrator;
   signal?: AbortSignal;
 }): Promise<{ spec: AnimationSpec; code: string }> {
   const deadlineAt = animationStageDeadlineAt();
@@ -2004,12 +2344,14 @@ export async function composeAnimationMathematicalRepair(params: {
   if (!isAnimationMathReviewApproved(mathReview)) {
     throw new AnimationMathAuditError(mathReview);
   }
-  const composed = await composeAnimationCode({
+  const composed = await composeOrchestratedAnimationCode({
+    animationId: params.context.id,
     provider: params.provider,
     model: params.model,
     prompt: params.context.prompt,
     spec,
     repairEvidence: JSON.stringify(params.review),
+    orchestrator: params.orchestrator,
     signal: params.signal,
   });
   return { spec, code: composed.code };

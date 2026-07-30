@@ -357,7 +357,7 @@ interface RenderEvidence {
 
 async function prepareRenderEvidence(
   sandbox: Sandbox,
-  mediaRoot: '/workspace/media'
+  mediaRoot: string
 ): Promise<RenderEvidence> {
   const locate = await sandbox.exec(
     `find ${mediaRoot} -type f -name 'CurvGScene.mp4' -print -quit`,
@@ -635,7 +635,7 @@ async function processJob(job: RenderJob, env: Env) {
 
       await notifyStage(job, env, 'compiling', attemptProgress(attempt, 10));
       const render = await sandbox.exec(
-        'manim -qm --format=mp4 --disable_caching scene.py CurvGScene --media_dir /workspace/media',
+        'manim -ql --format=mp4 --disable_caching scene.py CurvGScene --media_dir /workspace/media',
         { timeout: 600_000, cwd: '/workspace' }
       );
       if (!render.success) {
@@ -672,7 +672,7 @@ async function processJob(job: RenderJob, env: Env) {
       }
       // On the last autonomous pass, review and deliver the strongest rendered
       // candidate instead of allowing a regressive repair to overwrite it.
-      const selectedEvidence =
+      const reviewEvidence =
         attempt === MAX_QUALITY_REPAIRS && bestEvidence
           ? bestEvidence
           : previewEvidence;
@@ -687,14 +687,14 @@ async function processJob(job: RenderJob, env: Env) {
         job,
         contactSheetKey,
         qaReportKey,
-        evidence: selectedEvidence,
+        evidence: reviewEvidence,
         attempt: selectedAttempt,
-        phase: 'final',
+        phase: 'preview',
       });
       const finalGate = await requestQualityGate(job, env, {
         kind: 'final_review',
         attempt,
-        visualQa: selectedEvidence.visualQa,
+        visualQa: reviewEvidence.visualQa,
         approvedCode: selectedCode,
       });
       if (finalGate.action === 'repair' && finalGate.code) {
@@ -707,12 +707,47 @@ async function processJob(job: RenderJob, env: Env) {
         );
       }
 
+      // The autonomous repair loop uses a low-quality render for speed. Only
+      // after a candidate passes the quality gate do we spend the medium
+      // render budget. Evidence is regenerated from this formal MP4 so the
+      // uploaded QA report describes the actual deliverable.
+      await sandbox.exec(
+        'rm -rf /workspace/media /workspace/video.mp4 /workspace/thumbnail.jpg /workspace/contact-sheet.jpg /workspace/qa-report.json',
+        { timeout: 30_000, cwd: '/workspace' }
+      );
+      await sandbox.writeFile('/workspace/scene.py', selectedCode);
+      await notifyStage(job, env, 'compiling', 90);
+      const formalRender = await sandbox.exec(
+        'manim -qm --format=mp4 --disable_caching scene.py CurvGScene --media_dir /workspace/media',
+        { timeout: 600_000, cwd: '/workspace' }
+      );
+      if (!formalRender.success) {
+        throw new Error(
+          commandError(formalRender.stderr, 'Formal Manim render failed')
+        );
+      }
+      await notifyStage(job, env, 'reviewing', 94);
+      const deliveryEvidence = await prepareRenderEvidence(
+        sandbox,
+        '/workspace/media'
+      );
+      await uploadReviewEvidence({
+        sandbox,
+        env,
+        job,
+        contactSheetKey,
+        qaReportKey,
+        evidence: deliveryEvidence,
+        attempt: selectedAttempt,
+        phase: 'final',
+      });
+
       await notifyStage(job, env, 'uploading', 96);
       await uploadBinaryFile(
         sandbox,
         env.ARTIFACTS,
         videoKey,
-        selectedEvidence.playbackPath,
+        deliveryEvidence.playbackPath,
         {
           httpMetadata: { contentType: 'video/mp4' },
           customMetadata: {
@@ -726,7 +761,7 @@ async function processJob(job: RenderJob, env: Env) {
         sandbox,
         env.ARTIFACTS,
         thumbnailKey,
-        selectedEvidence.thumbnailPath,
+        deliveryEvidence.thumbnailPath,
         {
           httpMetadata: { contentType: 'image/jpeg' },
           customMetadata: { animationId: job.animationId, jobId: job.jobId },
@@ -735,7 +770,7 @@ async function processJob(job: RenderJob, env: Env) {
       await notify(job, env, {
         status: 'completed',
         ...artifactUrls(job, true),
-        visualQa: selectedEvidence.visualQa,
+        visualQa: deliveryEvidence.visualQa,
       });
       return;
     }

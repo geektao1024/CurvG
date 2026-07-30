@@ -1,5 +1,9 @@
 # CurvG Creator Architecture
 
+The current durable Worker → Workflow → Python Orchestrator → Sandbox design is
+documented in [ANIMATION_ORCHESTRATION.md](./ANIMATION_ORCHESTRATION.md). This
+document retains the broader Creator product and historical renderer context.
+
 ## First-principles decomposition
 
 A precise mathematical animation requires four separate truths:

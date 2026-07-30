@@ -4,8 +4,10 @@ import { getAuth } from '@/core/auth';
 import { instantiateAnimationTemplate } from '@/modules/animation-templates/service';
 import {
   createAnimation,
+  createAnimationDraft,
   createAnimationFromTemplate,
   listAnimations,
+  planAnimation,
 } from '@/modules/animations/service';
 import { getAllConfigs } from '@/modules/config/service';
 import type {
@@ -13,6 +15,10 @@ import type {
   AnimationDetail,
   AnimationMathObjectType,
 } from '@/lib/animation';
+import {
+  getAnimationWorkflowBinding,
+  startAnimationWorkflow,
+} from '@/lib/cloudflare-workflow';
 import { detectMathObjectType } from '@/lib/math-preview';
 import { enforceMinIntervalRateLimit } from '@/lib/rate-limit';
 import {
@@ -152,6 +158,99 @@ async function POST({ request }: { request: Request }) {
       requestedModel
     );
     const modelSelection = { choice: modelChoice, model: requestedModel };
+    const workflowBinding = getAnimationWorkflowBinding();
+    if (workflowBinding) {
+      const createDraft = () =>
+        createAnimationDraft({
+          userId: session.user.id,
+          prompt,
+          subject: parseSubject(body.subject),
+          creationMode: mode,
+          mathObjectType,
+          sourceFormula: formula || undefined,
+          modelSelection,
+          model: provider.model,
+          providerName: provider.provider.name,
+        });
+      const enqueue = async (started: AnimationDetail) => {
+        await startAnimationWorkflow(
+          workflowBinding,
+          {
+            userId: session.user.id,
+            animationId: started.id,
+            origin: new URL(request.url).origin,
+          },
+          started.parts.pipeline?.runId
+        );
+        return started;
+      };
+      if (request.headers.get('accept')?.includes('text/event-stream')) {
+        return animationEventStream(async (send, signal) => {
+          const started = await createDraft();
+          send({ type: 'started', animation: started });
+          try {
+            const accepted = await enqueue(started);
+            send({ type: 'accepted', animation: accepted });
+          } catch {
+            // A missing/broken binding should not strand a newly-created row.
+            // Run the same resumable pipeline in-request as a deployment
+            // fallback; completed stage artifacts are still checkpointed.
+            const planned = await withAnimationGenerationCapacity(
+              session.user.id,
+              () =>
+                planAnimation({
+                  userId: session.user.id,
+                  id: started.id,
+                  ...provider,
+                  signal,
+                  hooks: {
+                    onPhase: (phase) => send({ type: 'phase', phase }),
+                    onPipelineStage: (stage) =>
+                      send({ type: 'pipeline-stage', stage }),
+                    onSummaryDelta: (delta) => send({ type: 'delta', delta }),
+                  },
+                })
+            );
+            const animation = await startSilentAnimationProduction({
+              request,
+              configs,
+              userId: session.user.id,
+              animation: planned,
+              provider: provider.provider,
+              model: provider.model,
+              signal,
+            });
+            send({ type: 'completed', animation });
+          }
+        });
+      }
+      const started = await createDraft();
+      try {
+        return respData(await enqueue(started));
+      } catch {
+        const planned = await withAnimationGenerationCapacity(
+          session.user.id,
+          () =>
+            planAnimation({
+              userId: session.user.id,
+              id: started.id,
+              ...provider,
+              signal: request.signal,
+            })
+        );
+        return respData(
+          await startSilentAnimationProduction({
+            request,
+            configs,
+            userId: session.user.id,
+            animation: planned,
+            provider: provider.provider,
+            model: provider.model,
+            signal: request.signal,
+          })
+        );
+      }
+    }
     if (request.headers.get('accept')?.includes('text/event-stream')) {
       return animationEventStream(async (send, signal) => {
         const planned = await withAnimationGenerationCapacity(
@@ -171,6 +270,8 @@ async function POST({ request }: { request: Request }) {
                 onStarted: (started) =>
                   send({ type: 'started', animation: started }),
                 onPhase: (phase) => send({ type: 'phase', phase }),
+                onPipelineStage: (stage) =>
+                  send({ type: 'pipeline-stage', stage }),
                 onSummaryDelta: (delta) => send({ type: 'delta', delta }),
               },
             })

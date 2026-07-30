@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import type { AnimationSpec } from '@/lib/animation';
+import { parseStructuredJsonObject } from '@/lib/structured-json';
 
 const identifierSchema = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,79}$/);
 
@@ -191,7 +192,7 @@ const curriculumBeatSchema = z.object({
   notationBudget: z.number().int().min(0).max(4),
 });
 
-const v5AnimationSpecSchema = commonAnimationSpecSchema.extend({
+export const v5AnimationSpecSchema = commonAnimationSpecSchema.extend({
   schemaVersion: z.literal(5),
   intent: v3AnimationSpecSchema.shape.intent,
   direction: v3AnimationSpecSchema.shape.direction,
@@ -765,19 +766,7 @@ export const animationSpecSchema = z
   });
 
 function extractJson(value: string): unknown {
-  const trimmed = value.trim();
-  const unfenced = trimmed
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/, '')
-    .trim();
-  try {
-    return JSON.parse(unfenced);
-  } catch {
-    const start = unfenced.indexOf('{');
-    const end = unfenced.lastIndexOf('}');
-    if (start < 0 || end <= start) throw new Error('AI returned invalid JSON');
-    return JSON.parse(unfenced.slice(start, end + 1));
-  }
+  return parseStructuredJsonObject(value);
 }
 
 export function parseAnimationSpec(value: string): AnimationSpec {

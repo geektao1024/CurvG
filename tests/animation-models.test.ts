@@ -16,6 +16,7 @@ import {
 } from '../src/lib/animation';
 import {
   AnimationApiError,
+  animationProviderTargetPlan,
   parseModelChoice,
 } from '../src/routes/api/animations/-shared';
 
@@ -67,6 +68,41 @@ test('the generation catalog contains only reviewed Kuaipao GPT-5.6', () => {
       requiredTier: 'free',
     },
   ]);
+});
+
+test('KIE GPT-5.5 is a hidden resilience target after Kuaipao', () => {
+  const primary = animationModelPolicies[0];
+  assert.deepEqual(
+    animationProviderTargetPlan(
+      {
+        kuaipao_api_key: 'configured',
+        kie_api_key: 'configured',
+      },
+      primary
+    ),
+    [
+      {
+        provider: 'kuaipao',
+        model: 'gpt-5.6-sol',
+        reasoningEffort: 'high',
+      },
+      {
+        provider: 'kie',
+        model: 'gpt-5-5',
+        reasoningEffort: 'high',
+      },
+    ]
+  );
+  assert.deepEqual(
+    animationProviderTargetPlan({ kuaipao_api_key: 'configured' }, primary),
+    [
+      {
+        provider: 'kuaipao',
+        model: 'gpt-5.6-sol',
+        reasoningEffort: 'high',
+      },
+    ]
+  );
 });
 
 test('Starter inherits Free models but not Pro models', () => {

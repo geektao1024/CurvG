@@ -6,12 +6,14 @@ import {
   ProviderFailoverChatProvider,
   type ChatProvider,
 } from '../src/core/ai/chat';
+import type { AnimationOrchestrationPlan } from '../src/core/animation-orchestrator';
 import { animationFailureCodeFromHttpStatus } from '../src/lib/animation';
 import { enforceMinIntervalRateLimit } from '../src/lib/rate-limit';
 import {
   ANIMATION_STAGE_TIMEOUT_MS,
   animationStageDeadlineAt,
   composeAnimationCode,
+  composeOrchestratedAnimationCode,
   generateAnimationSpec,
   parseAnimationSpecWithRepairs,
   renderFailureRequiresCodeRegeneration,
@@ -32,6 +34,37 @@ const unitLeaseBackend = {
   },
   async release() {},
 };
+
+function orchestrationPlan(): AnimationOrchestrationPlan {
+  return {
+    protocolVersion: 'curvg.orchestrator/v1',
+    status: 'ready',
+    visualContract: {
+      contractVersion: 'curvg.visual/v1',
+      frame: {
+        aspectRatio: '16:9',
+        safeZone: [0.06, 0.08, 0.94, 0.92],
+        targetWidth: 1920,
+        targetHeight: 1080,
+        frameRate: 30,
+      },
+      hook: { deadlineSeconds: 1, requiresVisibleMotion: true },
+      payoff: { startRatio: 0.67, requiresResolvedVisual: true },
+      text: {
+        maxWordsPerObject: 8,
+        maxSimultaneousObjects: 2,
+        proseIsSecondary: true,
+      },
+      motion: { dominantActionsPerBeat: 1, requireVisualProof: true },
+      palette: ['#6A9BCC'],
+    },
+    templates: [],
+    diagnostics: [],
+    generationBrief:
+      'Begin visible motion in the first second and preserve the approved visual proof.',
+    preparedAt: '2026-07-30T00:00:00Z',
+  };
+}
 
 function request(path: string, cookie: string) {
   return new Request(`https://curvg.test${path}`, {
@@ -602,6 +635,108 @@ class CurvGScene(Scene):
   assert.equal(outputs.length, 0);
   assert.doesNotMatch(result.code, /add_updater/);
   assert.match(result.code, /always_redraw/);
+});
+
+test('Python preflight directs one targeted code repair before rendering', async () => {
+  const initial = `
+from manim import *
+
+class CurvGScene(Scene):
+    def construct(self):
+        dot = Dot()
+        self.play(FadeIn(dot), run_time=1)
+        self.play(dot.animate.shift(RIGHT), run_time=1)
+        self.wait(1)
+`;
+  const repaired = initial.replace('RIGHT)', 'RIGHT * 2)');
+  const outputs = [initial, repaired];
+  const provider: ChatProvider = {
+    name: 'kuaipao',
+    async complete(input) {
+      const content = outputs.shift();
+      if (!content) throw new Error('Unexpected completion');
+      return { content, provider: 'kuaipao', model: input.model };
+    },
+  };
+  let validations = 0;
+  const plan = orchestrationPlan();
+  const orchestrator = {
+    name: 'python-orchestrator',
+    async prepare() {
+      return plan;
+    },
+    async validateCode() {
+      validations += 1;
+      return validations === 1
+        ? {
+            protocolVersion: 'curvg.orchestrator/v1' as const,
+            valid: false,
+            diagnostics: [],
+            repairDirective: 'Move the payoff point far enough to be visible.',
+            validatedAt: '2026-07-30T00:00:00Z',
+          }
+        : {
+            protocolVersion: 'curvg.orchestrator/v1' as const,
+            valid: true,
+            diagnostics: [],
+            validatedAt: '2026-07-30T00:00:01Z',
+          };
+    },
+  };
+  const result = await composeOrchestratedAnimationCode({
+    animationId: 'animation-1',
+    provider,
+    model: 'gpt-5.6-sol',
+    prompt: 'Animate a point.',
+    spec: auditedGeometrySpec(),
+    orchestrator,
+    orchestrationPlan: plan,
+  });
+  assert.equal(validations, 2);
+  assert.equal(outputs.length, 0);
+  assert.match(result.code, /RIGHT \* 2/);
+  assert.equal(result.orchestrationState?.status, 'ready');
+});
+
+test('Python orchestrator outage degrades to the existing code path', async () => {
+  const provider: ChatProvider = {
+    name: 'kuaipao',
+    async complete(input) {
+      return {
+        content: `
+from manim import *
+
+class CurvGScene(Scene):
+    def construct(self):
+        dot = Dot()
+        self.play(FadeIn(dot), run_time=1)
+        self.play(dot.animate.shift(RIGHT), run_time=1)
+        self.wait(1)
+`,
+        provider: 'kuaipao',
+        model: input.model,
+      };
+    },
+  };
+  const result = await composeOrchestratedAnimationCode({
+    animationId: 'animation-1',
+    provider,
+    model: 'gpt-5.6-sol',
+    prompt: 'Animate a point.',
+    spec: auditedGeometrySpec(),
+    orchestrator: {
+      name: 'python-orchestrator',
+      async prepare() {
+        throw new Error('service unavailable');
+      },
+      async validateCode() {
+        throw new Error('should not validate without a plan');
+      },
+    },
+  });
+  assert.match(result.code, /class CurvGScene/);
+  assert.equal(result.orchestrationState?.status, 'degraded');
+  assert.equal(result.orchestrationState?.provider, 'in-worker');
 });
 
 test('render payment failures map to the localized insufficient-credit message', () => {

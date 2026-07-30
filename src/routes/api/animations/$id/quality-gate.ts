@@ -25,6 +25,7 @@ import { respData, respErr } from '@/lib/resp';
 import { runAnimationSemanticReview } from '../-quality';
 import {
   hasBearerToken,
+  resolveAnimationOrchestrator,
   resolveChatProvider,
   withAnimationGenerationCapacity,
 } from '../-shared';
@@ -161,6 +162,15 @@ async function POST({
     let code: string | undefined;
     let spec: AnimationSpec | undefined;
     if (action === 'repair') {
+      let orchestrator;
+      try {
+        orchestrator = resolveAnimationOrchestrator(configs);
+      } catch (error) {
+        console.error('[animation-quality-gate] orchestrator degraded', {
+          animationId: context.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
       const selection = context.modelSelection || { choice: 'auto' as const };
       const resolution = await resolveChatProvider(
         configs,
@@ -180,6 +190,7 @@ async function POST({
               provider: resolution.provider,
               model: resolution.model,
               review,
+              orchestrator,
               signal: request.signal,
             })
         );
@@ -207,6 +218,7 @@ async function POST({
               provider: resolution.provider,
               model: resolution.model,
               evidence,
+              orchestrator,
               signal: request.signal,
             })
         );
