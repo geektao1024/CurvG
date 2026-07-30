@@ -5,6 +5,7 @@ import { parseAnimationVisualReview } from '@/lib/animation-qa';
 import { signAnimationReviewArtifact } from '@/lib/signed-animation-artifact';
 
 export const ANIMATION_REVIEW_MODEL = 'gemini-3.1-pro';
+const ANIMATION_REVIEW_TIMEOUT_MS = 25_000;
 
 export function animationVisualReviewPrompt(detail: AnimationDetail): string {
   return `You are the cinematographer and mathematical continuity reviewer in CurvG's autonomous Manim production pipeline.
@@ -77,9 +78,9 @@ export async function runAnimationSemanticReview(params: {
   const provider = new KieChatProvider({
     apiKey: params.configs.kie_api_key,
     baseUrl: params.configs.kie_base_url || 'https://api.kie.ai',
-    maxAttempts: 2,
-    requestTimeoutMs: 90_000,
-    overallTimeoutMs: 120_000,
+    maxAttempts: 1,
+    requestTimeoutMs: ANIMATION_REVIEW_TIMEOUT_MS,
+    overallTimeoutMs: ANIMATION_REVIEW_TIMEOUT_MS,
   });
   const result = await provider.completeImageReview({
     systemPrompt:
@@ -88,6 +89,7 @@ export async function runAnimationSemanticReview(params: {
     imageUrl: imageUrl.toString(),
     maxTokens: 2_000,
     signal: params.signal,
+    deadlineAt: Date.now() + ANIMATION_REVIEW_TIMEOUT_MS,
   });
   return parseAnimationVisualReview({
     content: result.content,

@@ -553,3 +553,209 @@ export function buildDeterministicSceneArtifact(
     : buildGenericScene(artifacts);
   return sceneArtifactSchema.parse(scene);
 }
+
+function deterministicDuration(prompt: string) {
+  const match = prompt.match(
+    /(?:^|\D)(\d{1,3})(?:\s*)(?:秒|seconds?|secs?)(?:\D|$)/iu
+  );
+  const requested = match ? Number(match[1]) : 12;
+  return Math.min(30, Math.max(8, requested));
+}
+
+/**
+ * A verified, provider-independent proof profile for the most common tangent
+ * demonstration. This is deliberately narrow: an unfamiliar prompt must stay
+ * on the model pipeline instead of receiving invented mathematics.
+ */
+export function buildDeterministicQuadraticTangentArtifacts(
+  prompt: string
+): AnimationPlanningArtifacts | undefined {
+  const normalized = prompt.replaceAll('**', '^');
+  const isQuadraticTangent =
+    /(?:x\s*\^\s*2|x²)/iu.test(normalized) &&
+    /(?:x\s*=\s*1|x=1)/iu.test(normalized) &&
+    /(?:tangent|secant|derivative|slope|切线|割线|导数|斜率)/iu.test(
+      normalized
+    ) &&
+    /(?:y\s*=\s*2\s*x\s*-\s*1|(?:slope|斜率).{0,24}2|2.{0,24}(?:slope|斜率))/iu.test(
+      normalized
+    );
+  if (!isQuadraticTangent) return undefined;
+
+  const durationSeconds = deterministicDuration(prompt);
+  const quarter = durationSeconds / 4;
+  const intent = intentArtifactSchema.parse({
+    title: 'Quadratic tangent at x = 1',
+    summary:
+      'A moving secant on y=x² approaches the tangent y=2x-1, making the derivative value 2 visible and checkable.',
+    durationSeconds,
+    assumptions: ['h is nonzero before the limit h approaches zero.'],
+    intent: {
+      learningGoal:
+        'See why the derivative of y=x² at x=1 is the tangent slope 2.',
+      hook: 'What line does a shrinking secant become?',
+      takeaway: 'The secant slope 2+h approaches 2.',
+    },
+  });
+  const knowledge = knowledgeArtifactSchema.parse({
+    knowledgeMap: [
+      {
+        id: 'quadratic_graph',
+        concept: 'The graph y=x² contains P=(1,1).',
+        dependsOn: [],
+        misconception: 'The derivative is not the height of the point.',
+      },
+      {
+        id: 'secant_slope',
+        concept: 'A secant through P and Q has a difference-quotient slope.',
+        dependsOn: ['quadratic_graph'],
+        misconception: 'The secant is not yet the tangent while h is nonzero.',
+      },
+      {
+        id: 'derivative_limit',
+        concept: 'The tangent slope is the limit of secant slopes.',
+        dependsOn: ['secant_slope'],
+        misconception:
+          'Substituting h=0 before simplifying causes division by zero.',
+      },
+    ],
+  });
+  const curriculum = curriculumArtifactSchema.parse({
+    curriculum: [
+      {
+        id: 'locate_points',
+        learningJob: 'Locate P and a nearby Q on the parabola.',
+        dependsOn: ['quadratic_graph'],
+        visualEvidence: 'P stays fixed while Q appears to its right.',
+        notationBudget: 2,
+      },
+      {
+        id: 'move_secant',
+        learningJob: 'Relate the line through P and Q to the secant slope.',
+        dependsOn: ['secant_slope', 'locate_points'],
+        visualEvidence:
+          'Q approaches P and the secant rotates toward one line.',
+        notationBudget: 2,
+      },
+      {
+        id: 'simplify_quotient',
+        learningJob:
+          'Simplify the difference quotient before taking the limit.',
+        dependsOn: ['move_secant'],
+        visualEvidence: 'The quotient transforms into 2+h with h nonzero.',
+        notationBudget: 3,
+      },
+      {
+        id: 'resolve_tangent',
+        learningJob: 'Identify the limiting slope and tangent equation.',
+        dependsOn: ['derivative_limit', 'simplify_quotient'],
+        visualEvidence: 'The final line is labeled m=2 and y=2x-1.',
+        notationBudget: 2,
+      },
+    ],
+  });
+  const mathematics = mathematicsArtifactSchema.parse({
+    mathDossier: {
+      coreClaim:
+        'For f(x)=x² at x=1, the derivative is 2 and the tangent line is y=2x-1.',
+      invariants: [
+        'P remains fixed at (1,1).',
+        'Q=(1+h,(1+h)²) remains on y=x².',
+        'The secant slope equals 2+h for h not equal to zero.',
+      ],
+      commonMisreading:
+        'h approaches zero; the difference quotient is simplified before evaluating the limit.',
+      visualProof:
+        'Move Q toward P while the secant slope 2+h approaches 2, then replace the limiting secant with y=2x-1.',
+      definitions: [
+        {
+          concept: 'Secant slope',
+          statement: 'm_sec=[f(1+h)-f(1)]/h for h≠0.',
+        },
+        {
+          concept: 'Derivative at x=1',
+          statement: "f'(1)=lim_{h→0}[f(1+h)-f(1)]/h.",
+        },
+      ],
+      derivationSteps: [
+        '[(1+h)²-1]/h=(2h+h²)/h for h≠0.',
+        'The secant slope simplifies to 2+h.',
+        'As h approaches 0, 2+h approaches 2.',
+        'The line through (1,1) with slope 2 is y-1=2(x-1), hence y=2x-1.',
+      ],
+      checks: [
+        {
+          claim: 'The tangent slope is 2.',
+          method: 'Differentiate x² independently.',
+          expected: "f'(1)=2·1=2.",
+        },
+        {
+          claim: 'The tangent passes through P.',
+          method: 'Substitute x=1 into y=2x-1.',
+          expected: 'y=1.',
+        },
+      ],
+      limitations: [
+        'This profile proves the claim specifically for f(x)=x² at x=1.',
+      ],
+    },
+  });
+  const storyboard = storyboardArtifactSchema.parse({
+    direction: {
+      preset: 'geometric-proof',
+      frame: '16:9',
+      pacing: 'balanced',
+      textPolicy: { maxWordsPerObject: 8, maxSimultaneousText: 2 },
+    },
+    cinematography: { scene: 'static', emphasis: 'clean' },
+    shots: [
+      {
+        id: 'shot_hook',
+        beat: 'hook',
+        purpose: 'Reveal the parabola with P and nearby Q.',
+        startAt: 0,
+        endAt: quarter,
+        focusRef: 'point_pair',
+        transition: 'build',
+        acceptance: ['The parabola and both points are visible.'],
+      },
+      {
+        id: 'shot_secant',
+        beat: 'mechanism',
+        purpose: 'Move the secant toward the tangent as Q approaches P.',
+        startAt: quarter,
+        endAt: quarter * 2,
+        focusRef: 'secant_motion',
+        transition: 'morph',
+        acceptance: ['The secant visibly approaches one limiting direction.'],
+      },
+      {
+        id: 'shot_quotient',
+        beat: 'proof',
+        purpose: 'Simplify the difference quotient to 2+h.',
+        startAt: quarter * 2,
+        endAt: quarter * 3,
+        focusRef: 'difference_quotient',
+        transition: 'emphasis',
+        acceptance: ['The condition h≠0 and expression 2+h are readable.'],
+      },
+      {
+        id: 'shot_payoff',
+        beat: 'payoff',
+        purpose: 'Resolve the tangent slope and exact tangent equation.',
+        startAt: quarter * 3,
+        endAt: durationSeconds,
+        focusRef: 'tangent_result',
+        transition: 'emphasis',
+        acceptance: ['The final frame clearly shows m=2 and y=2x-1.'],
+      },
+    ],
+  });
+  const approved = { intent, knowledge, curriculum, mathematics, storyboard };
+  const artifacts = {
+    ...approved,
+    scene: buildDeterministicSceneArtifact(approved),
+  };
+  composeAnimationSpecFromArtifacts(artifacts);
+  return artifacts;
+}

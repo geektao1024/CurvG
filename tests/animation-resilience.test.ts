@@ -9,6 +9,7 @@ import {
 import type { AnimationOrchestrationPlan } from '../src/core/animation-orchestrator';
 import { animationFailureCodeFromHttpStatus } from '../src/lib/animation';
 import {
+  buildDeterministicQuadraticTangentArtifacts,
   buildDeterministicSceneArtifact,
   composeAnimationSpecFromArtifacts,
   supportsDeterministicSceneProfile,
@@ -405,6 +406,34 @@ test('quadratic tangent fallback preserves exact curve and tangent geometry', ()
       model: 'deterministic-scene-v1',
     })?.status,
     'approved'
+  );
+});
+
+test('quadratic tangent requests have a complete provider-independent proof profile', () => {
+  const artifacts = buildDeterministicQuadraticTangentArtifacts(
+    '用12秒动画展示 y=x² 在 x=1 处的切线斜率为2，包含移动割线和最终切线 y=2x-1。'
+  );
+  assert.ok(artifacts);
+  const spec = composeAnimationSpecFromArtifacts(artifacts);
+  const code = compileAnimationSpec(spec);
+
+  assert.equal(spec.durationSeconds, 12);
+  assert.equal(spec.shots.at(-1)?.endAt, 12);
+  assert.match(code, /lambda x: x\*\*2/);
+  assert.match(code, /y=2x-1/);
+  assert.equal(
+    deterministicMathReviewForScene(spec, {
+      content: JSON.stringify(artifacts.scene),
+      provider: 'curvg',
+      model: 'deterministic-scene-v1',
+    })?.status,
+    'approved'
+  );
+  assert.equal(
+    buildDeterministicQuadraticTangentArtifacts(
+      'Animate the area under a sine curve.'
+    ),
+    undefined
   );
 });
 

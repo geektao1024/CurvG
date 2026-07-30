@@ -25,6 +25,7 @@ import {
 } from '@/lib/animation-math';
 import {
   ANIMATION_PLANNING_STAGES,
+  buildDeterministicQuadraticTangentArtifacts,
   buildDeterministicSceneArtifact,
   composeAnimationSpecFromArtifacts,
   parseAnimationPlanningArtifact,
@@ -760,6 +761,63 @@ export async function generatePersistentAnimationSpec(
   spec: AnimationSpec;
   mathReview?: AnimationMathReview;
 }> {
+  const deterministicArtifacts = buildDeterministicQuadraticTangentArtifacts(
+    planning.prompt
+  );
+  if (deterministicArtifacts) {
+    let result: ChatCompletionResult | undefined;
+    for (const item of ANIMATION_PLANNING_STAGES) {
+      planning.onPhase?.(item.phase);
+      const artifact = deterministicArtifacts[item.name];
+      const inputHash = md5(
+        JSON.stringify({
+          pipelineVersion: PIPELINE_VERSION,
+          profile: 'quadratic-tangent-v1',
+          stage: item.name,
+          prompt: planning.prompt,
+        })
+      );
+      const started = await startPlanningStage({
+        userId: planning.context.userId,
+        chatId: planning.context.chatId,
+        runId: planning.context.runId,
+        stage: item.name,
+        sequence: item.sequence,
+        inputHash,
+        provider: 'curvg',
+        model: 'deterministic-scene-v1',
+      });
+      planning.context.onStage?.(planningStageSummary(started));
+      const completed = await completePlanningStage({
+        id: started.id,
+        artifact,
+        outputHash: md5(JSON.stringify(artifact)),
+        provider: 'curvg',
+        model: 'deterministic-scene-v1',
+      });
+      planning.context.onStage?.(planningStageSummary(completed));
+      result = {
+        content: JSON.stringify(artifact),
+        provider: 'curvg',
+        model: 'deterministic-scene-v1',
+      };
+      if (item.name === 'intent') {
+        planning.onSummaryDelta?.(deterministicArtifacts.intent.summary);
+      }
+    }
+    const spec = composeAnimationSpecFromArtifacts(deterministicArtifacts);
+    console.info('[animation-planning] used deterministic proof profile', {
+      chatId: planning.context.chatId,
+      runId: planning.context.runId,
+      profile: 'quadratic-tangent-v1',
+    });
+    return {
+      result: result!,
+      spec,
+      mathReview: deterministicMathReviewForScene(spec, result!),
+    };
+  }
+
   const artifacts: Partial<AnimationPlanningArtifacts> = {};
   let result = await runFromStage({
     planning,
