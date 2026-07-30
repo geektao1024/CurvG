@@ -211,6 +211,33 @@ export async function failPlanningStage(params: {
   return row;
 }
 
+export async function failRunningPlanningStages(params: {
+  userId: string;
+  chatId: string;
+  runId: string;
+  errorCode: string;
+  errorMessage: string;
+}) {
+  await db()
+    .update(animationPlanningStage)
+    .set({
+      status: 'failed',
+      errorCode: params.errorCode.slice(0, 191),
+      errorMessage: params.errorMessage
+        .replace(/[\r\n]+/g, ' ')
+        .slice(0, 1_000),
+      completedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(animationPlanningStage.userId, params.userId),
+        eq(animationPlanningStage.chatId, params.chatId),
+        eq(animationPlanningStage.runId, params.runId),
+        eq(animationPlanningStage.status, 'running')
+      )
+    );
+}
+
 export async function listPlanningStages(params: {
   userId: string;
   chatId: string;

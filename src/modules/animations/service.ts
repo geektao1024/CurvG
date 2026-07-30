@@ -55,7 +55,7 @@ import {
   generatePersistentAnimationSpec,
   type PersistentAnimationPlanningContext,
 } from './planning';
-import { listPlanningStages } from './stages';
+import { failRunningPlanningStages, listPlanningStages } from './stages';
 
 const ANIMATION_METADATA = JSON.stringify({ kind: 'animation' });
 // A worker can disappear after claiming a row. Without a durable watchdog the
@@ -1655,10 +1655,20 @@ export async function finalizeAnimationPlanningFailure(params: {
   error: unknown;
 }): Promise<AnimationDetail> {
   const row = await ownedRow(params.userId, params.id);
-  if (row.status !== 'generating_spec') {
-    return getAnimation(params.userId, params.id);
+  const parts = animationParts(row);
+  const failure = animationFailure(params.error, 'spec');
+  if (parts.planningRunId) {
+    await failRunningPlanningStages({
+      userId: params.userId,
+      chatId: params.id,
+      runId: parts.planningRunId,
+      errorCode: failure.code.toLowerCase(),
+      errorMessage: failure.message,
+    });
   }
-  await setFailure(row, animationParts(row), params.error, 'spec');
+  if (row.status === 'generating_spec') {
+    await setFailure(row, parts, params.error, 'spec');
+  }
   return getAnimation(params.userId, params.id);
 }
 

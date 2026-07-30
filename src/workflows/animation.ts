@@ -144,7 +144,11 @@ export class AnimationWorkflow extends WorkflowEntrypoint<
         );
       } catch (error) {
         planningError = error;
-        break;
+        if (attempt === 3) break;
+        await step.sleep(
+          `wait-before-planning-attempt-${attempt + 1}`,
+          '5 seconds'
+        );
       }
     }
     if (planningError) {
