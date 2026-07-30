@@ -171,6 +171,12 @@ test('soft deterministic warnings proceed to semantic review without admitting h
       ),
     },
     { ...softQa, blackSegments: [[2, 2.25]] },
+    {
+      ...softQa,
+      status: 'pass' as const,
+      score: 95,
+      blackSegments: [[2, 2.25]],
+    },
     { ...softQa, frozenSegments: [[4, 6.5]] },
     { ...softQa, frozenSegments: [[7, 12]] },
   ]) {
@@ -179,6 +185,66 @@ test('soft deterministic warnings proceed to semantic review without admitting h
       false
     );
   }
+});
+
+test('a single transitional opening sample is reviewed semantically instead of rejected as a blank video', () => {
+  const openingTransitionQa = validateAnimationVisualQaReport({
+    ...qaReport,
+    score: 58,
+    issues: [
+      {
+        code: 'weak_opening',
+        severity: 'warning',
+        frames: [1],
+        message: 'The opening sample has a small visible subject.',
+      },
+      {
+        code: 'empty_frame',
+        severity: 'warning',
+        frames: [1],
+        message: 'The first sampled transition contains almost no content.',
+      },
+      {
+        code: 'sparse_frame',
+        severity: 'info',
+        frames: [2, 3],
+        message: 'The line-art construction is sparse while it is drawn.',
+      },
+    ],
+  });
+
+  assert.equal(isAnimationVisualQaReviewable(openingTransitionQa), true);
+  assert.equal(
+    isAnimationVisualQaReviewable(
+      validateAnimationVisualQaReport({
+        ...openingTransitionQa,
+        issues: openingTransitionQa.issues.map((issue) =>
+          issue.code === 'empty_frame' ? { ...issue, frames: [1, 6] } : issue
+        ),
+      })
+    ),
+    false
+  );
+  assert.equal(
+    isAnimationVisualQaReviewable(
+      validateAnimationVisualQaReport({
+        ...openingTransitionQa,
+        blackSegments: [[0, 0.5]],
+      })
+    ),
+    false
+  );
+  assert.equal(
+    isAnimationVisualQaReviewable(
+      validateAnimationVisualQaReport({
+        ...openingTransitionQa,
+        issues: openingTransitionQa.issues.map((issue) =>
+          issue.code === 'empty_frame' ? { ...issue, frames: [] } : issue
+        ),
+      })
+    ),
+    false
+  );
 });
 
 test('quality gate repairs defects within budget and rejects after exhaustion', () => {

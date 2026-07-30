@@ -23,6 +23,27 @@ const hardVisualQaCodes = new Set<AnimationVisualQaCode>([
 ]);
 
 const MAX_TERMINAL_READING_HOLD_SECONDS = 3.5;
+const OPENING_EMPTY_FRAME_SCORE_PENALTY = 18;
+
+function isOpeningOnlyEmptyFrame(
+  issue: AnimationVisualQaReport['issues'][number]
+): boolean {
+  return (
+    issue.code === 'empty_frame' &&
+    issue.frames.length === 1 &&
+    issue.frames[0] === 1
+  );
+}
+
+function reviewableVisualQaScore(qa: AnimationVisualQaReport): number {
+  const openingSampleWasDoublePenalized =
+    qa.blackSegments.length === 0 && qa.issues.some(isOpeningOnlyEmptyFrame);
+  return Math.min(
+    100,
+    qa.score +
+      (openingSampleWasDoublePenalized ? OPENING_EMPTY_FRAME_SCORE_PENALTY : 0)
+  );
+}
 
 function hasHardFrozenSegment(qa: AnimationVisualQaReport): boolean {
   const endTolerance = Math.max(0.15, 2 / qa.temporalSampleRate);
@@ -42,8 +63,8 @@ function hasHardFrozenSegment(qa: AnimationVisualQaReport): boolean {
 export function isAnimationVisualQaReviewable(
   qa: AnimationVisualQaReport
 ): boolean {
-  if (qa.status === 'pass' && qa.score >= 78) return true;
-  if (qa.score < 65) return false;
+  const reviewableScore = reviewableVisualQaScore(qa);
+  if (reviewableScore < 65) return false;
   if (
     qa.blackSegments.length > 0 ||
     hasHardFrozenSegment(qa) ||
@@ -52,7 +73,11 @@ export function isAnimationVisualQaReviewable(
   ) {
     return false;
   }
-  return !qa.issues.some((issue) => hardVisualQaCodes.has(issue.code));
+  const hasHardIssue = qa.issues.some(
+    (issue) =>
+      hardVisualQaCodes.has(issue.code) && !isOpeningOnlyEmptyFrame(issue)
+  );
+  return !hasHardIssue;
 }
 
 export const animationVisualQaReportSchema = z.object({
