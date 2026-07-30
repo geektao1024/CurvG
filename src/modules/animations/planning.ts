@@ -140,7 +140,7 @@ const STAGE_ROLES: Record<AnimationPlanningStageName, string> = {
   mathematics:
     'Produce an exact, independently checkable mathematical dossier. State domains and limitations; never invent a theorem to fit a visual.',
   storyboard:
-    'Translate the approved learning and mathematics artifacts into 3-6 non-overlapping shots. Begin with a hook at 0 and end with payoff or memory exactly at durationSeconds.',
+    'Translate the approved learning and mathematics artifacts into 3-6 non-overlapping shots. Begin with a hook at 0 and end with payoff or memory exactly at durationSeconds. term-tour emphasis requires a moving-camera scene; never combine term-tour with static.',
   scene:
     'Declare the concrete visual objects and timed actions that realize every storyboard acceptance condition and the mathematical visual proof. Preserve every storyboard shot id exactly, create an object for every focusRef, and keep every timeline event inside its referenced shot.',
 };
@@ -230,6 +230,14 @@ export function validateAnimationPlanningStageSemantics(
   }
   if (name === 'storyboard' && artifacts.intent) {
     const value = artifact as AnimationPlanningArtifacts['storyboard'];
+    if (
+      value.cinematography.emphasis === 'term-tour' &&
+      value.cinematography.scene !== 'moving-camera'
+    ) {
+      throw new Error(
+        'Storyboard term-tour emphasis requires a moving-camera scene'
+      );
+    }
     const shots = [...value.shots].sort(
       (left, right) => left.startAt - right.startAt
     );
@@ -290,12 +298,23 @@ function stagePrompt(params: {
   artifacts: Partial<AnimationPlanningArtifacts>;
   feedback?: string;
 }) {
+  const completedArtifacts =
+    params.name === 'scene'
+      ? {
+          intent: params.artifacts.intent,
+          mathematics: params.artifacts.mathematics,
+          storyboard: params.artifacts.storyboard,
+        }
+      : params.artifacts;
   const context = {
     originalRequest: params.prompt,
     subject: params.subject,
     priorConversation: compactHistory(params.history),
     currentApprovedSpec: params.currentSpec,
-    completedArtifacts: params.artifacts,
+    // Scene composition needs the approved claim and shot contract, not the
+    // intermediate concept-map prose. Keeping only the authoritative inputs
+    // lowers provider latency without weakening cross-stage validation.
+    completedArtifacts,
     mandatoryFeedback: params.feedback,
   };
   return `You are CurvG's ${params.name} planning specialist.

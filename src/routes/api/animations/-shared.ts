@@ -266,7 +266,11 @@ interface ProviderResolution {
 }
 
 const autoModelCircuitBreaker = new ChatModelCircuitBreaker();
-const ANIMATION_PROVIDER_TIMEOUT_MS = 105_000;
+// GPT-5.6 scene/code synthesis regularly needs more than 105 seconds even at
+// bounded composition effort. Give the primary target a realistic window;
+// the caller's absolute stage deadline still caps the complete failover chain
+// and leaves KIE the remaining budget when Kuaipao does not respond.
+const ANIMATION_PROVIDER_TIMEOUT_MS = 180_000;
 
 function policyOptions(
   tier: AnimationAccessTier,

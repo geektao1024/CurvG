@@ -290,6 +290,22 @@ test('storyboard checkpoints enforce the intent duration before scene generation
   );
 });
 
+test('storyboard checkpoints reject an impossible static term tour', () => {
+  const artifacts = planningArtifacts();
+  const invalidStoryboard = structuredClone(artifacts.storyboard);
+  invalidStoryboard.cinematography = {
+    scene: 'static',
+    emphasis: 'term-tour',
+  };
+  assert.throws(
+    () =>
+      validateAnimationPlanningStageSemantics('storyboard', invalidStoryboard, {
+        intent: artifacts.intent,
+      }),
+    /term-tour emphasis requires a moving-camera/
+  );
+});
+
 test('every generated specification can repair a validator-level timeline conflict', async () => {
   const validSpec = {
     schemaVersion: 2 as const,
