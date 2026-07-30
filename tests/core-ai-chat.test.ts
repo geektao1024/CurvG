@@ -416,6 +416,34 @@ test('Kie Auto can bypass one unavailable model without changing platforms', asy
   assert.deepEqual(attempts, ['kie:gemini-3.6-flash', 'kie:grok-4-5']);
 });
 
+test('Auto excludes the exact model whose structured result was rejected', async () => {
+  const attempts: string[] = [];
+  const base: ChatProvider = {
+    name: 'kie',
+    async complete(request) {
+      attempts.push(request.model);
+      return {
+        content:
+          request.model === 'gemini-3.6-flash' ? 'not-json' : '{"ok":true}',
+        model: request.model,
+        provider: this.name,
+      };
+    },
+  };
+  const provider = new ProviderFailoverChatProvider([
+    { provider: base, model: 'gemini-3.6-flash', reasoningEffort: 'low' },
+    { provider: base, model: 'grok-4-5', reasoningEffort: 'low' },
+  ]);
+
+  const invalid = await provider.complete(input);
+  assert.equal(provider.rejectInvalidResult(invalid), true);
+  const fallback = await provider.complete(input);
+
+  assert.equal(fallback.model, 'grok-4-5');
+  assert.equal(provider.rejectInvalidResult(fallback), false);
+  assert.deepEqual(attempts, ['gemini-3.6-flash', 'grok-4-5']);
+});
+
 test('OpenAI-compatible requests include an explicit reasoning effort hint', async () => {
   let requestBody: Record<string, unknown> | undefined;
   const provider = providerWith({

@@ -28,6 +28,13 @@ export interface ChatProvider {
     input: ChatCompletionInput,
     onDelta: (delta: string) => void
   ): Promise<ChatCompletionResult>;
+  /**
+   * Reject a syntactically successful completion that failed the caller's
+   * structured-output validator. Auto providers use this signal to exclude
+   * the exact target that produced it and report whether another reviewed
+   * target remains. Explicit providers intentionally omit this hook.
+   */
+  rejectInvalidResult?(result: ChatCompletionResult): boolean;
 }
 
 export type ChatFailureCode =
@@ -813,6 +820,11 @@ export interface ChatProviderTarget {
 export class ProviderFailoverChatProvider implements ChatProvider {
   readonly name: string;
   private readonly targets: readonly ChatProviderTarget[];
+  private readonly rejectedTargets = new Set<ChatProviderTarget>();
+  private readonly resultTargets = new WeakMap<
+    ChatCompletionResult,
+    ChatProviderTarget
+  >();
 
   constructor(
     targets: readonly ChatProviderTarget[],
@@ -833,6 +845,15 @@ export class ProviderFailoverChatProvider implements ChatProvider {
         ) === index
     );
     this.name = this.targets[0].provider.name;
+  }
+
+  rejectInvalidResult(result: ChatCompletionResult): boolean {
+    const target = this.resultTargets.get(result);
+    if (!target) return false;
+    this.rejectedTargets.add(target);
+    return this.targets.some(
+      (candidate) => !this.rejectedTargets.has(candidate)
+    );
   }
 
   private inputForTarget(
@@ -870,6 +891,7 @@ export class ProviderFailoverChatProvider implements ChatProvider {
       const target = this.targets[index];
       const next = this.targets[index + 1];
       if (this.now() >= deadlineAt) break;
+      if (this.rejectedTargets.has(target)) continue;
       if (!this.circuitBreaker.canAttempt(target.provider.name, target.model)) {
         continue;
       }
@@ -882,6 +904,7 @@ export class ProviderFailoverChatProvider implements ChatProvider {
         const result = await target.provider.complete(
           this.inputForTarget(input, target, targetDeadlineAt)
         );
+        this.resultTargets.set(result, target);
         this.circuitBreaker.recordSuccess(target.provider.name, target.model);
         return result;
       } catch (error) {
@@ -918,6 +941,7 @@ export class ProviderFailoverChatProvider implements ChatProvider {
       const target = this.targets[index];
       const next = this.targets[index + 1];
       if (this.now() >= deadlineAt) break;
+      if (this.rejectedTargets.has(target)) continue;
       if (!this.circuitBreaker.canAttempt(target.provider.name, target.model)) {
         continue;
       }
@@ -936,6 +960,7 @@ export class ProviderFailoverChatProvider implements ChatProvider {
           ? await target.provider.stream(targetInput, onDelta)
           : await target.provider.complete(targetInput);
         if (!target.provider.stream) onDelta(result.content);
+        this.resultTargets.set(result, target);
         this.circuitBreaker.recordSuccess(target.provider.name, target.model);
         return result;
       } catch (error) {

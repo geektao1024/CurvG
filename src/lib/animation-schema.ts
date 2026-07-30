@@ -815,6 +815,11 @@ export function parseManimCode(value: string): string {
       'Generated code uses unsupported Manim argument substring_sieve_map; color MathTex parts after construction instead'
     );
   }
+  if (/\.\s*add_updater\s*\(/.test(code)) {
+    throw new Error(
+      'Generated code installs a frame updater; use always_redraw or TracedPath instead of add_updater'
+    );
+  }
   const sceneClasses = [
     ...code.matchAll(
       /\bclass\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*(Scene|MovingCameraScene|ThreeDScene)\s*\)\s*:/g

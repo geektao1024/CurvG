@@ -690,6 +690,23 @@ class CurvGScene(Scene):
   );
 });
 
+test('generated code rejects frame updaters before the renderer receives it', () => {
+  assert.throws(
+    () =>
+      parseManimCode(`
+from manim import *
+
+class CurvGScene(Scene):
+    def construct(self):
+        curve = VMobject()
+        curve.add_updater(lambda mob: mob.set_stroke(width=4))
+        self.add(curve)
+        self.wait(1)
+`),
+    /use always_redraw or TracedPath instead of add_updater/
+  );
+});
+
 test('browser math preview detects and evaluates supported inputs', () => {
   assert.equal(detectMathObjectType('sin(x) + x^2'), 'function');
   assert.equal(detectMathObjectType('int(x^2, x, 0, 1)'), 'integral');

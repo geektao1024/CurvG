@@ -61,6 +61,7 @@ const MAX_ANIMATIONS_PER_USER = 200;
 export const ANIMATION_STAGE_TIMEOUT_MS = 300_000;
 const MAX_SPEC_SCHEMA_REPAIRS = 2;
 const MAX_MATH_SPEC_REPAIRS = 3;
+const MAX_STRUCTURED_OUTPUT_TARGET_FAILOVERS = 3;
 
 export function animationStageDeadlineAt(now = Date.now()) {
   return now + ANIMATION_STAGE_TIMEOUT_MS;
@@ -231,7 +232,7 @@ Follow this production contract:
 8. Keep at most two text/formula blocks visible together. Use safe margins, strong contrast, generous whitespace, readable phone-scale type, and one dominant motion per beat.
 9. Preserve object continuity across transformations. Prefer TransformMatchingTex, ReplacementTransform, traced geometry, filled regions, comparison arrows, or camera reveals to clearing and rebuilding the whole frame.
 10. Make the final third visibly different from the setup and end on a clean mathematical payoff that can hold without extra explanation.
-11. Prebuild MathTex, Tex, and Text objects outside frame callbacks. ValueTracker and always_redraw are allowed, but never construct or mutate text per frame.
+11. Prebuild MathTex, Tex, and Text objects outside frame callbacks. ValueTracker, always_redraw, and TracedPath are allowed, but never call .add_updater (including for curve tracing) and never construct or mutate text per frame.
 12. Keep the scene self-contained and renderable with Manim CE and TeX Live. Use only documented Manim APIs. Never pass substring_sieve_map to MathTex; construct separate arguments and color indexed parts after construction.
 13. Treat every move_along timeline event as mandatory visible motion, not a suggestion. When it proves a projection or traced relationship, synchronize the source point, connector, derived point, and revealed locus throughout the motion with ValueTracker/always_redraw or an equivalent documented mechanism; a single static endpoint is not a valid substitute.
 
@@ -303,25 +304,10 @@ async function reviewAnimationMathematics(params: {
     signal: params.signal,
     deadlineAt: params.deadlineAt,
   };
-  let result = await params.provider.complete(input);
-  try {
-    return parseAnimationMathReview(result.content);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : 'invalid output';
-    result = await params.provider.complete({
-      ...input,
-      messages: [
-        ...input.messages,
-        { role: 'assistant', content: result.content },
-        {
-          role: 'user',
-          content: `Your audit response failed validation: ${reason}. Return the same skeptical mathematical verdict as one valid JSON object with every required field. Do not approve an unresolved issue.`,
-        },
-      ],
-      temperature: 0,
-    });
-    return parseAnimationMathReview(result.content);
-  }
+  return parseAnimationMathReviewWithRepairs({
+    provider: params.provider,
+    input,
+  });
 }
 
 class AnimationMathAuditError extends Error {
@@ -329,6 +315,18 @@ class AnimationMathAuditError extends Error {
     super(`Mathematical audit still requires revision: ${review.summary}`);
     this.name = 'AnimationMathAuditError';
   }
+}
+
+function rejectInvalidStructuredResults(
+  provider: ChatProvider,
+  results: ChatCompletionResult[]
+): boolean {
+  if (!provider.rejectInvalidResult) return false;
+  let canFailOver = false;
+  for (const result of new Set(results)) {
+    canFailOver = provider.rejectInvalidResult(result);
+  }
+  return canFailOver;
 }
 
 export async function parseAnimationSpecWithRepairs(params: {
@@ -339,29 +337,93 @@ export async function parseAnimationSpecWithRepairs(params: {
   let result = params.result;
   let lastError: unknown;
   for (
-    let repairAttempt = 0;
-    repairAttempt <= MAX_SPEC_SCHEMA_REPAIRS;
-    repairAttempt += 1
+    let targetFailovers = 0;
+    targetFailovers <= MAX_STRUCTURED_OUTPUT_TARGET_FAILOVERS;
+    targetFailovers += 1
   ) {
-    try {
-      return { result, spec: parseAnimationSpec(result.content) };
-    } catch (error) {
-      lastError = error;
-      if (repairAttempt === MAX_SPEC_SCHEMA_REPAIRS) break;
-      const reason = error instanceof Error ? error.message : 'invalid output';
-      result = await params.provider.complete({
-        ...params.input,
-        messages: [
-          ...params.input.messages,
-          { role: 'assistant', content: result.content },
-          {
-            role: 'user',
-            content: `The previous specification failed application validation (schema repair ${repairAttempt + 1} of ${MAX_SPEC_SCHEMA_REPAIRS}):\n${reason}\n\nReturn one complete corrected schemaVersion 5 JSON object only. Preserve the approved mathematical meaning and include every required field. Treat every validator issue as mandatory. For the timeline, events that run concurrently must have exactly the same at value; after grouping equal starts and sorting the groups, enforce next.at >= current.at + max(current group runTime), keep each event inside its shot, and keep the final event within durationSeconds.`,
-          },
-        ],
-        temperature: 0,
-      });
+    const invalidResults: ChatCompletionResult[] = [];
+    for (
+      let repairAttempt = 0;
+      repairAttempt <= MAX_SPEC_SCHEMA_REPAIRS;
+      repairAttempt += 1
+    ) {
+      try {
+        return { result, spec: parseAnimationSpec(result.content) };
+      } catch (error) {
+        lastError = error;
+        invalidResults.push(result);
+        if (repairAttempt === MAX_SPEC_SCHEMA_REPAIRS) break;
+        const reason =
+          error instanceof Error ? error.message : 'invalid output';
+        result = await params.provider.complete({
+          ...params.input,
+          messages: [
+            ...params.input.messages,
+            { role: 'assistant', content: result.content },
+            {
+              role: 'user',
+              content: `The previous specification failed application validation (schema repair ${repairAttempt + 1} of ${MAX_SPEC_SCHEMA_REPAIRS}):\n${reason}\n\nReturn one complete corrected schemaVersion 5 JSON object only. Preserve the approved mathematical meaning and include every required field. Treat every validator issue as mandatory. For the timeline, events that run concurrently must have exactly the same at value; after grouping equal starts and sorting the groups, enforce next.at >= current.at + max(current group runTime), keep each event inside its shot, and keep the final event within durationSeconds.`,
+            },
+          ],
+          temperature: 0,
+        });
+      }
     }
+    const canFailOver =
+      targetFailovers < MAX_STRUCTURED_OUTPUT_TARGET_FAILOVERS &&
+      rejectInvalidStructuredResults(params.provider, invalidResults);
+    if (!canFailOver) break;
+    result = await params.provider.complete({
+      ...params.input,
+      temperature: 0,
+    });
+  }
+  throw lastError;
+}
+
+async function parseAnimationMathReviewWithRepairs(params: {
+  provider: ChatProvider;
+  input: ChatCompletionInput;
+}): Promise<AnimationMathReview> {
+  let result = await params.provider.complete(params.input);
+  let lastError: unknown;
+  for (
+    let targetFailovers = 0;
+    targetFailovers <= MAX_STRUCTURED_OUTPUT_TARGET_FAILOVERS;
+    targetFailovers += 1
+  ) {
+    const invalidResults: ChatCompletionResult[] = [];
+    for (let repairAttempt = 0; repairAttempt <= 1; repairAttempt += 1) {
+      try {
+        return parseAnimationMathReview(result.content);
+      } catch (error) {
+        lastError = error;
+        invalidResults.push(result);
+        if (repairAttempt === 1) break;
+        const reason =
+          error instanceof Error ? error.message : 'invalid output';
+        result = await params.provider.complete({
+          ...params.input,
+          messages: [
+            ...params.input.messages,
+            { role: 'assistant', content: result.content },
+            {
+              role: 'user',
+              content: `Your audit response failed validation: ${reason}. Return the same skeptical mathematical verdict as one valid JSON object with every required field. Do not approve an unresolved issue.`,
+            },
+          ],
+          temperature: 0,
+        });
+      }
+    }
+    const canFailOver =
+      targetFailovers < MAX_STRUCTURED_OUTPUT_TARGET_FAILOVERS &&
+      rejectInvalidStructuredResults(params.provider, invalidResults);
+    if (!canFailOver) break;
+    result = await params.provider.complete({
+      ...params.input,
+      temperature: 0,
+    });
   }
   throw lastError;
 }

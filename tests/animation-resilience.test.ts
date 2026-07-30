@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { ChatProviderError } from '../src/core/ai/chat';
+import {
+  ChatProviderError,
+  ProviderFailoverChatProvider,
+  type ChatProvider,
+} from '../src/core/ai/chat';
 import { animationFailureCodeFromHttpStatus } from '../src/lib/animation';
 import { enforceMinIntervalRateLimit } from '../src/lib/rate-limit';
 import {
@@ -265,6 +269,194 @@ test('every generated specification can repair a validator-level timeline confli
   assert.equal(repaired.spec.timeline.length, 1);
 });
 
+test('Auto advances to another reviewed model after repeated invalid specifications', async () => {
+  const validSpec = auditedGeometrySpec();
+  const approvedReview = {
+    status: 'approved',
+    summary: 'The specification is mathematically and visually coherent.',
+    checkedClaims: [
+      'The circular point and projection use the same parameter.',
+    ],
+    issues: [],
+  } as const;
+  const attempts: string[] = [];
+  let fallbackCalls = 0;
+  const target: ChatProvider = {
+    name: 'kie',
+    async complete(input: { model: string }) {
+      attempts.push(input.model);
+      if (input.model === 'gemini-3.6-flash') {
+        return {
+          content: '{"schemaVersion":5,"title":',
+          model: input.model,
+          provider: 'kie',
+        };
+      }
+      fallbackCalls += 1;
+      return {
+        content: JSON.stringify(
+          fallbackCalls === 1 ? validSpec : approvedReview
+        ),
+        model: input.model,
+        provider: 'kie',
+      };
+    },
+  };
+  const provider = new ProviderFailoverChatProvider([
+    {
+      provider: target,
+      model: 'gemini-3.6-flash',
+      reasoningEffort: 'low',
+    },
+    { provider: target, model: 'grok-4-5', reasoningEffort: 'low' },
+  ]);
+
+  const result = await generateAnimationSpec({
+    provider,
+    model: 'gemini-3.6-flash',
+    prompt: '把正弦波逐步还原为单位圆上的投影。',
+    subject: 'math',
+    deadlineAt: Date.now() + 60_000,
+  });
+
+  assert.equal(result.result.model, 'grok-4-5');
+  assert.equal(result.spec.title, validSpec.title);
+  assert.deepEqual(attempts, [
+    'gemini-3.6-flash',
+    'gemini-3.6-flash',
+    'gemini-3.6-flash',
+    'grok-4-5',
+    'grok-4-5',
+  ]);
+});
+
+test('Auto also fails over when the independent math audit stays malformed', async () => {
+  const validSpec = auditedGeometrySpec();
+  const approvedReview = {
+    status: 'approved',
+    summary: 'The fallback reviewer independently verified the proof.',
+    checkedClaims: ['The point height and sine ordinate share one parameter.'],
+    issues: [],
+  } as const;
+  const attempts: string[] = [];
+  let primaryCalls = 0;
+  const target: ChatProvider = {
+    name: 'kie',
+    async complete(input) {
+      attempts.push(input.model);
+      if (input.model === 'gemini-3.6-flash') {
+        primaryCalls += 1;
+        return {
+          content:
+            primaryCalls === 1 ? JSON.stringify(validSpec) : 'invalid-audit',
+          model: input.model,
+          provider: 'kie',
+        };
+      }
+      return {
+        content: JSON.stringify(approvedReview),
+        model: input.model,
+        provider: 'kie',
+      };
+    },
+  };
+  const provider = new ProviderFailoverChatProvider([
+    {
+      provider: target,
+      model: 'gemini-3.6-flash',
+      reasoningEffort: 'low',
+    },
+    { provider: target, model: 'grok-4-5', reasoningEffort: 'low' },
+  ]);
+
+  const result = await generateAnimationSpec({
+    provider,
+    model: 'gemini-3.6-flash',
+    prompt: '把正弦波逐步还原为单位圆上的投影。',
+    subject: 'math',
+    deadlineAt: Date.now() + 60_000,
+  });
+
+  assert.equal(result.spec.title, validSpec.title);
+  assert.deepEqual(attempts, [
+    'gemini-3.6-flash',
+    'gemini-3.6-flash',
+    'gemini-3.6-flash',
+    'grok-4-5',
+  ]);
+});
+
+test('structured-output failover remains bounded when every model is invalid', async () => {
+  const attempts: string[] = [];
+  const target: ChatProvider = {
+    name: 'kie',
+    async complete(input: { model: string }) {
+      attempts.push(input.model);
+      return {
+        content: 'not-json',
+        model: input.model,
+        provider: 'kie',
+      };
+    },
+  };
+  const provider = new ProviderFailoverChatProvider([
+    {
+      provider: target,
+      model: 'gemini-3.6-flash',
+      reasoningEffort: 'low',
+    },
+    { provider: target, model: 'grok-4-5', reasoningEffort: 'low' },
+  ]);
+  const input = {
+    model: 'gemini-3.6-flash',
+    messages: [{ role: 'user' as const, content: 'Build a scene.' }],
+  };
+  const initial = await provider.complete(input);
+
+  await assert.rejects(
+    parseAnimationSpecWithRepairs({ provider, input, result: initial }),
+    /invalid JSON/
+  );
+  assert.deepEqual(attempts, [
+    'gemini-3.6-flash',
+    'gemini-3.6-flash',
+    'gemini-3.6-flash',
+    'grok-4-5',
+    'grok-4-5',
+    'grok-4-5',
+  ]);
+});
+
+test('an explicitly selected model never switches after invalid structured output', async () => {
+  const attempts: string[] = [];
+  const provider: ChatProvider = {
+    name: 'kie',
+    async complete(input) {
+      attempts.push(input.model);
+      return {
+        content: 'not-json',
+        model: input.model,
+        provider: 'kie',
+      };
+    },
+  };
+  const input = {
+    model: 'gemini-3.6-flash',
+    messages: [{ role: 'user' as const, content: 'Build a scene.' }],
+  };
+  const initial = await provider.complete(input);
+
+  await assert.rejects(
+    parseAnimationSpecWithRepairs({ provider, input, result: initial }),
+    /invalid JSON/
+  );
+  assert.deepEqual(attempts, [
+    'gemini-3.6-flash',
+    'gemini-3.6-flash',
+    'gemini-3.6-flash',
+  ]);
+});
+
 test('math-audit repair can add explicit geometry instead of looping on prose', async () => {
   const repairedSpec = auditedGeometrySpec();
   const initialSpec = structuredClone(repairedSpec);
@@ -359,6 +551,57 @@ test('Gemini code composition streams and deterministically recovers two empty c
   assert.match(result.code, /from manim import/);
   assert.match(result.code, /class CurvGScene\(Scene\)/);
   assert.ok(result.code.length > 100);
+});
+
+test('Gemini repairs an add_updater scene before it reaches the renderer', async () => {
+  const invalid = `
+from manim import *
+
+class CurvGScene(Scene):
+    def construct(self):
+        dot = Dot()
+        dot.add_updater(lambda mob: mob.shift(RIGHT * 0.01))
+        self.add(dot)
+        self.wait(1)
+`;
+  const corrected = `
+from manim import *
+
+class CurvGScene(Scene):
+    def construct(self):
+        tracker = ValueTracker(0)
+        dot = always_redraw(lambda: Dot().shift(RIGHT * tracker.get_value()))
+        self.add(dot)
+        self.play(tracker.animate.set_value(2), run_time=1)
+        self.wait(1)
+`;
+  const outputs = [invalid, corrected];
+  const provider: ChatProvider = {
+    name: 'kie',
+    async complete() {
+      throw new Error('Gemini 3.6 code composition should use streaming');
+    },
+    async stream() {
+      const content = outputs.shift();
+      if (!content) throw new Error('Unexpected stream call');
+      return {
+        content,
+        model: 'gemini-3.6-flash',
+        provider: 'kie',
+      };
+    },
+  };
+
+  const result = await composeAnimationCode({
+    provider,
+    model: 'gemini-3.6-flash',
+    prompt: 'Animate a point moving along a line.',
+    spec: auditedGeometrySpec(),
+  });
+
+  assert.equal(outputs.length, 0);
+  assert.doesNotMatch(result.code, /add_updater/);
+  assert.match(result.code, /always_redraw/);
 });
 
 test('render payment failures map to the localized insufficient-credit message', () => {
