@@ -147,6 +147,21 @@ test('soft deterministic warnings proceed to semantic review without admitting h
     'approve'
   );
 
+  const terminalReadingHold = validateAnimationVisualQaReport({
+    ...softQa,
+    frozenSegments: [[9.5, 12]],
+    issues: [
+      ...softQa.issues,
+      {
+        code: 'frozen_segment',
+        severity: 'info',
+        frames: [11],
+        message: 'The final formula remains still for reading.',
+      },
+    ],
+  });
+  assert.equal(isAnimationVisualQaReviewable(terminalReadingHold), true);
+
   for (const hardQa of [
     { ...softQa, score: 64 },
     {
@@ -156,6 +171,8 @@ test('soft deterministic warnings proceed to semantic review without admitting h
       ),
     },
     { ...softQa, blackSegments: [[2, 2.25]] },
+    { ...softQa, frozenSegments: [[4, 6.5]] },
+    { ...softQa, frozenSegments: [[7, 12]] },
   ]) {
     assert.equal(
       isAnimationVisualQaReviewable(validateAnimationVisualQaReport(hardQa)),

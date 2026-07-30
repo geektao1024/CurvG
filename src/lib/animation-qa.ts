@@ -20,8 +20,18 @@ const hardVisualQaCodes = new Set<AnimationVisualQaCode>([
   'static_sequence',
   'black_segment',
   'flash_frame',
-  'frozen_segment',
 ]);
+
+const MAX_TERMINAL_READING_HOLD_SECONDS = 3.5;
+
+function hasHardFrozenSegment(qa: AnimationVisualQaReport): boolean {
+  const endTolerance = Math.max(0.15, 2 / qa.temporalSampleRate);
+  return qa.frozenSegments.some(([start, end]) => {
+    const reachesVideoEnd = end >= qa.durationSeconds - endTolerance;
+    const duration = Math.max(0, end - start);
+    return !reachesVideoEnd || duration > MAX_TERMINAL_READING_HOLD_SECONDS;
+  });
+}
 
 /**
  * The frame analyzer is deliberately conservative. A render with only
@@ -36,7 +46,7 @@ export function isAnimationVisualQaReviewable(
   if (qa.score < 65) return false;
   if (
     qa.blackSegments.length > 0 ||
-    qa.frozenSegments.length > 0 ||
+    hasHardFrozenSegment(qa) ||
     qa.flashTimestamps.length > 0 ||
     qa.frames.some((frame) => frame.edgeRisk)
   ) {
