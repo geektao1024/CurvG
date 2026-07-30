@@ -110,6 +110,9 @@ export default defineConfig({
       srcDirectory: 'src',
     }),
     viteReact(),
-    nitro(),
+    // Keep Workers deploys deterministic across local time zones. Nitro's
+    // `latest` default can resolve to tomorrow in UTC and Cloudflare rejects a
+    // compatibility date that has not started globally yet.
+    nitro({ compatibilityDate: '2026-07-30' }),
   ],
 });
