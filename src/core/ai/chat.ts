@@ -887,7 +887,10 @@ export class ProviderFailoverChatProvider implements ChatProvider {
       ...input,
       model: target.model,
       deadlineAt,
-      reasoningEffort: target.reasoningEffort,
+      // A call site may deliberately lower the effort for a large,
+      // deterministic synthesis stage. The target value remains the default
+      // when the call does not provide stage-specific tuning.
+      reasoningEffort: input.reasoningEffort ?? target.reasoningEffort,
     };
   }
 

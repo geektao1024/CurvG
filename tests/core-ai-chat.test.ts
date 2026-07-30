@@ -444,6 +444,28 @@ test('Auto excludes the exact model whose structured result was rejected', async
   assert.deepEqual(attempts, ['gemini-3.6-flash', 'grok-4-5']);
 });
 
+test('a stage-specific reasoning effort overrides provider target defaults', async () => {
+  const efforts: Array<string | undefined> = [];
+  const base: ChatProvider = {
+    name: 'kuaipao',
+    async complete(request) {
+      efforts.push(request.reasoningEffort);
+      return { content: 'OK', model: request.model, provider: this.name };
+    },
+  };
+  const provider = new ProviderFailoverChatProvider([
+    { provider: base, model: 'gpt-5.6-sol', reasoningEffort: 'high' },
+  ]);
+
+  await provider.complete({
+    ...input,
+    model: 'gpt-5.6-sol',
+    reasoningEffort: 'medium',
+  });
+
+  assert.deepEqual(efforts, ['medium']);
+});
+
 test('OpenAI-compatible requests include an explicit reasoning effort hint', async () => {
   let requestBody: Record<string, unknown> | undefined;
   const provider = providerWith({

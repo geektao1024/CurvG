@@ -8,7 +8,10 @@ import {
   type ChatProviderDiagnostic,
   type ChatTurn,
 } from '@/core/ai/chat';
-import { getAnimationReasoningEffort } from '@/config/animation-models';
+import {
+  getAnimationCompositionReasoningEffort,
+  getAnimationReasoningEffort,
+} from '@/config/animation-models';
 import type {
   AnimationPlanningPhase,
   AnimationPlanningStageName,
@@ -401,7 +404,10 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
     ],
     temperature: 0.1,
     maxTokens: definition.maxTokens,
-    reasoningEffort: getAnimationReasoningEffort(planning.model),
+    reasoningEffort:
+      definition.name === 'scene'
+        ? getAnimationCompositionReasoningEffort(planning.model)
+        : getAnimationReasoningEffort(planning.model),
     signal: planning.signal,
     // A durable stage receives its own provider budget. Reusing the original
     // request deadline here would make later stages fail immediately after a

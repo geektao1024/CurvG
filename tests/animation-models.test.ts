@@ -6,6 +6,7 @@ import {
   canUseAnimationModel,
   decideAnimationModelAccess,
   DEFAULT_ANIMATION_MODEL,
+  getAnimationCompositionReasoningEffort,
   getAnimationModelPolicy,
   getAnimationReasoningEffort,
 } from '../src/config/animation-models';
@@ -32,6 +33,11 @@ test('the default free model is explicitly allowlisted on Kuaipao', () => {
 test('only GPT-5.6 receives the high-effort quality comparison hint', () => {
   assert.equal(getAnimationReasoningEffort('gpt-5.6-sol'), 'high');
   assert.equal(getAnimationReasoningEffort('gpt-5.5'), undefined);
+});
+
+test('large GPT-5.6 composition stages use bounded medium effort', () => {
+  assert.equal(getAnimationCompositionReasoningEffort('gpt-5.6-sol'), 'medium');
+  assert.equal(getAnimationCompositionReasoningEffort('gpt-5.5'), undefined);
 });
 
 test('Auto and explicit API selections resolve only to GPT-5.6', () => {

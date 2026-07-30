@@ -13,7 +13,10 @@ import type {
 } from '@/core/animation-orchestrator';
 import type { AnimationRenderer } from '@/core/animation-renderer';
 import { db } from '@/core/db';
-import { getAnimationReasoningEffort } from '@/config/animation-models';
+import {
+  getAnimationCompositionReasoningEffort,
+  getAnimationReasoningEffort,
+} from '@/config/animation-models';
 import { chat, chatMessage, type Chat } from '@/config/db/schema';
 import {
   isAnimationSpecRenderable,
@@ -658,7 +661,7 @@ export async function composeAnimationCode(params: {
     ],
     temperature: params.currentCode ? 0 : 0.08,
     maxTokens: 14_000,
-    reasoningEffort: getAnimationReasoningEffort(params.model),
+    reasoningEffort: getAnimationCompositionReasoningEffort(params.model),
     signal: params.signal,
     deadlineAt: animationStageDeadlineAt(),
   };

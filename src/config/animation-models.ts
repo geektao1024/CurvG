@@ -31,6 +31,18 @@ export function getAnimationReasoningEffort(model: string): 'high' | undefined {
   return model === DEFAULT_ANIMATION_MODEL ? 'high' : undefined;
 }
 
+/**
+ * Scene assembly and Python composition consume already-approved planning
+ * artifacts. Medium effort keeps those large synthesis responses inside the
+ * provider deadline while the mathematical and storyboard stages retain the
+ * high-effort quality policy above.
+ */
+export function getAnimationCompositionReasoningEffort(
+  model: string
+): 'medium' | undefined {
+  return model === DEFAULT_ANIMATION_MODEL ? 'medium' : undefined;
+}
+
 export const FREE_AUTO_MODEL_TARGETS = [
   { provider: 'kuaipao', model: 'gpt-5.6-sol' },
 ] as const;
