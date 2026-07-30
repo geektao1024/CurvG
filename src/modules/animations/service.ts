@@ -507,7 +507,21 @@ function codeCompositionPrompt(params: {
   )}${repair}\n\nWrite the complete final Python scene now. Preserve correct work and change only what the specification or repair evidence requires.`;
 }
 
-async function composeAnimationCode(params: {
+async function requestAnimationCodeCompletion(
+  provider: ChatProvider,
+  input: ChatCompletionInput
+): Promise<ChatCompletionResult> {
+  // Gemini 3.6 can complete a long reasoning turn successfully while its
+  // non-stream response exposes an empty final code field. The Kie streaming
+  // adapter already separates reasoning from final output and accumulates the
+  // complete answer, so use it for this model's large Python modules.
+  if (input.model.toLowerCase() === 'gemini-3.6-flash' && provider.stream) {
+    return provider.stream(input, () => {});
+  }
+  return provider.complete(input);
+}
+
+export async function composeAnimationCode(params: {
   provider: ChatProvider;
   model: string;
   prompt: string;
@@ -530,13 +544,13 @@ async function composeAnimationCode(params: {
     signal: params.signal,
     deadlineAt: animationStageDeadlineAt(),
   };
-  let result = await params.provider.complete(input);
+  let result = await requestAnimationCodeCompletion(params.provider, input);
   let code: string;
   try {
     code = parseManimCode(result.content);
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'invalid output';
-    result = await params.provider.complete({
+    result = await requestAnimationCodeCompletion(params.provider, {
       ...input,
       messages: [
         ...input.messages,
@@ -548,7 +562,16 @@ async function composeAnimationCode(params: {
       ],
       temperature: 0,
     });
-    code = parseManimCode(result.content);
+    try {
+      code = parseManimCode(result.content);
+    } catch (correctionError) {
+      // A valid, independently audited specification is still executable even
+      // when the model returns an empty or malformed code envelope twice. Only
+      // use this fallback for initial composition; a visual-quality repair must
+      // not silently replace an already-rendered scene with a generic compile.
+      if (params.currentCode) throw correctionError;
+      code = compileAnimationSpec(params.spec);
+    }
   }
   return { result, code };
 }

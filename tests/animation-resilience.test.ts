@@ -7,6 +7,7 @@ import { enforceMinIntervalRateLimit } from '../src/lib/rate-limit';
 import {
   ANIMATION_STAGE_TIMEOUT_MS,
   animationStageDeadlineAt,
+  composeAnimationCode,
   generateAnimationSpec,
   parseAnimationSpecWithRepairs,
   renderFailureRequiresCodeRegeneration,
@@ -328,6 +329,36 @@ test('math-audit repair can add explicit geometry instead of looping on prose', 
   );
   assert.ok(result.spec.objects?.some((object) => object.id === 'angle-arc'));
   assert.ok(result.spec.timeline?.some((event) => event.op === 'move_along'));
+});
+
+test('Gemini code composition streams and deterministically recovers two empty code envelopes', async () => {
+  let streamCalls = 0;
+  const provider = {
+    name: 'test-provider',
+    async complete() {
+      throw new Error('Gemini 3.6 code composition should use streaming');
+    },
+    async stream() {
+      streamCalls += 1;
+      return {
+        content: '{"code":""}',
+        model: 'gemini-3.6-flash',
+        provider: 'test-provider',
+      };
+    },
+  };
+
+  const result = await composeAnimationCode({
+    provider,
+    model: 'gemini-3.6-flash',
+    prompt: '把正弦波逐步还原为单位圆上的投影。',
+    spec: auditedGeometrySpec(),
+  });
+
+  assert.equal(streamCalls, 2);
+  assert.match(result.code, /from manim import/);
+  assert.match(result.code, /class CurvGScene\(Scene\)/);
+  assert.ok(result.code.length > 100);
 });
 
 test('render payment failures map to the localized insufficient-credit message', () => {
