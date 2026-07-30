@@ -36,6 +36,12 @@ export default {
       'Permissions-Policy',
       'camera=(), microphone=(), geolocation=()'
     );
+    // Hashed assets can be cached forever, but an SSR document points at one
+    // exact asset generation. Force browsers to revalidate HTML so a tab
+    // cannot keep a pre-deploy manifest after Cloudflare prunes old assets.
+    if (headers.get('Content-Type')?.includes('text/html')) {
+      headers.set('Cache-Control', 'no-cache, must-revalidate');
+    }
     if (new URL(req.url).protocol === 'https:') {
       headers.set(
         'Strict-Transport-Security',
