@@ -88,7 +88,12 @@ export type AnimationObjectKind =
   | 'formula'
   | 'text'
   | 'series'
-  | 'matrix';
+  | 'matrix'
+  | 'circle'
+  | 'point'
+  | 'line'
+  | 'arrow'
+  | 'arc';
 
 export type AnimationSemanticRegion = 'title' | 'formula' | 'graph';
 
@@ -109,6 +114,16 @@ export interface AnimationObjectSpec {
   domain?: [number, number];
   color?: string;
   values?: number[][];
+  /** Coordinate-space geometry for graph-region primitives. */
+  position?: [number, number];
+  center?: [number, number];
+  start?: [number, number];
+  end?: [number, number];
+  radius?: number;
+  /** Radians, used by arc. */
+  startAngle?: number;
+  /** Signed radians, used by arc. */
+  sweepAngle?: number;
   /**
    * Addressable MathTex arguments. Keeping the pieces explicit lets the
    * deterministic compiler focus, recolor and transform a mathematical term
@@ -128,6 +143,7 @@ export type AnimationTimelineOperation =
   | 'glow'
   | 'camera_focus'
   | 'camera_reset'
+  | 'move_along'
   | 'hold';
 
 export type AnimationEase = 'linear' | 'smooth' | 'there_and_back';
@@ -139,6 +155,8 @@ export interface AnimationTimelineSpec {
   op: AnimationTimelineOperation;
   ref: string;
   targetRef?: string;
+  /** A curve/circle/arc/line path used by move_along. */
+  pathRef?: string;
   /** A formula/series part id scoped to ref. */
   partId?: string;
   /** Camera magnification for camera_focus. */

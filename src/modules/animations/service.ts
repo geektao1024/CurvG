@@ -55,12 +55,12 @@ const MAX_ANIMATION_VERSIONS = 20;
 const MAX_ANIMATION_MESSAGES = 200;
 const MAX_ANIMATIONS_PER_USER = 200;
 // This budget is shared by planning, schema correction, an independent math
-// audit, at most two specification rebuilds, provider retries, and Auto
+// audit, at most three specification rebuilds, provider retries, and Auto
 // fallbacks. It remains one absolute deadline instead of multiplying a timeout
 // per call, but gives the audited v5 pipeline enough room to finish.
 export const ANIMATION_STAGE_TIMEOUT_MS = 300_000;
 const MAX_SPEC_SCHEMA_REPAIRS = 2;
-const MAX_MATH_SPEC_REPAIRS = 2;
+const MAX_MATH_SPEC_REPAIRS = 3;
 
 export function animationStageDeadlineAt(now = Date.now()) {
   return now + ANIMATION_STAGE_TIMEOUT_MS;
@@ -137,7 +137,7 @@ Return valid JSON only with this shape:
   },
   "objects": [{
     "id": "axes",
-    "kind": "axes|curve|area|formula|text|series|matrix",
+    "kind": "axes|curve|area|formula|text|series|matrix|circle|point|line|arrow|arc",
     "region": "title|formula|graph",
     "importance": "hero|supporting|context",
     "label": "optional plain text",
@@ -150,15 +150,23 @@ Return valid JSON only with this shape:
     }],
     "domain": [-6, 6],
     "color": "#7C8CFF",
-    "values": [[1, 0], [0, 1]]
+    "values": [[1, 0], [0, 1]],
+    "position": [1, 0],
+    "center": [0, 0],
+    "start": [0, 0],
+    "end": [1, 0],
+    "radius": 1,
+    "startAngle": 0,
+    "sweepAngle": 1.5708
   }],
   "timeline": [{
     "id": "draw-axes",
     "shotId": "hook",
     "at": 0,
-    "op": "draw|write|fade_in|fade_out|transform|emphasize|spotlight|glow|camera_focus|camera_reset|hold",
+    "op": "draw|write|fade_in|fade_out|transform|emphasize|spotlight|glow|camera_focus|camera_reset|move_along|hold",
     "ref": "axes",
     "targetRef": "only for transform",
+    "pathRef": "circle, curve, arc or line id; required only for move_along",
     "partId": "optional formula part id for emphasize, spotlight, glow or camera_focus",
     "zoom": 1.8,
     "runTime": 1.5,
@@ -180,6 +188,8 @@ Return valid JSON only with this shape:
 }
 
 Preserve mathematical correctness and state assumptions instead of inventing facts. First build the dependency-ordered knowledgeMap, then the curriculum, then complete the mathDossier with definitions, an explicit derivation, and independent checks before committing to the visual sequence. Every curriculum dependency must refer to a knowledge node or an earlier beat. The shots must establish coreClaim, preserve every invariant, explicitly avoid commonMisreading, and realize visualProof. Build the explanation around one visible hero object. Use 3-6 non-overlapping shots: the first must be a hook beginning at 0, and the last must be payoff or memory ending exactly at durationSeconds. Every timeline event must name its shotId and stay inside that shot. Prefer motion, geometry, formulas, counters, and transformations over explanatory sentences. Keep text objects within textPolicy and never plan more than two simultaneous text/formula objects. Include one obvious visual change before the midpoint and a visually distinct payoff in the final third.
+
+Every entity required by visualProof or a shot acceptance condition must exist as an explicit object and appear in the timeline. Use circle, point, line, arrow and arc for geometric evidence instead of hiding geometry in labels or prose. circle requires center and radius; point requires position; line and arrow require start and end; arc requires center, radius, startAngle and non-zero sweepAngle. All coordinates are mathematical graph coordinates and these primitives use region graph. Use move_along with pathRef when a point or marker must visibly travel along a circle, curve, arc or line. For a projection argument, explicitly include the source point, the projection/connector line, the target curve or axis, and any angle arc needed to define the parameter.
 
 Treat the camera as a teaching tool, not decoration. Choose moving-camera only when a local term, curve feature, or proof step benefits from a 1.4-2.4x focus. Pair the final camera_focus with camera_reset before the payoff. Use at most two camera_focus events in a short animation. Use spotlight or glow for brief evidence, never as a persistent effect. If emphasis is term-tour, include addressable formula parts and at least one camera_focus that names partId.
 
@@ -355,7 +365,7 @@ export async function parseAnimationSpecWithRepairs(params: {
   throw lastError;
 }
 
-async function generateAnimationSpec(params: {
+export async function generateAnimationSpec(params: {
   provider: ChatProvider;
   model: string;
   prompt: string;
@@ -443,7 +453,7 @@ async function generateAnimationSpec(params: {
         { role: 'assistant', content: JSON.stringify(spec) },
         {
           role: 'user',
-          content: `An independent mathematical audit rejected the specification (repair ${repairAttempt} of ${MAX_MATH_SPEC_REPAIRS}):\n${JSON.stringify(mathReview)}\n\nRebuild and return the complete corrected schemaVersion 5 JSON specification. Treat every audit issue as a mandatory acceptance criterion and correct it at the specification level instead of merely rephrasing it. When the original request is underspecified, choose one conventional mathematical interpretation, state it explicitly in assumptions and limitations, narrow coreClaim to that scope, and keep every definition, derivation, check, shot, and visual consistent with it. Preserve the user's intent and include every required field.`,
+          content: `An independent mathematical audit rejected the specification (repair ${repairAttempt} of ${MAX_MATH_SPEC_REPAIRS}):\n${JSON.stringify(mathReview)}\n\nRebuild and return the complete corrected schemaVersion 5 JSON specification. Treat every audit issue as a mandatory acceptance criterion and correct it at the specification level instead of merely rephrasing it. Every visible entity required by the audit must be an explicit object with timeline evidence; use circle, point, line, arrow and arc geometry plus move_along/pathRef when appropriate. Do not claim an issue is fixed only in summary, visualProof, purpose, acceptance or notes. When the original request is underspecified, choose one conventional mathematical interpretation, state it explicitly in assumptions and limitations, narrow coreClaim to that scope, and keep every definition, derivation, check, shot, object and timeline event consistent with it. Preserve the user's intent and include every required field.`,
         },
       ],
       temperature: 0,

@@ -103,6 +103,10 @@ function compileColor(value: string | undefined, fallback: string): string {
   return fallback;
 }
 
+function graphPoint(axesVariable: string, point: [number, number]): string {
+  return `${axesVariable}.c2p(${point[0]}, ${point[1]})`;
+}
+
 function positionStatement(
   variable: string,
   object: AnimationObjectSpec,
@@ -207,6 +211,29 @@ function compileObject(
     case 'matrix':
       constructor = `${variable} = Matrix(${JSON.stringify(object.values || [[1]])}, element_to_mobject_config={"font_size": 38}).set_color(${color})`;
       break;
+    case 'circle': {
+      const center = object.center || [0, 0];
+      const radius = object.radius || 1;
+      constructor = `${variable} = ParametricFunction(lambda t: ${axesVariable}.c2p(${center[0]} + ${radius} * np.cos(t), ${center[1]} + ${radius} * np.sin(t)), t_range=[0, TAU], color=${color}, stroke_width=5)`;
+      return [constructor];
+    }
+    case 'point':
+      constructor = `${variable} = Dot(${graphPoint(axesVariable, object.position || [0, 0])}, radius=0.09, color=${color})`;
+      return [constructor];
+    case 'line':
+      constructor = `${variable} = Line(${graphPoint(axesVariable, object.start || [0, 0])}, ${graphPoint(axesVariable, object.end || [1, 0])}, color=${color}, stroke_width=4)`;
+      return [constructor];
+    case 'arrow':
+      constructor = `${variable} = Arrow(${graphPoint(axesVariable, object.start || [0, 0])}, ${graphPoint(axesVariable, object.end || [1, 0])}, buff=0, color=${color}, stroke_width=4, max_tip_length_to_length_ratio=0.18)`;
+      return [constructor];
+    case 'arc': {
+      const center = object.center || [0, 0];
+      const radius = object.radius || 1;
+      const startAngle = object.startAngle || 0;
+      const endAngle = startAngle + (object.sweepAngle || Math.PI / 2);
+      constructor = `${variable} = ParametricFunction(lambda t: ${axesVariable}.c2p(${center[0]} + ${radius} * np.cos(t), ${center[1]} + ${radius} * np.sin(t)), t_range=[${startAngle}, ${endAngle}], color=${color}, stroke_width=5)`;
+      return [constructor];
+    }
   }
   return [constructor, positionStatement(variable, object, layout, frame)];
 }
@@ -264,6 +291,8 @@ function animationExpression(
       return `self.camera.frame.animate.move_to(${target}).set(width=config.frame_width / ${event.zoom || 1.8})`;
     case 'camera_reset':
       return 'Restore(self.camera.frame)';
+    case 'move_along':
+      return `MoveAlongPath(${target}, ${variableName(event.pathRef || '')})`;
     case 'hold':
       return null;
   }
@@ -280,7 +309,7 @@ export function compileAnimationSpec(input: AnimationSpec): string {
   const spec = validateAnimationSpec(input);
   if (!isAnimationSpecRenderable(spec)) {
     throw new Error(
-      'Only v2, v3 or v4 animation specifications can be compiled'
+      'Only v2, v3, v4 or v5 animation specifications can be compiled'
     );
   }
   const frame = isAnimationSpecDirected(spec) ? spec.direction.frame : '16:9';
@@ -288,7 +317,9 @@ export function compileAnimationSpec(input: AnimationSpec): string {
     isAnimationSpecV4(spec) && spec.cinematography.scene === 'moving-camera';
   const axes = spec.objects.find((object) => object.kind === 'axes');
   const needsAxes = spec.objects.some((object) =>
-    ['curve', 'area'].includes(object.kind)
+    ['curve', 'area', 'circle', 'point', 'line', 'arrow', 'arc'].includes(
+      object.kind
+    )
   );
   const axesVariable = axes ? variableName(axes.id) : 'obj_auto_axes';
   const frameConfig =

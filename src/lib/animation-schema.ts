@@ -11,6 +11,11 @@ const formulaPartSchema = z.object({
   color: z.string().max(40).optional(),
 });
 
+const coordinateSchema = z.tuple([
+  z.number().finite().min(-100).max(100),
+  z.number().finite().min(-100).max(100),
+]);
+
 const objectSchema = z.object({
   id: identifierSchema,
   kind: z.enum([
@@ -21,6 +26,11 @@ const objectSchema = z.object({
     'text',
     'series',
     'matrix',
+    'circle',
+    'point',
+    'line',
+    'arrow',
+    'arc',
   ]),
   region: z.enum(['title', 'formula', 'graph']),
   importance: z.enum(['hero', 'supporting', 'context']).optional(),
@@ -35,6 +45,13 @@ const objectSchema = z.object({
     .min(1)
     .max(8)
     .optional(),
+  position: coordinateSchema.optional(),
+  center: coordinateSchema.optional(),
+  start: coordinateSchema.optional(),
+  end: coordinateSchema.optional(),
+  radius: z.number().finite().min(0.01).max(100).optional(),
+  startAngle: z.number().finite().min(-100).max(100).optional(),
+  sweepAngle: z.number().finite().min(-100).max(100).optional(),
   parts: z.array(formulaPartSchema).min(2).max(16).optional(),
 });
 
@@ -53,10 +70,12 @@ const timelineSchema = z.object({
     'glow',
     'camera_focus',
     'camera_reset',
+    'move_along',
     'hold',
   ]),
   ref: identifierSchema,
   targetRef: identifierSchema.optional(),
+  pathRef: identifierSchema.optional(),
   partId: identifierSchema.optional(),
   zoom: z.number().min(1.1).max(3.5).optional(),
   runTime: z.number().min(0.1).max(120),
@@ -256,6 +275,72 @@ export const animationSpecSchema = z
           path: ['objects', index, 'values'],
         });
       }
+      const geometryKinds = new Set([
+        'circle',
+        'point',
+        'line',
+        'arrow',
+        'arc',
+      ]);
+      if (geometryKinds.has(object.kind) && object.region !== 'graph') {
+        context.addIssue({
+          code: 'custom',
+          message: `${object.kind} must use the graph region`,
+          path: ['objects', index, 'region'],
+        });
+      }
+      if (object.kind === 'point' && !object.position) {
+        context.addIssue({
+          code: 'custom',
+          message: 'point requires position',
+          path: ['objects', index, 'position'],
+        });
+      }
+      if (
+        (object.kind === 'circle' || object.kind === 'arc') &&
+        (!object.center || !object.radius)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: `${object.kind} requires center and radius`,
+          path: ['objects', index],
+        });
+      }
+      if (
+        (object.kind === 'line' || object.kind === 'arrow') &&
+        (!object.start || !object.end)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: `${object.kind} requires start and end`,
+          path: ['objects', index],
+        });
+      }
+      if (
+        (object.kind === 'line' || object.kind === 'arrow') &&
+        object.start &&
+        object.end &&
+        object.start[0] === object.end[0] &&
+        object.start[1] === object.end[1]
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: `${object.kind} start and end must differ`,
+          path: ['objects', index, 'end'],
+        });
+      }
+      if (
+        object.kind === 'arc' &&
+        (object.startAngle === undefined ||
+          object.sweepAngle === undefined ||
+          Math.abs(object.sweepAngle) < 0.001)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: 'arc requires startAngle and a non-zero sweepAngle',
+          path: ['objects', index],
+        });
+      }
       if (object.parts && !['formula', 'series'].includes(object.kind)) {
         context.addIssue({
           code: 'custom',
@@ -301,6 +386,23 @@ export const animationSpecSchema = z
           code: 'custom',
           message: 'Transform requires a valid targetRef',
           path: ['timeline', index, 'targetRef'],
+        });
+      }
+      if (event.op === 'move_along') {
+        const path = spec.objects.find((object) => object.id === event.pathRef);
+        if (!path || !['circle', 'curve', 'arc', 'line'].includes(path.kind)) {
+          context.addIssue({
+            code: 'custom',
+            message:
+              'move_along requires a valid circle, curve, arc or line pathRef',
+            path: ['timeline', index, 'pathRef'],
+          });
+        }
+      } else if (event.pathRef) {
+        context.addIssue({
+          code: 'custom',
+          message: 'pathRef is only supported by move_along',
+          path: ['timeline', index, 'pathRef'],
         });
       }
       const referencedObject = spec.objects.find(

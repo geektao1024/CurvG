@@ -14,6 +14,7 @@ import {
   parseMatrix,
   seriesParts,
 } from '../src/lib/math-preview';
+import { auditedGeometrySpec } from './animation-spec-fixture';
 
 function validSpec(): AnimationSpec {
   return {
@@ -551,6 +552,42 @@ test('v5 requires an ordered curriculum and an auditable math dossier', () => {
     derivationSteps: [],
   };
   assert.throws(() => validateAnimationSpec(incomplete));
+});
+
+test('v5 geometry IR can express and compile a unit-circle projection proof', () => {
+  const spec = validateAnimationSpec(auditedGeometrySpec());
+  const code = compileAnimationSpec(spec);
+
+  assert.match(code, /obj_unit_circle = ParametricFunction/);
+  assert.match(code, /obj_rotating_point = Dot\(obj_axes\.c2p\(2, 0\)/);
+  assert.match(code, /obj_projection_line = Line\(/);
+  assert.match(code, /obj_direction_arrow = Arrow\(/);
+  assert.match(code, /obj_angle_arc = ParametricFunction/);
+  assert.match(code, /MoveAlongPath\(obj_rotating_point, obj_unit_circle\)/);
+});
+
+test('geometry IR rejects incomplete primitives and invalid motion paths', () => {
+  const missingCenter = auditedGeometrySpec();
+  const circle = missingCenter.objects?.find(
+    (object) => object.id === 'unit-circle'
+  );
+  if (!circle) throw new Error('fixture circle is missing');
+  circle.center = undefined;
+  assert.throws(
+    () => validateAnimationSpec(missingCenter),
+    /circle requires center and radius/
+  );
+
+  const invalidPath = auditedGeometrySpec();
+  const motion = invalidPath.timeline?.find(
+    (event) => event.id === 'point-around-circle'
+  );
+  if (!motion) throw new Error('fixture motion is missing');
+  motion.pathRef = 'sine-formula';
+  assert.throws(
+    () => validateAnimationSpec(invalidPath),
+    /move_along requires a valid circle, curve, arc or line pathRef/
+  );
 });
 
 test('IR rejects missing references, overlapping events, and invalid domains', () => {

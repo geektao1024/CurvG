@@ -5,6 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
+import { compileAnimationSpec } from '../src/lib/manim-compiler';
+import { auditedGeometrySpec } from './animation-spec-fixture';
+
 const validator = join(process.cwd(), 'renderer', 'validate_scene.py');
 const analyzer = join(process.cwd(), 'renderer', 'analyze_contact_sheet.py');
 const rendererSource = readFileSync(
@@ -40,6 +43,13 @@ class CurvGScene(ThreeDScene):
         self.play(Create(axes), run_time=1)
 `);
   assert.equal(threeD.status, 0, threeD.stderr);
+});
+
+test('renderer validator accepts deterministic geometry IR output', () => {
+  const source = compileAnimationSpec(auditedGeometrySpec());
+  const result = validate(source);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(source, /MoveAlongPath\(obj_rotating_point, obj_unit_circle\)/);
 });
 
 test('renderer validator rejects empty scenes, fake 3D, and file reads', () => {

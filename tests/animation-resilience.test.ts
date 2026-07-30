@@ -7,6 +7,7 @@ import { enforceMinIntervalRateLimit } from '../src/lib/rate-limit';
 import {
   ANIMATION_STAGE_TIMEOUT_MS,
   animationStageDeadlineAt,
+  generateAnimationSpec,
   parseAnimationSpecWithRepairs,
   renderFailureRequiresCodeRegeneration,
 } from '../src/modules/animations/service';
@@ -18,6 +19,7 @@ import {
 } from '../src/routes/api/animations/-shared';
 import { animationEventStream } from '../src/routes/api/animations/-stream';
 import { renderCallbackErrorResponse } from '../src/routes/api/animations/$id/render-callback';
+import { auditedGeometrySpec } from './animation-spec-fixture';
 
 const unitLeaseBackend = {
   async acquire(userId: string) {
@@ -260,6 +262,72 @@ test('every generated specification can repair a validator-level timeline confli
   assert.equal(repairCalls, 1);
   assert.ok(repaired.spec.timeline);
   assert.equal(repaired.spec.timeline.length, 1);
+});
+
+test('math-audit repair can add explicit geometry instead of looping on prose', async () => {
+  const repairedSpec = auditedGeometrySpec();
+  const initialSpec = structuredClone(repairedSpec);
+  initialSpec.objects = initialSpec.objects?.filter(
+    (object) => object.id !== 'angle-arc' && object.id !== 'projection-line'
+  );
+  initialSpec.timeline = initialSpec.timeline?.filter(
+    (event) => event.ref !== 'angle-arc' && event.ref !== 'projection-line'
+  );
+  const rejectedReview = {
+    status: 'needs_revision',
+    summary:
+      'The proof is missing an angle marker and an explicit projection line.',
+    checkedClaims: ['The unit-circle coordinate identity is correct.'],
+    issues: [
+      {
+        severity: 'major',
+        claim: 'The point height equals sin(theta).',
+        problem:
+          'The angle parameter and the transferred height are not visibly linked.',
+        correction:
+          'Add an angle arc and a horizontal projection line as explicit timed geometry.',
+      },
+    ],
+  } as const;
+  const approvedReview = {
+    status: 'approved',
+    summary: 'The visible geometry now establishes the projection identity.',
+    checkedClaims: [
+      'The angle, point height and sine ordinate use the same theta.',
+    ],
+    issues: [],
+  } as const;
+  const outputs = [initialSpec, rejectedReview, repairedSpec, approvedReview];
+  const requests: string[] = [];
+  const provider = {
+    name: 'test-provider',
+    async complete(input: { messages: Array<{ content: string }> }) {
+      requests.push(input.messages.at(-1)?.content || '');
+      const output = outputs.shift();
+      if (!output) throw new Error('Unexpected provider call');
+      return {
+        content: JSON.stringify(output),
+        model: 'gemini-3.6-flash',
+        provider: 'test-provider',
+      };
+    },
+  };
+
+  const result = await generateAnimationSpec({
+    provider,
+    model: 'gemini-3.6-flash',
+    prompt: '把正弦波逐步还原为单位圆上的投影。',
+    subject: 'math',
+    deadlineAt: Date.now() + 60_000,
+  });
+
+  assert.equal(outputs.length, 0);
+  assert.match(requests[2], /circle, point, line, arrow and arc geometry/);
+  assert.ok(
+    result.spec.objects?.some((object) => object.id === 'projection-line')
+  );
+  assert.ok(result.spec.objects?.some((object) => object.id === 'angle-arc'));
+  assert.ok(result.spec.timeline?.some((event) => event.op === 'move_along'));
 });
 
 test('render payment failures map to the localized insufficient-credit message', () => {
