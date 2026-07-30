@@ -48,13 +48,14 @@ function providerWith(params: {
   });
 }
 
-test('Kie chat allowlist contains exactly the seven product models', () => {
+test('Kie chat allowlist contains exactly the eight product models', () => {
   assert.deepEqual(Object.keys(kieChatModelRoutes), [
     'gemini-3.6-flash',
     'grok-4-5',
     'gemini-3.1-pro',
     'gpt-5-2',
     'gpt-5-5',
+    'gpt-5-6-sol',
     'claude-sonnet-4-6',
     'claude-opus-4-7',
   ]);
@@ -281,17 +282,17 @@ test('Kie Grok uses the Responses protocol and parses output_text', async () => 
   assert.equal(result.content, 'Grok OK');
 });
 
-test('Kie GPT-5.5 uses the Codex Responses endpoint', async () => {
+test('Kie GPT-5.6 Sol uses the Codex Responses endpoint', async () => {
   let requestUrl = '';
   const provider = new KieChatProvider({
     apiKey: 'test-kie-key',
     fetch: (async (url) => {
       requestUrl = String(url);
-      return Response.json({ output_text: 'GPT OK', model: 'gpt-5-5' });
+      return Response.json({ output_text: 'GPT OK', model: 'gpt-5-6-sol' });
     }) as typeof globalThis.fetch,
   });
 
-  const result = await provider.complete({ ...input, model: 'gpt-5-5' });
+  const result = await provider.complete({ ...input, model: 'gpt-5-6-sol' });
 
   assert.equal(requestUrl, 'https://api.kie.ai/codex/v1/responses');
   assert.equal(result.content, 'GPT OK');

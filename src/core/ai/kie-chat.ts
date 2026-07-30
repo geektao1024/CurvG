@@ -47,6 +47,11 @@ export const kieChatModelRoutes = {
     path: 'codex/v1/responses',
     supportsStreaming: false,
   },
+  'gpt-5-6-sol': {
+    protocol: 'responses',
+    path: 'codex/v1/responses',
+    supportsStreaming: false,
+  },
   'claude-sonnet-4-6': {
     protocol: 'anthropic-messages',
     path: 'claude/v1/messages',

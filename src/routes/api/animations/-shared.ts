@@ -230,7 +230,7 @@ export interface AnimationProviderTargetPlan {
   reasoningEffort?: 'high';
 }
 
-const KIE_RESILIENCE_MODEL = 'gpt-5-5' satisfies KieChatModel;
+const KIE_RESILIENCE_MODEL = 'gpt-5-6-sol' satisfies KieChatModel;
 
 /**
  * Keep the public product choice pinned to GPT-5.6 while giving both Auto and

@@ -76,7 +76,7 @@ test('the generation catalog contains only reviewed Kuaipao GPT-5.6', () => {
   ]);
 });
 
-test('KIE GPT-5.5 is a hidden resilience target after Kuaipao', () => {
+test('KIE GPT-5.6 Sol is a hidden resilience target after Kuaipao', () => {
   const primary = animationModelPolicies[0];
   assert.deepEqual(
     animationProviderTargetPlan(
@@ -94,7 +94,7 @@ test('KIE GPT-5.5 is a hidden resilience target after Kuaipao', () => {
       },
       {
         provider: 'kie',
-        model: 'gpt-5-5',
+        model: 'gpt-5-6-sol',
         reasoningEffort: 'high',
       },
     ]
