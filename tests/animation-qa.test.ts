@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   decideAnimationQualityGate,
   deterministicReviewFromQa,
+  isAnimationVisualQaReviewable,
   parseAnimationVisualReview,
   validateAnimationVisualQaReport,
 } from '../src/lib/animation-qa';
@@ -103,6 +104,64 @@ test('quality gate approves only when deterministic and semantic checks agree', 
     }),
     'approve'
   );
+});
+
+test('soft deterministic warnings proceed to semantic review without admitting hard defects', () => {
+  const softQa = validateAnimationVisualQaReport({
+    ...qaReport,
+    score: 69,
+    issues: [
+      {
+        code: 'weak_opening',
+        severity: 'warning',
+        frames: [1],
+        message: 'The opening subject is small.',
+      },
+      {
+        code: 'low_contrast',
+        severity: 'warning',
+        frames: [1],
+        message: 'The first frame has low contrast.',
+      },
+    ],
+  });
+  const approvedReview = parseAnimationVisualReview({
+    content: JSON.stringify({
+      status: 'approved',
+      summary: 'The construction is readable and mathematically complete.',
+      strengths: ['The projection remains visually explicit.'],
+      issues: [],
+    }),
+    model: 'gemini-3.1-pro',
+    jobId: 'job-soft',
+  });
+
+  assert.equal(isAnimationVisualQaReviewable(softQa), true);
+  assert.equal(
+    decideAnimationQualityGate({
+      qa: softQa,
+      review: approvedReview,
+      attempt: 0,
+      maxRepairs: 2,
+    }),
+    'approve'
+  );
+
+  for (const hardQa of [
+    { ...softQa, score: 64 },
+    {
+      ...softQa,
+      frames: softQa.frames.map((frame, index) =>
+        index === 0 ? { ...frame, edgeRisk: true } : frame
+      ),
+    },
+    { ...softQa, blackSegments: [[2, 2.25]] },
+  ]) {
+    assert.equal(
+      isAnimationVisualQaReviewable(validateAnimationVisualQaReport(hardQa)),
+      false
+    );
+  }
 });
 
 test('quality gate repairs defects within budget and rejects after exhaustion', () => {

@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import type {
   AnimationQualityGateAction,
+  AnimationVisualQaCode,
   AnimationVisualQaReport,
   AnimationVisualReview,
   AnimationVisualReviewIssue,
@@ -12,6 +13,37 @@ const timeSegmentSchema = z.tuple([
   z.number().min(0).max(300),
   z.number().min(0).max(300),
 ]);
+
+const hardVisualQaCodes = new Set<AnimationVisualQaCode>([
+  'empty_frame',
+  'edge_risk',
+  'static_sequence',
+  'black_segment',
+  'flash_frame',
+  'frozen_segment',
+]);
+
+/**
+ * The frame analyzer is deliberately conservative. A render with only
+ * aesthetic warnings still deserves semantic review; hard temporal or
+ * safe-zone defects do not. This keeps a weak first second from becoming a
+ * terminal render failure while preserving strict rejection for broken video.
+ */
+export function isAnimationVisualQaReviewable(
+  qa: AnimationVisualQaReport
+): boolean {
+  if (qa.status === 'pass' && qa.score >= 78) return true;
+  if (qa.score < 65) return false;
+  if (
+    qa.blackSegments.length > 0 ||
+    qa.frozenSegments.length > 0 ||
+    qa.flashTimestamps.length > 0 ||
+    qa.frames.some((frame) => frame.edgeRisk)
+  ) {
+    return false;
+  }
+  return !qa.issues.some((issue) => hardVisualQaCodes.has(issue.code));
+}
 
 export const animationVisualQaReportSchema = z.object({
   analyzerVersion: z.literal(1),
@@ -242,8 +274,7 @@ export function decideAnimationQualityGate(params: {
     (issue) =>
       issue.severity === 'blocking' || issue.category === 'math_fidelity'
   );
-  const deterministicPass =
-    params.qa.status === 'pass' && params.qa.score >= 78;
+  const deterministicPass = isAnimationVisualQaReviewable(params.qa);
   if (
     deterministicPass &&
     params.review.status === 'approved' &&

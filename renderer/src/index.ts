@@ -455,6 +455,66 @@ async function prepareRenderEvidence(
   };
 }
 
+async function preserveBestRenderEvidence(
+  sandbox: Sandbox,
+  evidence: RenderEvidence
+): Promise<RenderEvidence> {
+  const copy = await sandbox.exec(
+    'cp /workspace/video.mp4 /workspace/best-video.mp4 && cp /workspace/thumbnail.jpg /workspace/best-thumbnail.jpg && cp /workspace/contact-sheet.jpg /workspace/best-contact-sheet.jpg && cp /workspace/qa-report.json /workspace/best-qa-report.json',
+    { timeout: 30_000, cwd: '/workspace' }
+  );
+  if (!copy.success) {
+    throw new NonRetryableRenderError(
+      commandError(copy.stderr, 'Best render snapshot failed')
+    );
+  }
+  return {
+    playbackPath: '/workspace/best-video.mp4',
+    thumbnailPath: '/workspace/best-thumbnail.jpg',
+    contactSheetPath: '/workspace/best-contact-sheet.jpg',
+    qaReportPath: '/workspace/best-qa-report.json',
+    visualQa: evidence.visualQa,
+  };
+}
+
+function visualQaCandidateRank(evidence: RenderEvidence): number {
+  const value = evidence.visualQa.score;
+  const score =
+    typeof value === 'number' && Number.isFinite(value) ? value : -1;
+  const hardCodes = new Set([
+    'empty_frame',
+    'edge_risk',
+    'static_sequence',
+    'black_segment',
+    'flash_frame',
+    'frozen_segment',
+  ]);
+  const issues = Array.isArray(evidence.visualQa.issues)
+    ? evidence.visualQa.issues
+    : [];
+  const frames = Array.isArray(evidence.visualQa.frames)
+    ? evidence.visualQa.frames
+    : [];
+  const hasHardDefect =
+    issues.some(
+      (issue) =>
+        issue &&
+        typeof issue === 'object' &&
+        hardCodes.has((issue as Record<string, unknown>).code as string)
+    ) ||
+    frames.some(
+      (frame) =>
+        frame &&
+        typeof frame === 'object' &&
+        (frame as Record<string, unknown>).edgeRisk === true
+    ) ||
+    ['blackSegments', 'frozenSegments', 'flashTimestamps'].some((key) => {
+      const entries = evidence.visualQa[key];
+      return Array.isArray(entries) && entries.length > 0;
+    });
+  return hasHardDefect ? score - 1_000 : score;
+}
+
 async function uploadReviewEvidence(params: {
   sandbox: Sandbox;
   env: Env;
@@ -538,6 +598,10 @@ async function processJob(job: RenderJob, env: Env) {
     labels: { workload: 'curvg-manim', animationId: job.animationId },
   });
   let currentCode = job.code;
+  let bestCode = currentCode;
+  let bestEvidence: RenderEvidence | undefined;
+  let bestAttempt = 0;
+  let bestRank = -1_001;
   try {
     for (let attempt = 0; attempt <= MAX_QUALITY_REPAIRS; attempt += 1) {
       await sandbox.exec(
@@ -596,6 +660,26 @@ async function processJob(job: RenderJob, env: Env) {
         sandbox,
         '/workspace/media'
       );
+      const currentRank = visualQaCandidateRank(previewEvidence);
+      if (!bestEvidence || currentRank > bestRank) {
+        bestEvidence = await preserveBestRenderEvidence(
+          sandbox,
+          previewEvidence
+        );
+        bestCode = currentCode;
+        bestAttempt = attempt;
+        bestRank = currentRank;
+      }
+      // On the last autonomous pass, review and deliver the strongest rendered
+      // candidate instead of allowing a regressive repair to overwrite it.
+      const selectedEvidence =
+        attempt === MAX_QUALITY_REPAIRS && bestEvidence
+          ? bestEvidence
+          : previewEvidence;
+      const selectedCode =
+        attempt === MAX_QUALITY_REPAIRS ? bestCode : currentCode;
+      const selectedAttempt =
+        attempt === MAX_QUALITY_REPAIRS ? bestAttempt : attempt;
       await notifyStage(job, env, 'reviewing', attemptProgress(attempt, 28));
       await uploadReviewEvidence({
         sandbox,
@@ -603,14 +687,15 @@ async function processJob(job: RenderJob, env: Env) {
         job,
         contactSheetKey,
         qaReportKey,
-        evidence: previewEvidence,
-        attempt,
+        evidence: selectedEvidence,
+        attempt: selectedAttempt,
         phase: 'final',
       });
       const finalGate = await requestQualityGate(job, env, {
         kind: 'final_review',
         attempt,
-        visualQa: previewEvidence.visualQa,
+        visualQa: selectedEvidence.visualQa,
+        approvedCode: selectedCode,
       });
       if (finalGate.action === 'repair' && finalGate.code) {
         currentCode = finalGate.code;
@@ -627,7 +712,7 @@ async function processJob(job: RenderJob, env: Env) {
         sandbox,
         env.ARTIFACTS,
         videoKey,
-        previewEvidence.playbackPath,
+        selectedEvidence.playbackPath,
         {
           httpMetadata: { contentType: 'video/mp4' },
           customMetadata: {
@@ -641,7 +726,7 @@ async function processJob(job: RenderJob, env: Env) {
         sandbox,
         env.ARTIFACTS,
         thumbnailKey,
-        previewEvidence.thumbnailPath,
+        selectedEvidence.thumbnailPath,
         {
           httpMetadata: { contentType: 'image/jpeg' },
           customMetadata: { animationId: job.animationId, jobId: job.jobId },
@@ -650,7 +735,7 @@ async function processJob(job: RenderJob, env: Env) {
       await notify(job, env, {
         status: 'completed',
         ...artifactUrls(job, true),
-        visualQa: previewEvidence.visualQa,
+        visualQa: selectedEvidence.visualQa,
       });
       return;
     }

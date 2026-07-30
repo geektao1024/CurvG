@@ -12,6 +12,7 @@ import type { AnimationSpec, AnimationVisualReview } from '@/lib/animation';
 import {
   decideAnimationQualityGate,
   deterministicReviewFromQa,
+  isAnimationVisualQaReviewable,
   validateAnimationVisualQaReport,
 } from '@/lib/animation-qa';
 import {
@@ -108,6 +109,20 @@ async function POST({
     let visualQa;
     let review: AnimationVisualReview;
     let renderError: string | undefined;
+    const approvedCode =
+      typeof body.approvedCode === 'string' ? body.approvedCode : undefined;
+    if (
+      approvedCode !== undefined &&
+      (kind !== 'final_review' ||
+        approvedCode.length < 100 ||
+        approvedCode.length > 60_000 ||
+        !approvedCode.includes('from manim import') ||
+        !/class\s+CurvGScene\s*\(\s*(?:Scene|MovingCameraScene|ThreeDScene)\s*\)/.test(
+          approvedCode
+        ))
+    ) {
+      return respErr('Invalid approved render code', { status: 400 });
+    }
     if (kind === 'render_error') {
       renderError =
         typeof body.error === 'string'
@@ -119,7 +134,7 @@ async function POST({
       review = renderErrorReview({ jobId, error: renderError });
     } else {
       visualQa = validateAnimationVisualQaReport(body.visualQa);
-      if (visualQa.status === 'pass' && visualQa.score >= 78) {
+      if (isAnimationVisualQaReviewable(visualQa)) {
         const detail = await getAnimation(context.userId, context.id);
         detail.parts.visualQa = visualQa;
         const origin = configs.app_url?.trim()
@@ -197,6 +212,11 @@ async function POST({
         );
         code = repaired.code;
       }
+    } else if (action === 'approve' && approvedCode) {
+      // The renderer may select a previously rendered higher-quality
+      // candidate after later autonomous repairs regress. Persist the exact
+      // source that produced the approved artifact.
+      code = approvedCode;
     }
     const persisted = await recordAnimationQualityGate({
       id: params.id,

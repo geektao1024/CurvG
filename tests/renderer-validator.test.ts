@@ -131,10 +131,14 @@ print(json.dumps({
   assert.deepEqual(output.retained_segment, [[0, 0.2]]);
 });
 
-test('renderer delivers the single QA-approved 720p30 render', () => {
+test('renderer delivers the best QA-approved 720p30 render', () => {
   assert.equal(rendererSource.match(/manim -qm --format=mp4/g)?.length, 1);
   assert.doesNotMatch(rendererSource, /\/workspace\/final-media/);
   assert.match(rendererSource, /quality: '720p30'/);
   assert.doesNotMatch(rendererSource, /kind: 'visual_review'/);
   assert.equal(rendererSource.match(/kind: 'final_review'/g)?.length, 1);
+  assert.match(rendererSource, /preserveBestRenderEvidence/);
+  assert.match(rendererSource, /visualQaCandidateRank/);
+  assert.match(rendererSource, /selectedEvidence\.playbackPath/);
+  assert.match(rendererSource, /approvedCode: selectedCode/);
 });
