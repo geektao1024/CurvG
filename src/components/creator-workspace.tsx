@@ -4042,8 +4042,22 @@ export function CreatorWorkspace({
     queryKey: detailQueryKey,
     queryFn: () => apiGet<AnimationDetail>(`/api/animations/${selectedId}`),
     enabled: !!user && !!selectedId && !pendingAnimation,
-    refetchInterval: (query) =>
-      isAnimationBusy(query.state.data?.status) ? 2500 : false,
+    refetchInterval: (query) => {
+      const animation = query.state.data;
+      if (isAnimationBusy(animation?.status)) return 2500;
+      // Older Worker versions briefly persisted a retryable planning failure
+      // between Workflow attempts. Keep polling that narrow recovery window so
+      // an open tab can observe the durable retry returning to generating.
+      if (
+        animation?.status === 'failed' &&
+        animation.parts.failure?.stage === 'spec' &&
+        animation.parts.failure.retryable &&
+        Date.now() - new Date(animation.updatedAt).getTime() < 2 * 60_000
+      ) {
+        return 2500;
+      }
+      return false;
+    },
   });
   const detail = pendingAnimation || detailQuery.data;
   const detailLoading =

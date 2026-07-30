@@ -1202,6 +1202,42 @@ function animationFailure(
     };
   }
   const message = error instanceof Error ? error.message : String(error);
+  if (/tim(?:e|ed)\s*out|timeout/i.test(message)) {
+    return {
+      stage,
+      code: 'UPSTREAM_TIMEOUT',
+      message: failureMessages.UPSTREAM_TIMEOUT,
+      retryable: true,
+    };
+  }
+  if (
+    /temporar(?:y|ily)\s+unavailable|upstream[_ -]?unavailable|\b(?:502|503|504|524)\b/i.test(
+      message
+    )
+  ) {
+    return {
+      stage,
+      code: 'UPSTREAM_UNAVAILABLE',
+      message: failureMessages.UPSTREAM_UNAVAILABLE,
+      retryable: true,
+    };
+  }
+  if (/at capacity|saturat(?:ed|ion)/i.test(message)) {
+    return {
+      stage,
+      code: 'UPSTREAM_SATURATED',
+      message: failureMessages.UPSTREAM_SATURATED,
+      retryable: true,
+    };
+  }
+  if (/internal workflows error|workflow.*internal/i.test(message)) {
+    return {
+      stage,
+      code: 'UNKNOWN',
+      message: failureMessages.UNKNOWN,
+      retryable: true,
+    };
+  }
   const invalidOutput = /invalid|json|schema|validation|python|code/i.test(
     message
   );
@@ -1510,6 +1546,12 @@ export async function planAnimation(params: {
   model: string;
   signal?: AbortSignal;
   hooks?: AnimationGenerationHooks;
+  /**
+   * Durable workflows own the retry budget. Their individual attempts must
+   * not publish a terminal failure while Cloudflare is about to retry the
+   * same step.
+   */
+  persistFailure?: boolean;
 }): Promise<AnimationDetail> {
   let row = await ownedRow(params.userId, params.id);
   let parts = animationParts(row);
@@ -1588,9 +1630,36 @@ export async function planAnimation(params: {
     });
     return getAnimation(params.userId, row.id);
   } catch (error) {
-    const failure = await setFailure(row, parts, error, 'spec');
+    const failure =
+      params.persistFailure === false
+        ? animationFailure(error, 'spec')
+        : await setFailure(row, parts, error, 'spec');
+    if (params.persistFailure === false) {
+      console.warn('[animation-generation] planning attempt will retry', {
+        animationId: row.id,
+        userId: row.userId,
+        code: failure.code,
+        retryable: failure.retryable,
+        requestId: failure.requestId,
+      });
+    }
     throw new AnimationGenerationError(failure, error);
   }
+}
+
+/** Publish a planning failure only after the durable workflow retry budget is
+ * exhausted (or immediately for a non-retryable provider error). */
+export async function finalizeAnimationPlanningFailure(params: {
+  userId: string;
+  id: string;
+  error: unknown;
+}): Promise<AnimationDetail> {
+  const row = await ownedRow(params.userId, params.id);
+  if (row.status !== 'generating_spec') {
+    return getAnimation(params.userId, params.id);
+  }
+  await setFailure(row, animationParts(row), params.error, 'spec');
+  return getAnimation(params.userId, params.id);
 }
 
 export async function createAnimation(params: {

@@ -8,7 +8,9 @@ import {
 } from '../src/core/ai/chat';
 import type { AnimationOrchestrationPlan } from '../src/core/animation-orchestrator';
 import { animationFailureCodeFromHttpStatus } from '../src/lib/animation';
+import type { AnimationPlanningArtifacts } from '../src/lib/animation-pipeline';
 import { enforceMinIntervalRateLimit } from '../src/lib/rate-limit';
+import { validateAnimationPlanningStageSemantics } from '../src/modules/animations/planning';
 import {
   ANIMATION_STAGE_TIMEOUT_MS,
   animationStageDeadlineAt,
@@ -63,6 +65,35 @@ function orchestrationPlan(): AnimationOrchestrationPlan {
     generationBrief:
       'Begin visible motion in the first second and preserve the approved visual proof.',
     preparedAt: '2026-07-30T00:00:00Z',
+  };
+}
+
+function planningArtifacts(): AnimationPlanningArtifacts {
+  const spec = auditedGeometrySpec();
+  return {
+    intent: {
+      title: spec.title,
+      summary: spec.summary,
+      durationSeconds: spec.durationSeconds,
+      assumptions: spec.assumptions,
+      intent: spec.intent!,
+    },
+    knowledge: { knowledgeMap: spec.knowledgeMap! },
+    curriculum: { curriculum: spec.curriculum! },
+    mathematics: { mathDossier: spec.mathDossier! },
+    storyboard: {
+      direction: spec.direction!,
+      cinematography: spec.cinematography!,
+      shots: spec.shots!,
+    },
+    scene: {
+      style: spec.style,
+      objects: spec.objects!,
+      timeline: spec.timeline!,
+      layout: spec.layout,
+      dependencies: spec.dependencies,
+      notes: spec.notes,
+    },
   };
 }
 
@@ -224,6 +255,39 @@ test('SSE relays real planning phases to the creator workspace', async () => {
   const body = await response.text();
   assert.match(body, /"type":"phase","phase":"understanding"/);
   assert.match(body, /"type":"phase","phase":"auditing"/);
+});
+
+test('scene checkpoints reject cross-stage references before the pipeline restarts', () => {
+  const artifacts = planningArtifacts();
+  assert.doesNotThrow(() =>
+    validateAnimationPlanningStageSemantics('scene', artifacts.scene, artifacts)
+  );
+
+  const invalidScene = structuredClone(artifacts.scene);
+  invalidScene.objects = invalidScene.objects.filter(
+    (object) => object.id !== artifacts.storyboard.shots[0].focusRef
+  );
+  assert.throws(
+    () =>
+      validateAnimationPlanningStageSemantics('scene', invalidScene, {
+        ...artifacts,
+        scene: undefined,
+      }),
+    /Unknown shot focus/
+  );
+});
+
+test('storyboard checkpoints enforce the intent duration before scene generation', () => {
+  const artifacts = planningArtifacts();
+  const invalidStoryboard = structuredClone(artifacts.storyboard);
+  invalidStoryboard.shots.at(-1)!.endAt -= 1;
+  assert.throws(
+    () =>
+      validateAnimationPlanningStageSemantics('storyboard', invalidStoryboard, {
+        intent: artifacts.intent,
+      }),
+    /end exactly at durationSeconds/
+  );
 });
 
 test('every generated specification can repair a validator-level timeline conflict', async () => {

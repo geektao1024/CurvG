@@ -139,7 +139,7 @@ const STAGE_ROLES: Record<AnimationPlanningStageName, string> = {
   storyboard:
     'Translate the approved learning and mathematics artifacts into 3-6 non-overlapping shots. Begin with a hook at 0 and end with payoff or memory exactly at durationSeconds.',
   scene:
-    'Declare the concrete visual objects and timed actions that realize every storyboard acceptance condition and the mathematical visual proof.',
+    'Declare the concrete visual objects and timed actions that realize every storyboard acceptance condition and the mathematical visual proof. Preserve every storyboard shot id exactly, create an object for every focusRef, and keep every timeline event inside its referenced shot.',
 };
 
 export interface PersistentAnimationPlanningContext {
@@ -185,7 +185,7 @@ function stageErrorCode(error: unknown) {
     : 'stage_failed';
 }
 
-function validateSemanticDependencies(
+export function validateAnimationPlanningStageSemantics(
   name: AnimationPlanningStageName,
   artifact: unknown,
   artifacts: Partial<AnimationPlanningArtifacts>
@@ -225,6 +225,57 @@ function validateSemanticDependencies(
       available.add(beat.id);
     }
   }
+  if (name === 'storyboard' && artifacts.intent) {
+    const value = artifact as AnimationPlanningArtifacts['storyboard'];
+    const shots = [...value.shots].sort(
+      (left, right) => left.startAt - right.startAt
+    );
+    const ids = new Set<string>();
+    for (const [index, shot] of shots.entries()) {
+      if (ids.has(shot.id)) {
+        throw new Error(`Duplicate storyboard shot id ${shot.id}`);
+      }
+      ids.add(shot.id);
+      if (shot.startAt >= shot.endAt) {
+        throw new Error(`Storyboard shot ${shot.id} has an invalid window`);
+      }
+      if (index > 0 && shot.startAt < shots[index - 1].endAt - 0.001) {
+        throw new Error(`Storyboard shot ${shot.id} overlaps the prior shot`);
+      }
+    }
+    if (shots[0].startAt !== 0 || shots[0].beat !== 'hook') {
+      throw new Error('The storyboard must begin with a hook at 0 seconds');
+    }
+    const lastShot = shots.at(-1)!;
+    if (
+      Math.abs(lastShot.endAt - artifacts.intent.durationSeconds) > 0.001 ||
+      !['payoff', 'memory'].includes(lastShot.beat)
+    ) {
+      throw new Error(
+        'The final storyboard shot must be payoff or memory and end exactly at durationSeconds'
+      );
+    }
+  }
+  if (
+    name === 'scene' &&
+    artifacts.intent &&
+    artifacts.knowledge &&
+    artifacts.curriculum &&
+    artifacts.mathematics &&
+    artifacts.storyboard
+  ) {
+    // Scene is the first point where every cross-stage reference exists.
+    // Validate the complete contract here so one targeted scene repair can
+    // fix a bad focusRef/shotId/timestamp without restarting storyboard.
+    composeAnimationSpecFromArtifacts({
+      intent: artifacts.intent,
+      knowledge: artifacts.knowledge,
+      curriculum: artifacts.curriculum,
+      mathematics: artifacts.mathematics,
+      storyboard: artifacts.storyboard,
+      scene: artifact as AnimationPlanningArtifacts['scene'],
+    });
+  }
 }
 
 function stagePrompt(params: {
@@ -258,6 +309,7 @@ Rules:
 - Use stable ASCII ids matching ^[A-Za-z][A-Za-z0-9_-]{0,79}$.
 - Do not return Markdown, Python, commentary, or private reasoning.
 - Keep prose concise; visual evidence must be observable rather than aspirational.
+- In the scene stage, copy storyboard shot ids and focusRef ids character-for-character: every focusRef must be an objects[].id, every timeline shotId must be a shots[].id, events must stay inside their shot window, and non-concurrent event groups must not overlap.
 
 CONTEXT:
 ${JSON.stringify(context)}`;
@@ -305,7 +357,7 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
           definition.name,
           JSON.parse(reusable.artifact) as unknown
         );
-        validateSemanticDependencies(
+        validateAnimationPlanningStageSemantics(
           definition.name,
           artifact,
           params.artifacts
@@ -416,7 +468,7 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
           definition.name,
           result.content
         );
-        validateSemanticDependencies(
+        validateAnimationPlanningStageSemantics(
           definition.name,
           artifact,
           params.artifacts
@@ -514,6 +566,15 @@ export async function generatePersistentAnimationSpec(
     } catch (error) {
       integrationError = error;
       if (repair === MAX_INTEGRATION_REPAIRS) throw error;
+      console.warn('[animation-planning] repairing integration contract', {
+        chatId: planning.context.chatId,
+        runId: planning.context.runId,
+        repair: repair + 1,
+        error:
+          error instanceof Error
+            ? error.message.replace(/[\r\n]+/g, ' ').slice(0, 1_000)
+            : String(error).slice(0, 1_000),
+      });
       result = await runFromStage({
         planning,
         artifacts,

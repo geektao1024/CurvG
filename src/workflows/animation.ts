@@ -17,6 +17,7 @@ import type { ChatProvider } from '@/core/ai/chat';
 import type { AnimationOrchestrationPlan } from '@/core/animation-orchestrator';
 import {
   AnimationGenerationError,
+  finalizeAnimationPlanningFailure,
   getAnimation,
   planAnimation,
   prepareAnimationOrchestration,
@@ -74,50 +75,100 @@ export class AnimationWorkflow extends WorkflowEntrypoint<
     exposeRuntimeEnv(this.env);
     const payload = event.payload;
 
-    await step.do(
-      'plan-animation',
-      {
-        retries: { limit: 2, delay: '5 seconds', backoff: 'exponential' },
-        timeout: '30 minutes',
-      },
-      async () => {
-        exposeRuntimeEnv(this.env);
-        const configs = await getAllConfigs();
-        const animation = await getAnimation(
-          payload.userId,
-          payload.animationId
+    let planningError: unknown;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        const outcome = await step.do(
+          `plan-animation-attempt-${attempt}`,
+          {
+            // Provider and schema failures are returned as durable outcomes
+            // and advance to the next named attempt. These retries are only
+            // for unexpected Worker/database faults inside this one attempt.
+            retries: {
+              limit: 1,
+              delay: '5 seconds',
+              backoff: 'exponential',
+            },
+            timeout: '25 minutes',
+          },
+          async () => {
+            exposeRuntimeEnv(this.env);
+            const configs = await getAllConfigs();
+            const animation = await getAnimation(
+              payload.userId,
+              payload.animationId
+            );
+            const selection = animation.parts.modelSelection || {
+              choice: 'auto',
+            };
+            const resolved = await resolveChatProvider(
+              configs,
+              payload.userId,
+              selection.choice,
+              selection.model
+            );
+            try {
+              const planned = await planAnimation({
+                userId: payload.userId,
+                id: payload.animationId,
+                provider: capacityScopedProvider(
+                  resolved.provider,
+                  payload.userId,
+                  `ANWF_${payload.animationId}`
+                ),
+                model: resolved.model,
+                persistFailure: false,
+              });
+              return {
+                completed: true as const,
+                animationId: planned.id,
+                status: planned.status,
+              };
+            } catch (error) {
+              if (error instanceof AnimationGenerationError) {
+                return { completed: false as const, failure: error.failure };
+              }
+              throw error;
+            }
+          }
         );
-        const selection = animation.parts.modelSelection || { choice: 'auto' };
-        const resolved = await resolveChatProvider(
-          configs,
-          payload.userId,
-          selection.choice,
-          selection.model
+        if (outcome.completed) {
+          planningError = undefined;
+          break;
+        }
+        planningError = new AnimationGenerationError(outcome.failure);
+        if (!outcome.failure.retryable || attempt === 3) break;
+        await step.sleep(
+          `wait-before-planning-attempt-${attempt + 1}`,
+          '5 seconds'
         );
-        let planned;
-        try {
-          planned = await planAnimation({
+      } catch (error) {
+        planningError = error;
+        break;
+      }
+    }
+    if (planningError) {
+      await step.do(
+        'finalize-planning-failure',
+        {
+          retries: { limit: 2, delay: '2 seconds', backoff: 'exponential' },
+          timeout: '1 minute',
+        },
+        async () => {
+          exposeRuntimeEnv(this.env);
+          await finalizeAnimationPlanningFailure({
             userId: payload.userId,
             id: payload.animationId,
-            provider: capacityScopedProvider(
-              resolved.provider,
-              payload.userId,
-              `ANWF_${payload.animationId}`
-            ),
-            model: resolved.model,
+            error: planningError,
           });
-        } catch (error) {
-          if (
-            error instanceof AnimationGenerationError &&
-            !error.failure.retryable
-          ) {
-            throw new NonRetryableError(error.message);
-          }
-          throw error;
         }
-        return { animationId: planned.id, status: planned.status };
-      }
-    );
+      );
+      throw new NonRetryableError(
+        planningError instanceof Error
+          ? planningError.message
+          : 'Animation planning failed'
+      );
+    }
 
     let orchestrationPlan: AnimationOrchestrationPlan | null | undefined;
     try {
