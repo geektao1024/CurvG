@@ -172,6 +172,18 @@ export const testSpecs: Record<string, TestSpec> = {
       },
     ],
   },
+  kuaipao: {
+    group: 'kuaipao',
+    fields: [
+      {
+        name: 'prompt',
+        label: 'Prompt',
+        type: 'textarea',
+        defaultValue: 'Reply with exactly: Kuaipao GPT-5.6 is ready.',
+        required: true,
+      },
+    ],
+  },
   kie: {
     group: 'kie',
     fields: [

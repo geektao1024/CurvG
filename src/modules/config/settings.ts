@@ -159,9 +159,15 @@ export function getSettingGroups(): SettingGroup[] {
       tab: 'ai',
     },
     {
+      name: 'kuaipao',
+      title: 'Kuaipao API',
+      description: 'GPT-5.6 Responses gateway for animation generation',
+      tab: 'ai',
+    },
+    {
       name: 'kie',
       title: 'Kie',
-      description: 'Kie chat model gateway',
+      description: 'Legacy chat and visual review gateway',
       tab: 'ai',
     },
     {
@@ -779,6 +785,27 @@ export function getSettings(): Setting[] {
       type: 'password',
       placeholder: 'sk-xxx',
       group: 'openai',
+      tab: 'ai',
+    },
+    // ─── AI / Kuaipao ───────────────────────────────────────────────
+    {
+      name: 'kuaipao_base_url',
+      title: 'Base URL',
+      type: 'select',
+      options: [
+        { label: 'kuaipao.pro', value: 'https://kuaipao.pro/v1' },
+        { label: 'kuaipao.ai', value: 'https://kuaipao.ai/v1' },
+      ],
+      group: 'kuaipao',
+      tab: 'ai',
+      defaultValue: 'https://kuaipao.pro/v1',
+    },
+    {
+      name: 'kuaipao_api_key',
+      title: 'API Key',
+      type: 'password',
+      placeholder: 'sk-xxx',
+      group: 'kuaipao',
       tab: 'ai',
     },
     // ─── AI / Kie ───────────────────────────────────────────────────

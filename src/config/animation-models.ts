@@ -8,85 +8,37 @@
  */
 export const animationModelPolicies = [
   {
-    provider: 'kie',
-    model: 'gemini-3.6-flash',
-    presetKey: 'kieGemini36Flash',
+    provider: 'kuaipao',
+    model: 'gpt-5.6-sol',
+    presetKey: 'kuaipaoGpt56Sol',
     requiredTier: 'free',
-  },
-  {
-    provider: 'kie',
-    model: 'grok-4-5',
-    presetKey: 'kieGrok45',
-    requiredTier: 'free',
-  },
-  {
-    provider: 'kie',
-    model: 'gemini-3.1-pro',
-    presetKey: 'kieGemini31Pro',
-    requiredTier: 'free',
-  },
-  {
-    provider: 'kie',
-    model: 'gpt-5-2',
-    presetKey: 'kieGpt52',
-    requiredTier: 'pro',
-  },
-  {
-    provider: 'kie',
-    model: 'gpt-5-5',
-    presetKey: 'kieGpt55',
-    requiredTier: 'pro',
-  },
-  {
-    provider: 'kie',
-    model: 'claude-sonnet-4-6',
-    presetKey: 'kieClaudeSonnet46',
-    requiredTier: 'pro',
-  },
-  {
-    provider: 'kie',
-    model: 'claude-opus-4-7',
-    presetKey: 'kieClaudeOpus47',
-    requiredTier: 'pro',
   },
 ] as const;
 
 export type AnimationModelPolicy = (typeof animationModelPolicies)[number];
 export type AnimationAccessTier = 'free' | 'starter' | 'pro';
 
-export const DEFAULT_ANIMATION_MODEL = 'gemini-3.6-flash';
-export const DEFAULT_ANIMATION_PROVIDER = 'kie';
+export const DEFAULT_ANIMATION_MODEL = 'gpt-5.6-sol';
+export const DEFAULT_ANIMATION_PROVIDER = 'kuaipao';
 
 /**
- * Provider tuning is allowlisted just like model access. Keeping reasoning at
- * low protects the animation stage deadline while still allowing the models
- * to plan structured scenes.
+ * Provider tuning is allowlisted just like model access. GPT-5.6 is currently
+ * the sole generation model so quality comparisons exercise its full
+ * reasoning mode instead of conflating a cheap reasoning budget with model
+ * capability.
  */
-export function getAnimationReasoningEffort(model: string): 'low' | undefined {
-  return [
-    'gemini-3.6-flash',
-    'grok-4-5',
-    'gemini-3.1-pro',
-    'gpt-5-2',
-    'gpt-5-5',
-  ].includes(model)
-    ? 'low'
-    : undefined;
+export function getAnimationReasoningEffort(model: string): 'high' | undefined {
+  return model === DEFAULT_ANIMATION_MODEL ? 'high' : undefined;
 }
 
 export const FREE_AUTO_MODEL_TARGETS = [
-  { provider: 'kie', model: 'gemini-3.6-flash' },
-  { provider: 'kie', model: 'grok-4-5' },
-  { provider: 'kie', model: 'gemini-3.1-pro' },
+  { provider: 'kuaipao', model: 'gpt-5.6-sol' },
 ] as const;
 
-// Runtime resolution caps Auto at three targets. Claude Opus remains an
-// explicit choice because using it as an automatic fallback has a materially
-// higher cost and latency profile.
+// Keep the Pro Auto target identical during the focused comparison period so
+// subscription tier cannot silently change the model under evaluation.
 export const PRO_AUTO_MODEL_TARGETS = [
-  { provider: 'kie', model: 'gpt-5-2' },
-  { provider: 'kie', model: 'gpt-5-5' },
-  { provider: 'kie', model: 'claude-sonnet-4-6' },
+  { provider: 'kuaipao', model: 'gpt-5.6-sol' },
 ] as const;
 
 export function getAnimationModelPolicy(
@@ -124,7 +76,8 @@ export function decideAnimationModelAccess(params: {
   requestedModel?: string;
 }): AnimationModelDecision {
   const auto = params.choice === 'auto';
-  const explicitProvider = params.choice === 'kie' ? params.choice : undefined;
+  const explicitProvider =
+    params.choice === 'kuaipao' ? params.choice : undefined;
   if ((!auto && !explicitProvider) || (auto && params.requestedModel)) {
     return { allowed: false, reason: 'INVALID_MODEL' };
   }

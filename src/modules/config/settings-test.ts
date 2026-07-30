@@ -10,6 +10,10 @@
 
 import { FalProvider } from '@/core/ai/fal';
 import { KieChatProvider } from '@/core/ai/kie-chat';
+import {
+  KUAIPAO_GPT_56_MODEL,
+  KuaipaoChatProvider,
+} from '@/core/ai/kuaipao-chat';
 import { ReplicateProvider } from '@/core/ai/replicate';
 import { AIMediaType } from '@/core/ai/types';
 import { ResendProvider } from '@/core/email/resend';
@@ -53,6 +57,8 @@ export async function runTest(
         return await testR2(inputs, configs);
       case 'openai':
         return await testOpenAI(inputs, configs);
+      case 'kuaipao':
+        return await testKuaipao(inputs, configs);
       case 'kie':
         return await testKie(inputs, configs);
       case 'anthropic':
@@ -433,6 +439,36 @@ async function testKie(
   return {
     success: true,
     message: 'Kie accepted the request',
+    details: {
+      Model: result.model,
+      Reply: result.content.slice(0, 200),
+    },
+  };
+}
+
+async function testKuaipao(
+  inputs: Record<string, string>,
+  configs: Record<string, string>
+): Promise<TestResult> {
+  const missing = need(configs, ['kuaipao_api_key']);
+  if (missing) return { success: false, message: missing };
+
+  const provider = new KuaipaoChatProvider({
+    apiKey: configs.kuaipao_api_key,
+    baseUrl: configs.kuaipao_base_url || 'https://kuaipao.pro/v1',
+    maxAttempts: 1,
+    requestTimeoutMs: 120_000,
+    overallTimeoutMs: 120_000,
+  });
+  const result = await provider.complete({
+    model: KUAIPAO_GPT_56_MODEL,
+    messages: [{ role: 'user', content: inputs.prompt }],
+    maxTokens: 2_048,
+    reasoningEffort: 'high',
+  });
+  return {
+    success: true,
+    message: 'Kuaipao GPT-5.6 accepted the request',
     details: {
       Model: result.model,
       Reply: result.content.slice(0, 200),

@@ -6,7 +6,7 @@ import {
   ProviderFailoverChatProvider,
   type ChatProvider,
 } from '@/core/ai/chat';
-import { KieChatProvider } from '@/core/ai/kie-chat';
+import { KuaipaoChatProvider } from '@/core/ai/kuaipao-chat';
 import { HttpAnimationRenderer } from '@/core/animation-renderer';
 import { db } from '@/core/db';
 import {
@@ -42,7 +42,7 @@ const subjects = new Set<AnimationSubject>([
   'economics',
 ]);
 
-const modelChoices = new Set<AnimationModelChoice>(['auto', 'kie']);
+const modelChoices = new Set<AnimationModelChoice>(['auto', 'kuaipao']);
 
 export class AnimationApiError extends Error {
   constructor(
@@ -185,24 +185,20 @@ export function parseModelChoice(value: unknown): AnimationModelChoice {
   throw new AnimationApiError('Invalid animation model', 'INVALID_MODEL', 400);
 }
 
-function kieProvider(configs: ConfigMap) {
-  if (!configs.kie_api_key) {
+function kuaipaoProvider(configs: ConfigMap) {
+  if (!configs.kuaipao_api_key) {
     throw new AnimationApiError(
-      'Kie chat provider is not configured',
+      'Kuaipao chat provider is not configured',
       'MODEL_UNAVAILABLE',
       503
     );
   }
-  return new KieChatProvider({
-    apiKey: configs.kie_api_key,
-    baseUrl: configs.kie_base_url || 'https://api.kie.ai',
-    maxAttempts: 1,
-    // Explicit models do not have Auto's fallback budget. Give a large v5
-    // scene plan enough time to stream and finish its mathematical audit while
-    // the service-level 5 minute deadline remains the hard upper bound.
+  return new KuaipaoChatProvider({
+    apiKey: configs.kuaipao_api_key,
+    baseUrl: configs.kuaipao_base_url || 'https://kuaipao.pro/v1',
+    maxAttempts: 2,
     requestTimeoutMs: 240_000,
     overallTimeoutMs: 300_000,
-    reasoningOnlyTimeoutMs: 60_000,
   });
 }
 
@@ -243,7 +239,7 @@ function policyKey(policy: Pick<AnimationModelOption, 'provider' | 'model'>) {
 }
 
 function policyAvailable(policy: AnimationModelPolicy, configs: ConfigMap) {
-  return policy.provider === 'kie' && !!configs.kie_api_key;
+  return policy.provider === 'kuaipao' && !!configs.kuaipao_api_key;
 }
 
 export async function listAnimationModels(
@@ -251,13 +247,13 @@ export async function listAnimationModels(
   userId: string
 ): Promise<AnimationModelCatalog> {
   const viewerTier = await getAnimationAccessTier(userId);
-  // Kie does not document a shared `/models` discovery endpoint. Its catalog
-  // is the intersection of our reviewed endpoint allowlist and a configured
-  // credential, never an invented discovery request.
-  const kieOptions = configs.kie_api_key
-    ? policyOptions(viewerTier, 'kie')
+  // The product catalog is the intersection of the reviewed model allowlist
+  // and a configured credential. We deliberately do not expose every model
+  // returned by the upstream `/models` endpoint.
+  const kuaipaoOptions = configs.kuaipao_api_key
+    ? policyOptions(viewerTier, 'kuaipao')
     : [];
-  const discoveredOptions = kieOptions;
+  const discoveredOptions = kuaipaoOptions;
   const entitledTargets = new Set(
     discoveredOptions.filter((option) => option.entitled).map(policyKey)
   );
@@ -290,10 +286,16 @@ export async function resolveChatProvider(
   requestedModel?: string
 ): Promise<ProviderResolution> {
   const tier = await getAnimationAccessTier(userId);
+  // Historic animation rows may still carry a Kie selection. Public requests
+  // pass through parseModelChoice and reject that stale value; only trusted
+  // persisted rows are migrated to the new Auto target here so approval and
+  // repair of existing work do not become permanently blocked.
+  const normalizedChoice =
+    (choice as string) === 'kuaipao' ? 'kuaipao' : 'auto';
   const decision = decideAnimationModelAccess({
     tier,
-    choice,
-    requestedModel,
+    choice: normalizedChoice,
+    requestedModel: normalizedChoice === 'kuaipao' ? requestedModel : undefined,
   });
   if (!decision.allowed) {
     const errors = {
@@ -319,7 +321,10 @@ export async function resolveChatProvider(
         503
       );
     }
-    return { provider: kieProvider(configs), model: decision.policy.model };
+    return {
+      provider: kuaipaoProvider(configs),
+      model: decision.policy.model,
+    };
   }
 
   const policies = autoModelPolicies(tier)
@@ -336,7 +341,7 @@ export async function resolveChatProvider(
   const targets = policies.map((policy) => {
     let provider = providers.get(policy.provider);
     if (!provider) {
-      provider = kieProvider(configs);
+      provider = kuaipaoProvider(configs);
       providers.set(policy.provider, provider);
     }
     return {

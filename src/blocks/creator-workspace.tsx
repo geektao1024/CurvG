@@ -188,33 +188,9 @@ export function CreatorWorkspace({
     modelUnavailable: m['creator.model.unavailable'](),
     modelUnavailableShort: m['creator.model.unavailable_short'](),
     curatedModels: {
-      kieGemini36Flash: {
-        label: m['creator.model.kie_gemini_36_flash.label'](),
-        description: m['creator.model.kie_gemini_36_flash.description'](),
-      },
-      kieGrok45: {
-        label: m['creator.model.kie_grok_45.label'](),
-        description: m['creator.model.kie_grok_45.description'](),
-      },
-      kieGemini31Pro: {
-        label: m['creator.model.kie_gemini_31_pro.label'](),
-        description: m['creator.model.kie_gemini_31_pro.description'](),
-      },
-      kieGpt52: {
-        label: m['creator.model.kie_gpt_52.label'](),
-        description: m['creator.model.kie_gpt_52.description'](),
-      },
-      kieGpt55: {
-        label: m['creator.model.kie_gpt_55.label'](),
-        description: m['creator.model.kie_gpt_55.description'](),
-      },
-      kieClaudeSonnet46: {
-        label: m['creator.model.kie_claude_sonnet_46.label'](),
-        description: m['creator.model.kie_claude_sonnet_46.description'](),
-      },
-      kieClaudeOpus47: {
-        label: m['creator.model.kie_claude_opus_47.label'](),
-        description: m['creator.model.kie_claude_opus_47.description'](),
+      kuaipaoGpt56Sol: {
+        label: m['creator.model.kuaipao_gpt_56_sol.label'](),
+        description: m['creator.model.kuaipao_gpt_56_sol.description'](),
       },
     },
     failureMessages: {

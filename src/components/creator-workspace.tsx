@@ -139,14 +139,7 @@ interface CreatorGenerationRequest {
   model?: string;
 }
 
-export type CreatorCuratedModelKey =
-  | 'kieGemini36Flash'
-  | 'kieGrok45'
-  | 'kieGemini31Pro'
-  | 'kieGpt52'
-  | 'kieGpt55'
-  | 'kieClaudeSonnet46'
-  | 'kieClaudeOpus47';
+export type CreatorCuratedModelKey = 'kuaipaoGpt56Sol';
 
 interface CreatorCuratedModelPreset {
   key: CreatorCuratedModelKey;
@@ -157,46 +150,10 @@ interface CreatorCuratedModelPreset {
 
 const CURATED_MODEL_PRESETS: CreatorCuratedModelPreset[] = [
   {
-    key: 'kieGemini36Flash',
-    provider: 'kie',
-    models: ['gemini-3.6-flash'],
+    key: 'kuaipaoGpt56Sol',
+    provider: 'kuaipao',
+    models: ['gpt-5.6-sol'],
     tier: 'free',
-  },
-  {
-    key: 'kieGrok45',
-    provider: 'kie',
-    models: ['grok-4-5'],
-    tier: 'free',
-  },
-  {
-    key: 'kieGemini31Pro',
-    provider: 'kie',
-    models: ['gemini-3.1-pro'],
-    tier: 'free',
-  },
-  {
-    key: 'kieGpt52',
-    provider: 'kie',
-    models: ['gpt-5-2'],
-    tier: 'pro',
-  },
-  {
-    key: 'kieGpt55',
-    provider: 'kie',
-    models: ['gpt-5-5'],
-    tier: 'pro',
-  },
-  {
-    key: 'kieClaudeSonnet46',
-    provider: 'kie',
-    models: ['claude-sonnet-4-6'],
-    tier: 'pro',
-  },
-  {
-    key: 'kieClaudeOpus47',
-    provider: 'kie',
-    models: ['claude-opus-4-7'],
-    tier: 'pro',
   },
 ];
 
@@ -392,7 +349,7 @@ export interface CreatorWorkspaceCopy {
 }
 
 function isModelProvider(value: string): value is AnimationModelProvider {
-  return value === 'kie';
+  return value === 'kuaipao';
 }
 
 const progressByStatus: Record<AnimationStatus, number> = {
