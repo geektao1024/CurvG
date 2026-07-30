@@ -29,6 +29,7 @@ import {
   generateAnimationSpec,
   parseAnimationSpecWithRepairs,
   renderFailureRequiresCodeRegeneration,
+  shouldUseAnimationCodeComposer,
 } from '../src/modules/animations/service';
 import {
   AnimationApiError,
@@ -434,6 +435,34 @@ test('quadratic tangent requests have a complete provider-independent proof prof
       'Animate the area under a sine curve.'
     ),
     undefined
+  );
+});
+
+test('deterministic proof profiles compile locally until the renderer requests repair', () => {
+  const base = {
+    hasProvider: true,
+    hasModel: true,
+    status: 'awaiting_approval',
+    hasCode: false,
+    providerName: 'curvg',
+    modelName: 'deterministic-scene-v1',
+  };
+  assert.equal(
+    shouldUseAnimationCodeComposer({ ...base, regenerateCode: false }),
+    false
+  );
+  assert.equal(
+    shouldUseAnimationCodeComposer({ ...base, regenerateCode: true }),
+    true
+  );
+  assert.equal(
+    shouldUseAnimationCodeComposer({
+      ...base,
+      providerName: 'kuaipao',
+      modelName: 'gpt-5.6-sol',
+      regenerateCode: false,
+    }),
+    true
   );
 });
 

@@ -1961,12 +1961,15 @@ export async function approveAnimation(params: {
     const repairEvidence = parts.renderRepair?.regenerateCode
       ? parts.renderRepair.context
       : undefined;
-    const shouldCompose =
-      !!params.provider &&
-      !!params.model &&
-      (row.status === 'awaiting_approval' ||
-        !parts.code ||
-        parts.renderRepair?.regenerateCode === true);
+    const shouldCompose = shouldUseAnimationCodeComposer({
+      hasProvider: !!params.provider,
+      hasModel: !!params.model,
+      status: row.status,
+      hasCode: !!parts.code,
+      regenerateCode: parts.renderRepair?.regenerateCode === true,
+      providerName: row.provider,
+      modelName: row.model,
+    });
     if (shouldCompose) {
       const composed = await composeOrchestratedAnimationCode({
         animationId: row.id,
@@ -2074,6 +2077,27 @@ export async function approveAnimation(params: {
     );
     throw new AnimationGenerationError(failure, error);
   }
+}
+
+export function shouldUseAnimationCodeComposer(params: {
+  hasProvider: boolean;
+  hasModel: boolean;
+  status: string;
+  hasCode: boolean;
+  regenerateCode: boolean;
+  providerName: string | null;
+  modelName: string | null;
+}) {
+  if (!params.hasProvider || !params.hasModel) return false;
+  const deterministicProof =
+    params.providerName === 'curvg' &&
+    params.modelName === 'deterministic-scene-v1';
+  if (deterministicProof && !params.regenerateCode) return false;
+  return (
+    params.status === 'awaiting_approval' ||
+    !params.hasCode ||
+    params.regenerateCode
+  );
 }
 
 function appendVersion(
