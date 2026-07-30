@@ -29,6 +29,7 @@ export async function startSilentAnimationProduction(params: {
   provider?: ChatProvider;
   model?: string;
   orchestrationPlan?: AnimationOrchestrationPlan | null;
+  capacityOwnerToken?: string;
   signal?: AbortSignal;
 }): Promise<AnimationDetail> {
   let renderer: ReturnType<typeof resolveRenderer>;
@@ -120,7 +121,12 @@ export async function startSilentAnimationProduction(params: {
 
   try {
     return params.provider
-      ? await withAnimationGenerationCapacity(params.userId, run)
+      ? await withAnimationGenerationCapacity(
+          params.userId,
+          run,
+          undefined,
+          params.capacityOwnerToken
+        )
       : await run();
   } catch (error) {
     if (creditTaskId) {

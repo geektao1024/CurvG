@@ -215,6 +215,32 @@ test('animation capacity rejects concurrent work for the same user', async () =>
   assert.equal(await first, 'done');
 });
 
+test('durable workflow owner bypasses a stale local capacity marker', async () => {
+  globalThis.__animationCapacityState = {
+    activeUsers: new Set(['user-1']),
+  };
+  let receivedOwnerToken: string | undefined;
+  const result = await withAnimationGenerationCapacity(
+    'user-1',
+    async () => 'resumed',
+    {
+      async acquire(_userId, ownerToken) {
+        receivedOwnerToken = ownerToken;
+        return ownerToken || null;
+      },
+      async release() {},
+    },
+    'ANWF_animation-1'
+  );
+
+  assert.equal(result, 'resumed');
+  assert.equal(receivedOwnerToken, 'ANWF_animation-1');
+  assert.equal(
+    globalThis.__animationCapacityState.activeUsers.has('user-1'),
+    true
+  );
+});
+
 test('animation capacity bounds aggregate upstream work', async () => {
   globalThis.__animationCapacityState = { activeUsers: new Set() };
   const releases: Array<() => void> = [];

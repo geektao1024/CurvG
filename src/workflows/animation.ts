@@ -253,6 +253,7 @@ export class AnimationWorkflow extends WorkflowEntrypoint<
           provider: resolved.provider,
           model: resolved.model,
           orchestrationPlan,
+          capacityOwnerToken: `ANWF_${payload.animationId}`,
         });
         return { animationId: produced.id, status: produced.status };
       }

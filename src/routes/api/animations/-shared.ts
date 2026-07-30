@@ -596,8 +596,9 @@ export async function withAnimationGenerationCapacity<T>(
 ): Promise<T> {
   const state = animationCapacityState();
   if (
-    state.activeUsers.has(userId) ||
-    state.activeUsers.size >= MAX_CONCURRENT_ANIMATION_GENERATIONS
+    !ownerToken &&
+    (state.activeUsers.has(userId) ||
+      state.activeUsers.size >= MAX_CONCURRENT_ANIMATION_GENERATIONS)
   ) {
     throw new AnimationApiError(
       'Animation generation is busy. Please retry shortly.',
@@ -605,7 +606,11 @@ export async function withAnimationGenerationCapacity<T>(
       429
     );
   }
-  state.activeUsers.add(userId);
+  // Workflow calls carry a durable owner token. Let the database lease decide
+  // whether that owner may resume after a Worker cancellation: an in-memory
+  // Set can retain a stale user when the runtime terminates before `finally`.
+  // Requests without a durable token still use the fast local guard.
+  if (!ownerToken) state.activeUsers.add(userId);
   let leaseToken: string | null = null;
   try {
     leaseToken = await leaseBackend.acquire(userId, ownerToken);
@@ -628,7 +633,7 @@ export async function withAnimationGenerationCapacity<T>(
         });
       }
     }
-    state.activeUsers.delete(userId);
+    if (!ownerToken) state.activeUsers.delete(userId);
   }
 }
 
