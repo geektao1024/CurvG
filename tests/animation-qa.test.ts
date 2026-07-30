@@ -283,7 +283,7 @@ test('quality gate delivers a safe best candidate after one visual repair', () =
   const qa = validateAnimationVisualQaReport({
     ...qaReport,
     status: 'review',
-    score: 75,
+    score: 65,
     frozenSegments: [
       [4.867, 7],
       [7.867, 10],

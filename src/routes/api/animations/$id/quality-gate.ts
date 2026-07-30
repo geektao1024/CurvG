@@ -141,12 +141,22 @@ async function POST({
         const origin = configs.app_url?.trim()
           ? new URL(configs.app_url).origin
           : new URL(request.url).origin;
-        review = await runAnimationSemanticReview({
-          detail,
-          configs,
-          origin,
-          signal: request.signal,
-        });
+        try {
+          review = await runAnimationSemanticReview({
+            detail,
+            configs,
+            origin,
+            signal: request.signal,
+          });
+        } catch (error) {
+          console.warn('[animation-quality-gate] semantic review degraded', {
+            animationId: context.id,
+            jobId,
+            attempt: attemptNumber,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          review = deterministicReviewFromQa({ qa: visualQa, jobId });
+        }
       } else {
         review = deterministicReviewFromQa({ qa: visualQa, jobId });
       }

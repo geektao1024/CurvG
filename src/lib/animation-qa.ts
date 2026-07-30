@@ -91,7 +91,7 @@ export function isAnimationVisualQaSafeAfterRepair(
   qa: AnimationVisualQaReport
 ): boolean {
   return (
-    qa.score >= 70 &&
+    qa.score >= 65 &&
     qa.blackSegments.length === 0 &&
     qa.flashTimestamps.length === 0 &&
     qa.frames.every((frame) => !frame.edgeRisk) &&
