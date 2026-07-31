@@ -163,7 +163,7 @@
   "creator.model.retry_load": "重试",
   "creator.model.unavailable": "当前没有可用的生成模型，请稍后重试或联系客服。",
   "creator.model.unavailable_short": "不可用",
-  "creator.model.deterministic_fallback": "CurvG 基础保底",
+  "creator.model.deterministic_fallback": "CurvG 验证模板",
   "creator.model.kuaipao_gpt_56_sol.label": "GPT-5.6",
   "creator.model.kuaipao_gpt_56_sol.description": "快跑 Responses 接口，高强度推理用于场景规划与 Manim 代码生成",
   "creator.model.kie_gemini_36_flash.label": "Gemini 3.6 Flash",

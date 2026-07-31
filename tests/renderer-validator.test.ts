@@ -7,7 +7,7 @@ import test from 'node:test';
 
 import {
   buildDeterministicCycloidArtifacts,
-  buildDeterministicDeliveryFallbackArtifacts,
+  buildDeterministicHeartCurveArtifacts,
   composeAnimationSpecFromArtifacts,
 } from '../src/lib/animation-pipeline';
 import { compileAnimationSpec } from '../src/lib/manim-compiler';
@@ -79,19 +79,18 @@ test('renderer validator accepts the deterministic rolling-circle cycloid profil
   );
 });
 
-test('renderer validator accepts the provider-independent delivery fallback', () => {
+test('renderer validator accepts the verified heart-curve profile', () => {
+  const artifacts =
+    buildDeterministicHeartCurveArtifacts('用 xy 坐标轴画一个爱心');
+  assert.ok(artifacts);
   const source = compileAnimationSpec(
-    composeAnimationSpecFromArtifacts(
-      buildDeterministicDeliveryFallbackArtifacts(
-        '我想做一个 y 和 x 的动画演示说明，这两个是什么关系。'
-      )
-    )
+    composeAnimationSpecFromArtifacts(artifacts)
   );
   const result = validate(source);
 
   assert.equal(result.status, 0, result.stderr);
-  assert.match(source, /MathTex\("y=f\(x\)"/);
-  assert.match(source, /Transform\(obj_topic_title/);
+  assert.match(source, /obj_heart_curve = ParametricFunction/);
+  assert.match(source, /MoveAlongPath\(obj_heart_point, obj_heart_curve\)/);
 });
 
 test('renderer validator rejects empty scenes, fake 3D, and file reads', () => {

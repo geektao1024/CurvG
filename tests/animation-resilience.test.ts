@@ -11,7 +11,7 @@ import { animationFailureCodeFromHttpStatus } from '../src/lib/animation';
 import {
   buildDeterministicAnimationPlanningProfile,
   buildDeterministicCycloidArtifacts,
-  buildDeterministicDeliveryFallbackArtifacts,
+  buildDeterministicHeartCurveArtifacts,
   buildDeterministicQuadraticTangentArtifacts,
   buildDeterministicSceneArtifact,
   composeAnimationSpecFromArtifacts,
@@ -498,26 +498,51 @@ test('parametric compiler rejects non-allowlisted expressions', () => {
   );
 });
 
-test('provider-independent delivery fallback validates and compiles for specific and generic prompts', () => {
-  for (const prompt of [
-    '我想做一个 y 和 x 的动画演示说明，这两个是什么关系。怎么向小学生介绍？',
-    'Explain the idea visually even when no exact formula was supplied.',
-  ]) {
-    const artifacts = buildDeterministicDeliveryFallbackArtifacts(prompt);
-    const spec = composeAnimationSpecFromArtifacts(artifacts);
-    const code = compileAnimationSpec(spec);
+test('heart requests use a verified provider-independent parametric profile', () => {
+  const prompt = '用 xy 轴画一个爱心';
+  const artifacts = buildDeterministicHeartCurveArtifacts(prompt);
+  assert.ok(artifacts);
+  const spec = composeAnimationSpecFromArtifacts(artifacts);
+  const code = compileAnimationSpec(spec);
 
-    assert.equal(spec.schemaVersion, 5);
-    assert.equal(spec.durationSeconds, 12);
-    assert.equal(spec.shots.at(-1)?.endAt, 12);
-    assert.match(code, /from manim import \*/);
-    assert.match(code, /class CurvGScene\(Scene\)/);
-    assert.match(code, /obj_core_relation/);
-  }
-
-  const relation = buildDeterministicDeliveryFallbackArtifacts('解释 x 和 y');
-  assert.equal(relation.scene.objects.at(-1)?.expr, 'y=f(x)');
-  assert.match(relation.mathematics.mathDossier.coreClaim, /不能唯一决定关系/);
+  assert.equal(
+    buildDeterministicAnimationPlanningProfile(prompt)?.id,
+    'heart-curve-v1'
+  );
+  assert.equal(spec.schemaVersion, 5);
+  assert.equal(spec.durationSeconds, 12);
+  assert.equal(spec.shots.at(-1)?.endAt, 12);
+  assert.ok(spec.objects.some((object) => object.kind === 'axes'));
+  assert.ok(
+    spec.objects.some(
+      (object) =>
+        object.id === 'heart_curve' &&
+        object.kind === 'parametric' &&
+        object.xExpr === '4*sin(t)^3' &&
+        object.yExpr === '2.6*cos(t)-cos(2*t)-0.4*cos(3*t)-0.2*cos(4*t)' &&
+        object.domain?.[1] === Math.PI * 2
+    )
+  );
+  assert.match(code, /MoveAlongPath\(obj_heart_point, obj_heart_curve\)/);
+  assert.match(code, /ParametricFunction/);
+  assert.equal(
+    deterministicMathReviewForScene(spec, {
+      content: JSON.stringify(artifacts.scene),
+      provider: 'curvg',
+      model: 'deterministic-scene-v1',
+    })?.status,
+    'approved'
+  );
+  assert.equal(
+    buildDeterministicHeartCurveArtifacts('Explain matrix multiplication.'),
+    undefined
+  );
+  assert.equal(
+    buildDeterministicAnimationPlanningProfile(
+      'Explain an unfamiliar topic with no verified template.'
+    ),
+    undefined
+  );
 });
 
 test('deterministic proof profiles compile locally until the renderer requests repair', () => {
@@ -536,14 +561,6 @@ test('deterministic proof profiles compile locally until the renderer requests r
   assert.equal(
     shouldUseAnimationCodeComposer({ ...base, regenerateCode: true }),
     true
-  );
-  assert.equal(
-    shouldUseAnimationCodeComposer({
-      ...base,
-      modelName: 'deterministic-fallback-v1',
-      regenerateCode: false,
-    }),
-    false
   );
   assert.equal(
     shouldUseAnimationCodeComposer({

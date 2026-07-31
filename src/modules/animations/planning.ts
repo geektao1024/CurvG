@@ -26,7 +26,6 @@ import {
 import {
   ANIMATION_PLANNING_STAGES,
   buildDeterministicAnimationPlanningProfile,
-  buildDeterministicDeliveryFallbackArtifacts,
   buildDeterministicSceneArtifact,
   composeAnimationSpecFromArtifacts,
   parseAnimationPlanningArtifact,
@@ -730,6 +729,39 @@ export function deterministicMathReviewForScene(
       issues: [],
     };
   }
+  const heart = spec.objects?.find(
+    (object) => object.kind === 'parametric' && object.id === 'heart_curve'
+  );
+  const normalizedHeartX = heart?.xExpr
+    ?.replaceAll(' ', '')
+    .replaceAll('**', '^');
+  const normalizedHeartY = heart?.yExpr
+    ?.replaceAll(' ', '')
+    .replaceAll('**', '^');
+  const hasExactHeart =
+    /(?:heart|爱心|心形)/iu.test(evidence) &&
+    normalizedHeartX === '4*sin(t)^3' &&
+    normalizedHeartY === '2.6*cos(t)-cos(2*t)-0.4*cos(3*t)-0.2*cos(4*t)' &&
+    Math.abs((heart?.domain?.[0] || 0) - 0) < 1e-9 &&
+    Math.abs((heart?.domain?.[1] || 0) - Math.PI * 2) < 1e-9 &&
+    spec.objects?.some((object) => object.kind === 'axes') &&
+    spec.timeline?.some(
+      (event) =>
+        event.op === 'move_along' &&
+        event.ref === 'heart_point' &&
+        event.pathRef === 'heart_curve'
+    );
+  if (hasExactHeart) {
+    return {
+      status: 'approved',
+      summary:
+        'The deterministic heart profile preserves the closed, y-axis-symmetric parameterization and synchronized trace motion.',
+      checkedClaims: (spec.mathDossier.checks || [])
+        .map((check) => check.claim)
+        .slice(0, 20),
+      issues: [],
+    };
+  }
   const cycloid = spec.objects?.find(
     (object) =>
       object.kind === 'parametric' && object.id === 'cycloid_trace_full'
@@ -798,8 +830,7 @@ async function persistDeterministicArtifacts(params: {
   planning: PlanningParams;
   artifacts: AnimationPlanningArtifacts;
   profile: string;
-  model: 'deterministic-scene-v1' | 'deterministic-fallback-v1';
-  fallbackCode?: string;
+  model: 'deterministic-scene-v1';
 }): Promise<PersistentPlanningResult> {
   let result: ChatCompletionResult | undefined;
   const completedArtifacts: Partial<AnimationPlanningArtifacts> = {};
@@ -834,9 +865,6 @@ async function persistDeterministicArtifacts(params: {
       id: started.id,
       artifact,
       outputHash: md5(JSON.stringify(artifact)),
-      diagnostic: params.fallbackCode
-        ? { degradedDelivery: true, strictFailureCode: params.fallbackCode }
-        : undefined,
       provider: 'curvg',
       model: params.model,
     });
@@ -856,7 +884,6 @@ async function persistDeterministicArtifacts(params: {
     chatId: params.planning.context.chatId,
     runId: params.planning.context.runId,
     profile: params.profile,
-    degraded: !!params.fallbackCode,
   });
   return {
     result: result!,
@@ -974,25 +1001,8 @@ async function generatePersistentAnimationSpecStrict(
 export async function generatePersistentAnimationSpec(
   planning: PlanningParams
 ): Promise<PersistentPlanningResult> {
-  try {
-    return await generatePersistentAnimationSpecStrict(planning);
-  } catch (error) {
-    if (planning.signal?.aborted) throw error;
-    const failureCode = stageErrorCode(error);
-    console.warn(
-      '[animation-planning] strict plan degraded to local delivery',
-      {
-        chatId: planning.context.chatId,
-        runId: planning.context.runId,
-        failureCode,
-      }
-    );
-    return persistDeterministicArtifacts({
-      planning,
-      artifacts: buildDeterministicDeliveryFallbackArtifacts(planning.prompt),
-      profile: 'delivery-fallback-v1',
-      model: 'deterministic-fallback-v1',
-      fallbackCode: failureCode,
-    });
-  }
+  // Completed stages remain durable and are reused by runStage on a Workflow
+  // retry. Do not replace them with a generic scene when a later stage or the
+  // upstream provider fails: an unrelated video is not a successful result.
+  return generatePersistentAnimationSpecStrict(planning);
 }

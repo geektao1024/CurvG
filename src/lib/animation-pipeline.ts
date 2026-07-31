@@ -1228,8 +1228,463 @@ export function buildDeterministicCycloidArtifacts(
   return artifacts;
 }
 
+/**
+ * A verified, provider-independent heart-curve profile. The familiar heart
+ * curve is scaled into CurvG's fixed graph viewport so the complete trace,
+ * axes, and moving point remain visible without model-authored layout code.
+ */
+export function buildDeterministicHeartCurveArtifacts(
+  prompt: string
+): AnimationPlanningArtifacts | undefined {
+  const normalized = prompt.replace(/\s+/gu, ' ').trim();
+  const requestsHeartCurve =
+    /(?:爱心|心形|心型).{0,40}(?:坐标|坐标轴|曲线|参数|函数|画|绘|描|动画)|(?:坐标|坐标轴|曲线|参数|函数|画|绘|描|动画).{0,40}(?:爱心|心形|心型)|(?:heart).{0,40}(?:curve|graph|axes|axis|plot|draw|trace)|(?:curve|graph|axes|axis|plot|draw|trace).{0,40}(?:heart)/iu.test(
+      normalized
+    );
+  if (!requestsHeartCurve) return undefined;
+
+  const chinese = /[\u3400-\u9fff]/u.test(normalized);
+  const durationSeconds = Math.min(16, deterministicDuration(prompt));
+  const traceStart = Math.min(1.2, durationSeconds * 0.1);
+  const traceEnd = durationSeconds * 0.55;
+  const formulaEnd = durationSeconds * 0.78;
+  const traceRunTime = Number((traceEnd - traceStart - 0.15).toFixed(3));
+  const formulaRunTime = Number(
+    Math.min(1.15, formulaEnd - traceEnd - 0.2).toFixed(3)
+  );
+  const pulseRunTime = Number(
+    Math.min(0.9, (durationSeconds - formulaEnd) * 0.32).toFixed(3)
+  );
+  const secondPulseAt = Number(
+    Math.min(
+      durationSeconds - pulseRunTime - 0.25,
+      formulaEnd + pulseRunTime + 0.35
+    ).toFixed(3)
+  );
+  const heartX = '4*sin(t)^3';
+  const heartY = '2.6*cos(t)-cos(2*t)-0.4*cos(3*t)-0.2*cos(4*t)';
+
+  const intent = intentArtifactSchema.parse({
+    title: chinese
+      ? '在坐标轴上画出一颗心'
+      : 'Trace a heart on the coordinate plane',
+    summary: chinese
+      ? '坐标轴出现后，参数 t 驱动一个点沿心形曲线运动，并同步描出完整轮廓。'
+      : 'After the axes appear, one parameter moves a point around the curve while the complete heart is traced.',
+    durationSeconds,
+    assumptions: [
+      chinese
+        ? '采用经典心形参数曲线的等比例视窗变体，参数范围为 0≤t≤2π。'
+        : 'Use a viewport-scaled form of the classic heart parameterization for 0≤t≤2π.',
+    ],
+    intent: {
+      learningGoal: chinese
+        ? '看见同一个参数如何同时控制 x、y 坐标并描出闭合心形。'
+        : 'See how one parameter controls both coordinates to trace a closed heart.',
+      hook: chinese
+        ? '一个移动的点，能不能画出一颗心？'
+        : 'Can one moving point draw a heart?',
+      takeaway: chinese
+        ? '让 t 从 0 走到 2π，坐标就会闭合成心形。'
+        : 'Let t run from 0 to 2π and the coordinates close into a heart.',
+    },
+  });
+  const knowledge = knowledgeArtifactSchema.parse({
+    knowledgeMap: [
+      {
+        id: 'coordinate_pair',
+        concept: chinese
+          ? '平面上的点由一对坐标 (x,y) 决定。'
+          : 'A point in the plane is determined by a coordinate pair (x,y).',
+        dependsOn: [],
+        misconception: chinese
+          ? 'x 与 y 不是两条互不相关的动画。'
+          : 'x and y are not two unrelated animations.',
+      },
+      {
+        id: 'shared_parameter',
+        concept: chinese
+          ? '同一个参数 t 同时产生 x(t) 与 y(t)。'
+          : 'The same parameter t produces both x(t) and y(t).',
+        dependsOn: ['coordinate_pair'],
+        misconception: chinese
+          ? '参数 t 不是额外的一条坐标轴。'
+          : 'The parameter t is not an additional coordinate axis.',
+      },
+      {
+        id: 'closed_trace',
+        concept: chinese
+          ? 't 从 0 变化到 2π 后回到起点，形成闭合曲线。'
+          : 'As t runs from 0 to 2π, the point returns to its start and closes the curve.',
+        dependsOn: ['shared_parameter'],
+        misconception: chinese
+          ? '心形轮廓不是静态图片，而是坐标点的连续轨迹。'
+          : 'The heart outline is a continuous coordinate trace, not a static image.',
+      },
+    ],
+  });
+  const curriculum = curriculumArtifactSchema.parse({
+    curriculum: [
+      {
+        id: 'establish_plane',
+        learningJob: chinese
+          ? '先建立 x-y 坐标平面和起始点。'
+          : 'Establish the x-y plane and the starting point.',
+        dependsOn: ['coordinate_pair'],
+        visualEvidence: chinese
+          ? '坐标轴和位于曲线起点的高亮点清楚可见。'
+          : 'The axes and a highlighted point at the curve start are visible.',
+        notationBudget: 0,
+      },
+      {
+        id: 'trace_heart',
+        learningJob: chinese
+          ? '让参数点沿曲线运动并同步留下轨迹。'
+          : 'Move the parameter point and reveal its path at the same time.',
+        dependsOn: ['shared_parameter', 'establish_plane'],
+        visualEvidence: chinese
+          ? '运动点与逐步增长的心形轮廓保持同步。'
+          : 'The moving point stays synchronized with the growing heart outline.',
+        notationBudget: 1,
+      },
+      {
+        id: 'show_rule',
+        learningJob: chinese
+          ? '把视觉轨迹和参数方程联系起来。'
+          : 'Connect the visible trace to its parametric rule.',
+        dependsOn: ['closed_trace', 'trace_heart'],
+        visualEvidence: chinese
+          ? '完整心形与两条参数方程同时保留。'
+          : 'The completed heart remains visible beside both parameter equations.',
+        notationBudget: 2,
+      },
+      {
+        id: 'close_loop',
+        learningJob: chinese
+          ? '强调轨迹闭合并形成最终记忆画面。'
+          : 'Emphasize closure and leave a memorable final image.',
+        dependsOn: ['show_rule'],
+        visualEvidence: chinese
+          ? '心形连续脉冲两次，坐标轴仍作为参照。'
+          : 'The heart pulses twice while the axes remain as reference.',
+        notationBudget: 0,
+      },
+    ],
+  });
+  const mathematics = mathematicsArtifactSchema.parse({
+    mathDossier: {
+      coreClaim: chinese
+        ? '参数曲线 x=4sin³t、y=2.6cos t−cos 2t−0.4cos 3t−0.2cos 4t（0≤t≤2π）描出一条关于 y 轴对称的闭合心形曲线。'
+        : 'The parameterization x=4sin³t and y=2.6cos t−cos 2t−0.4cos 3t−0.2cos 4t for 0≤t≤2π traces a closed heart symmetric about the y-axis.',
+      invariants: [
+        chinese
+          ? '运动点始终位于当前参数 t 对应的曲线上。'
+          : 'The moving point remains on the curve for the current parameter t.',
+        chinese
+          ? 'x(2π−t)=−x(t)，y(2π−t)=y(t)，因此曲线关于 y 轴对称。'
+          : 'x(2π−t)=−x(t) and y(2π−t)=y(t), so the curve is symmetric about the y-axis.',
+        chinese
+          ? 't=0 与 t=2π 得到同一点 (0,1)，轨迹闭合。'
+          : 't=0 and t=2π give the same point (0,1), so the trace closes.',
+      ],
+      commonMisreading: chinese
+        ? '这不是单值函数 y=f(x)；同一个 x 可能对应心形上下两处。'
+        : 'This is not a single-valued y=f(x); one x-coordinate can occur on both halves of the heart.',
+      visualProof: chinese
+        ? '在固定坐标轴上让高亮点沿完整参数曲线运动，同时从起点连续描出轮廓；最后保留闭合曲线和参数方程。'
+        : 'Move a highlighted point along the full parametric path on fixed axes while revealing the outline from its start, then retain the closed curve and equations.',
+      definitions: [
+        {
+          concept: chinese ? '参数曲线' : 'Parametric curve',
+          statement: chinese
+            ? '每个参数值 t 同时指定一个坐标点 (x(t),y(t))。'
+            : 'Each parameter value t specifies one point (x(t),y(t)).',
+        },
+      ],
+      derivationSteps: [
+        chinese
+          ? '令 t 从 0 连续增加到 2π。'
+          : 'Let t increase continuously from 0 to 2π.',
+        chinese
+          ? '用 x(t)=4sin³t 控制左右位置，用 y(t) 的余弦组合控制上下轮廓。'
+          : 'Use x(t)=4sin³t for horizontal position and the cosine combination y(t) for the vertical outline.',
+        chinese
+          ? '将每一对 (x(t),y(t)) 连续连接，得到完整心形。'
+          : 'Connect the coordinate pairs continuously to obtain the complete heart.',
+      ],
+      checks: [
+        {
+          claim: chinese ? '轨迹闭合。' : 'The trace closes.',
+          method: chinese
+            ? '分别代入 t=0 与 t=2π。'
+            : 'Evaluate the parameterization at t=0 and t=2π.',
+          expected: chinese
+            ? '两次都得到 (0,1)。'
+            : 'Both evaluations give (0,1).',
+        },
+        {
+          claim: chinese
+            ? '轨迹关于 y 轴对称。'
+            : 'The trace is symmetric about the y-axis.',
+          method: chinese
+            ? '比较 t 与 2π−t 的坐标。'
+            : 'Compare the coordinates at t and 2π−t.',
+          expected: chinese
+            ? 'x 变号而 y 不变。'
+            : 'x changes sign while y remains unchanged.',
+        },
+      ],
+      limitations: [
+        chinese
+          ? '这是经典心形参数曲线的视窗缩放版本，不代表真实心脏的解剖轮廓。'
+          : 'This is a viewport-scaled classic heart curve, not an anatomical heart model.',
+      ],
+    },
+  });
+  const storyboard = storyboardArtifactSchema.parse({
+    direction: {
+      preset: 'cinematic-math',
+      frame: '16:9',
+      pacing: 'balanced',
+      textPolicy: { maxWordsPerObject: 8, maxSimultaneousText: 1 },
+    },
+    cinematography: { scene: 'static', emphasis: 'clean' },
+    shots: [
+      {
+        id: 'heart_setup',
+        beat: 'hook',
+        purpose: chinese
+          ? '快速出现坐标轴和一颗准备运动的点。'
+          : 'Reveal the axes and a point ready to move.',
+        startAt: 0,
+        endAt: traceStart,
+        focusRef: 'heart_point',
+        transition: 'build',
+        acceptance: [
+          chinese
+            ? '第一秒内坐标轴和高亮点可见。'
+            : 'The axes and highlighted point are visible within the first second.',
+        ],
+      },
+      {
+        id: 'heart_trace',
+        beat: 'mechanism',
+        purpose: chinese
+          ? '让点沿参数路径运动并同步描出心形。'
+          : 'Move the point along the parameter path while drawing the heart.',
+        startAt: traceStart,
+        endAt: traceEnd,
+        focusRef: 'heart_curve',
+        transition: 'build',
+        acceptance: [
+          chinese
+            ? '运动点与曲线描边同时完成一个闭合周期。'
+            : 'The moving point and curve drawing complete one closed cycle together.',
+        ],
+      },
+      {
+        id: 'heart_formula',
+        beat: 'proof',
+        purpose: chinese
+          ? '显示产生当前轨迹的参数方程。'
+          : 'Reveal the parameterization that produced the trace.',
+        startAt: traceEnd,
+        endAt: formulaEnd,
+        focusRef: 'heart_formula',
+        transition: 'emphasis',
+        acceptance: [
+          chinese
+            ? '两条参数方程可读，心形仍保持完整。'
+            : 'Both parameter equations are readable while the heart remains complete.',
+        ],
+      },
+      {
+        id: 'heart_payoff',
+        beat: 'payoff',
+        purpose: chinese
+          ? '用两次轻微脉冲强化完整心形。'
+          : 'Reinforce the complete heart with two subtle pulses.',
+        startAt: formulaEnd,
+        endAt: durationSeconds,
+        focusRef: 'heart_curve',
+        transition: 'emphasis',
+        acceptance: [
+          chinese
+            ? '最终画面以大尺寸完整心形为主体，不依赖说明文字。'
+            : 'The final frame is dominated by the complete heart without relying on prose.',
+        ],
+      },
+    ],
+  });
+  const scene = sceneArtifactSchema.parse({
+    style: {
+      background: '#090B16',
+      palette: ['#FF4D8D', '#FF8FB5', '#7C8CFF', '#F4EDE1'],
+      camera:
+        'Fixed 16:9 coordinate-plane composition with a centered hero curve.',
+    },
+    objects: [
+      {
+        id: 'heart_axes',
+        kind: 'axes',
+        region: 'graph',
+        importance: 'context',
+        color: '#8B92A8',
+      },
+      {
+        id: 'heart_curve',
+        kind: 'parametric',
+        region: 'graph',
+        importance: 'hero',
+        xExpr: heartX,
+        yExpr: heartY,
+        domain: [0, Math.PI * 2],
+        color: '#FF4D8D',
+      },
+      {
+        id: 'heart_point',
+        kind: 'point',
+        region: 'graph',
+        importance: 'hero',
+        position: [0, 1],
+        color: '#FFD7E5',
+      },
+      {
+        id: 'heart_formula',
+        kind: 'formula',
+        region: 'formula',
+        importance: 'supporting',
+        parts: [
+          {
+            id: 'heart_x',
+            latex: 'x=4\\sin^3 t,',
+            meaning: 'horizontal coordinate',
+            color: '#FF8FB5',
+          },
+          {
+            id: 'heart_y',
+            latex: '\\quad y=2.6\\cos t-\\cos 2t-0.4\\cos 3t-0.2\\cos 4t',
+            meaning: 'vertical coordinate',
+            color: '#F4EDE1',
+          },
+        ],
+      },
+    ],
+    timeline: [
+      {
+        id: 'heart_axes_in',
+        shotId: 'heart_setup',
+        at: 0,
+        op: 'draw',
+        ref: 'heart_axes',
+        runTime: Number(Math.min(0.85, traceStart - 0.15).toFixed(3)),
+        ease: 'smooth',
+      },
+      {
+        id: 'heart_point_in',
+        shotId: 'heart_setup',
+        at: 0,
+        op: 'fade_in',
+        ref: 'heart_point',
+        runTime: Number(Math.min(0.85, traceStart - 0.15).toFixed(3)),
+        ease: 'smooth',
+      },
+      {
+        id: 'heart_curve_trace',
+        shotId: 'heart_trace',
+        at: traceStart,
+        op: 'draw',
+        ref: 'heart_curve',
+        runTime: traceRunTime,
+        ease: 'linear',
+      },
+      {
+        id: 'heart_point_trace',
+        shotId: 'heart_trace',
+        at: traceStart,
+        op: 'move_along',
+        ref: 'heart_point',
+        pathRef: 'heart_curve',
+        runTime: traceRunTime,
+        ease: 'linear',
+      },
+      {
+        id: 'heart_formula_in',
+        shotId: 'heart_formula',
+        at: traceEnd,
+        op: 'write',
+        ref: 'heart_formula',
+        runTime: formulaRunTime,
+        ease: 'smooth',
+      },
+      {
+        id: 'heart_formula_emphasis',
+        shotId: 'heart_formula',
+        at: Number((traceEnd + formulaRunTime + 0.2).toFixed(3)),
+        op: 'emphasize',
+        ref: 'heart_formula',
+        runTime: Number(
+          Math.min(0.85, formulaEnd - traceEnd - formulaRunTime - 0.25).toFixed(
+            3
+          )
+        ),
+        ease: 'there_and_back',
+      },
+      {
+        id: 'heart_first_pulse',
+        shotId: 'heart_payoff',
+        at: formulaEnd,
+        op: 'emphasize',
+        ref: 'heart_curve',
+        runTime: pulseRunTime,
+        ease: 'there_and_back',
+      },
+      {
+        id: 'heart_second_pulse',
+        shotId: 'heart_payoff',
+        at: secondPulseAt,
+        op: 'emphasize',
+        ref: 'heart_curve',
+        runTime: pulseRunTime,
+        ease: 'there_and_back',
+      },
+      {
+        id: 'heart_final_hold',
+        shotId: 'heart_payoff',
+        at: Number((secondPulseAt + pulseRunTime + 0.1).toFixed(3)),
+        op: 'hold',
+        ref: 'heart_curve',
+        runTime: Number(
+          Math.max(
+            0.15,
+            durationSeconds - secondPulseAt - pulseRunTime - 0.1
+          ).toFixed(3)
+        ),
+        ease: 'linear',
+      },
+    ],
+    layout: { regions: 'single' },
+    dependencies: ['Manim Community', 'LaTeX'],
+    notes: [
+      'Deterministic profile heart-curve-v1.',
+      'The formula is the classic Fourier heart curve scaled to CurvG graph coordinates.',
+      'The moving point and Create animation share the same linear parameter interval.',
+    ],
+  });
+  const artifacts = {
+    intent,
+    knowledge,
+    curriculum,
+    mathematics,
+    storyboard,
+    scene,
+  };
+  composeAnimationSpecFromArtifacts(artifacts);
+  return artifacts;
+}
+
 export interface DeterministicAnimationPlanningProfile {
-  id: 'quadratic-tangent-v1' | 'cycloid-v1';
+  id: 'quadratic-tangent-v1' | 'cycloid-v1' | 'heart-curve-v1';
   artifacts: AnimationPlanningArtifacts;
 }
 
@@ -1243,11 +1698,10 @@ function fallbackDisplayTitle(prompt: string, chinese: boolean) {
 }
 
 /**
- * Provider-independent last-resort delivery contract. It deliberately avoids
- * inventing a missing formula or theorem: the scene teaches how to read a
- * relationship (or how to inspect a general question) using only claims that
- * are true for every request. This is less bespoke than an audited AI plan,
- * but it is valid v5 IR and can always be compiled locally.
+ * @deprecated Legacy artifact reader only. The planning pipeline must never
+ * route new requests here: a generic explainer is not a successful answer to
+ * an unmatched prompt. Kept temporarily so archived specifications and older
+ * diagnostic fixtures remain understandable during migration.
  */
 export function buildDeterministicDeliveryFallbackArtifacts(
   prompt: string
@@ -1663,6 +2117,8 @@ export function buildDeterministicDeliveryFallbackArtifacts(
 export function buildDeterministicAnimationPlanningProfile(
   prompt: string
 ): DeterministicAnimationPlanningProfile | undefined {
+  const heart = buildDeterministicHeartCurveArtifacts(prompt);
+  if (heart) return { id: 'heart-curve-v1', artifacts: heart };
   const quadratic = buildDeterministicQuadraticTangentArtifacts(prompt);
   if (quadratic) return { id: 'quadratic-tangent-v1', artifacts: quadratic };
   const cycloid = buildDeterministicCycloidArtifacts(prompt);
