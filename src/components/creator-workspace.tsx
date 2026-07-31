@@ -282,6 +282,7 @@ export interface CreatorWorkspaceCopy {
   modelRetryLoad: string;
   modelUnavailable: string;
   modelUnavailableShort: string;
+  modelDeterministicFallback: string;
   curatedModels: Record<
     CreatorCuratedModelKey,
     { label: string; description: string }
@@ -4176,9 +4177,12 @@ export function CreatorWorkspace({
           preset.models.includes(detail.model)
       )?.key
     : undefined;
-  const displayedDetailModel = detailModelPresetKey
-    ? copy.curatedModels[detailModelPresetKey].label
-    : detail?.model;
+  const displayedDetailModel =
+    detail?.provider === 'curvg' && detail.model.startsWith('deterministic-')
+      ? copy.modelDeterministicFallback
+      : detailModelPresetKey
+        ? copy.curatedModels[detailModelPresetKey].label
+        : detail?.model;
 
   useEffect(() => {
     setHydrated(true);

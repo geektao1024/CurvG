@@ -7,6 +7,7 @@ import test from 'node:test';
 
 import {
   buildDeterministicCycloidArtifacts,
+  buildDeterministicDeliveryFallbackArtifacts,
   composeAnimationSpecFromArtifacts,
 } from '../src/lib/animation-pipeline';
 import { compileAnimationSpec } from '../src/lib/manim-compiler';
@@ -76,6 +77,21 @@ test('renderer validator accepts the deterministic rolling-circle cycloid profil
     source,
     /Transform\(obj_cycloid_trace, obj_cycloid_trace_full\.copy\(\)\)/
   );
+});
+
+test('renderer validator accepts the provider-independent delivery fallback', () => {
+  const source = compileAnimationSpec(
+    composeAnimationSpecFromArtifacts(
+      buildDeterministicDeliveryFallbackArtifacts(
+        '我想做一个 y 和 x 的动画演示说明，这两个是什么关系。'
+      )
+    )
+  );
+  const result = validate(source);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(source, /MathTex\("y=f\(x\)"/);
+  assert.match(source, /Transform\(obj_topic_title/);
 });
 
 test('renderer validator rejects empty scenes, fake 3D, and file reads', () => {

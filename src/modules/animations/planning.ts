@@ -26,6 +26,7 @@ import {
 import {
   ANIMATION_PLANNING_STAGES,
   buildDeterministicAnimationPlanningProfile,
+  buildDeterministicDeliveryFallbackArtifacts,
   buildDeterministicSceneArtifact,
   composeAnimationSpecFromArtifacts,
   parseAnimationPlanningArtifact,
@@ -497,7 +498,14 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
     // Keep every provider call below the Worker's five-minute execution cap.
     // Durable retries resume from completed checkpoints instead of letting one
     // slow upstream request terminate the whole Workflow invocation.
-    deadlineAt: Date.now() + STAGE_PROVIDER_TIMEOUT_MS,
+    // All six stages and their audits share the plan's absolute deadline.
+    // A stage can use at most its own two-provider window, but it can never
+    // extend the complete strict-planning budget. Once exhausted, the caller
+    // immediately switches to deterministic delivery.
+    deadlineAt: Math.min(
+      Date.now() + STAGE_PROVIDER_TIMEOUT_MS,
+      planning.deadlineAt ?? Number.POSITIVE_INFINITY
+    ),
   };
   let latestRow = await startPlanningStage({
     userId: planning.context.userId,
@@ -780,69 +788,99 @@ async function runFromStage(params: {
   return lastResult;
 }
 
-export async function generatePersistentAnimationSpec(
-  planning: PlanningParams
-): Promise<{
+interface PersistentPlanningResult {
   result: ChatCompletionResult;
   spec: AnimationSpec;
   mathReview?: AnimationMathReview;
-}> {
+}
+
+async function persistDeterministicArtifacts(params: {
+  planning: PlanningParams;
+  artifacts: AnimationPlanningArtifacts;
+  profile: string;
+  model: 'deterministic-scene-v1' | 'deterministic-fallback-v1';
+  fallbackCode?: string;
+}): Promise<PersistentPlanningResult> {
+  let result: ChatCompletionResult | undefined;
+  const completedArtifacts: Partial<AnimationPlanningArtifacts> = {};
+  for (const item of ANIMATION_PLANNING_STAGES) {
+    params.planning.onPhase?.(item.phase);
+    const artifact = params.artifacts[item.name];
+    validateAnimationPlanningStageSemantics(
+      item.name,
+      artifact,
+      completedArtifacts
+    );
+    const inputHash = md5(
+      JSON.stringify({
+        pipelineVersion: PIPELINE_VERSION,
+        profile: params.profile,
+        stage: item.name,
+        prompt: params.planning.prompt,
+      })
+    );
+    const started = await startPlanningStage({
+      userId: params.planning.context.userId,
+      chatId: params.planning.context.chatId,
+      runId: params.planning.context.runId,
+      stage: item.name,
+      sequence: item.sequence,
+      inputHash,
+      provider: 'curvg',
+      model: params.model,
+    });
+    params.planning.context.onStage?.(planningStageSummary(started));
+    const completed = await completePlanningStage({
+      id: started.id,
+      artifact,
+      outputHash: md5(JSON.stringify(artifact)),
+      diagnostic: params.fallbackCode
+        ? { degradedDelivery: true, strictFailureCode: params.fallbackCode }
+        : undefined,
+      provider: 'curvg',
+      model: params.model,
+    });
+    params.planning.context.onStage?.(planningStageSummary(completed));
+    (completedArtifacts as Record<string, unknown>)[item.name] = artifact;
+    result = {
+      content: JSON.stringify(artifact),
+      provider: 'curvg',
+      model: params.model,
+    };
+    if (item.name === 'intent') {
+      params.planning.onSummaryDelta?.(params.artifacts.intent.summary);
+    }
+  }
+  const spec = composeAnimationSpecFromArtifacts(params.artifacts);
+  console.info('[animation-planning] used deterministic profile', {
+    chatId: params.planning.context.chatId,
+    runId: params.planning.context.runId,
+    profile: params.profile,
+    degraded: !!params.fallbackCode,
+  });
+  return {
+    result: result!,
+    spec,
+    mathReview:
+      params.model === 'deterministic-scene-v1'
+        ? deterministicMathReviewForScene(spec, result!)
+        : undefined,
+  };
+}
+
+async function generatePersistentAnimationSpecStrict(
+  planning: PlanningParams
+): Promise<PersistentPlanningResult> {
   const deterministicProfile = buildDeterministicAnimationPlanningProfile(
     planning.prompt
   );
   if (deterministicProfile) {
-    const deterministicArtifacts = deterministicProfile.artifacts;
-    let result: ChatCompletionResult | undefined;
-    for (const item of ANIMATION_PLANNING_STAGES) {
-      planning.onPhase?.(item.phase);
-      const artifact = deterministicArtifacts[item.name];
-      const inputHash = md5(
-        JSON.stringify({
-          pipelineVersion: PIPELINE_VERSION,
-          profile: deterministicProfile.id,
-          stage: item.name,
-          prompt: planning.prompt,
-        })
-      );
-      const started = await startPlanningStage({
-        userId: planning.context.userId,
-        chatId: planning.context.chatId,
-        runId: planning.context.runId,
-        stage: item.name,
-        sequence: item.sequence,
-        inputHash,
-        provider: 'curvg',
-        model: 'deterministic-scene-v1',
-      });
-      planning.context.onStage?.(planningStageSummary(started));
-      const completed = await completePlanningStage({
-        id: started.id,
-        artifact,
-        outputHash: md5(JSON.stringify(artifact)),
-        provider: 'curvg',
-        model: 'deterministic-scene-v1',
-      });
-      planning.context.onStage?.(planningStageSummary(completed));
-      result = {
-        content: JSON.stringify(artifact),
-        provider: 'curvg',
-        model: 'deterministic-scene-v1',
-      };
-      if (item.name === 'intent') {
-        planning.onSummaryDelta?.(deterministicArtifacts.intent.summary);
-      }
-    }
-    const spec = composeAnimationSpecFromArtifacts(deterministicArtifacts);
-    console.info('[animation-planning] used deterministic proof profile', {
-      chatId: planning.context.chatId,
-      runId: planning.context.runId,
+    return persistDeterministicArtifacts({
+      planning,
+      artifacts: deterministicProfile.artifacts,
       profile: deterministicProfile.id,
+      model: 'deterministic-scene-v1',
     });
-    return {
-      result: result!,
-      spec,
-      mathReview: deterministicMathReviewForScene(spec, result!),
-    };
   }
 
   const artifacts: Partial<AnimationPlanningArtifacts> = {};
@@ -916,6 +954,12 @@ export async function generatePersistentAnimationSpec(
     mathReview = await planning.audit(spec);
   }
 
+  if (mathReview && !isAnimationMathReviewApproved(mathReview)) {
+    throw new Error(
+      `Strict mathematical audit was not approved: ${mathReview.summary}`
+    );
+  }
+
   return {
     result: result || {
       content: JSON.stringify(spec),
@@ -925,4 +969,30 @@ export async function generatePersistentAnimationSpec(
     spec,
     mathReview,
   };
+}
+
+export async function generatePersistentAnimationSpec(
+  planning: PlanningParams
+): Promise<PersistentPlanningResult> {
+  try {
+    return await generatePersistentAnimationSpecStrict(planning);
+  } catch (error) {
+    if (planning.signal?.aborted) throw error;
+    const failureCode = stageErrorCode(error);
+    console.warn(
+      '[animation-planning] strict plan degraded to local delivery',
+      {
+        chatId: planning.context.chatId,
+        runId: planning.context.runId,
+        failureCode,
+      }
+    );
+    return persistDeterministicArtifacts({
+      planning,
+      artifacts: buildDeterministicDeliveryFallbackArtifacts(planning.prompt),
+      profile: 'delivery-fallback-v1',
+      model: 'deterministic-fallback-v1',
+      fallbackCode: failureCode,
+    });
+  }
 }

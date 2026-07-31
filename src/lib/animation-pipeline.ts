@@ -1233,6 +1233,433 @@ export interface DeterministicAnimationPlanningProfile {
   artifacts: AnimationPlanningArtifacts;
 }
 
+function fallbackDisplayTitle(prompt: string, chinese: boolean) {
+  const normalized = prompt.replace(/\s+/gu, ' ').trim();
+  if (!normalized) return chinese ? '基础概念演示' : 'Concept overview';
+  if (chinese) {
+    return Array.from(normalized).slice(0, 28).join('');
+  }
+  return normalized.split(' ').slice(0, 10).join(' ').slice(0, 120);
+}
+
+/**
+ * Provider-independent last-resort delivery contract. It deliberately avoids
+ * inventing a missing formula or theorem: the scene teaches how to read a
+ * relationship (or how to inspect a general question) using only claims that
+ * are true for every request. This is less bespoke than an audited AI plan,
+ * but it is valid v5 IR and can always be compiled locally.
+ */
+export function buildDeterministicDeliveryFallbackArtifacts(
+  prompt: string
+): AnimationPlanningArtifacts {
+  const chinese = /[\u3400-\u9fff]/u.test(prompt);
+  const variableRelationship =
+    /(?:\bx\b.{0,80}\by\b|\by\b.{0,80}\bx\b|x\s*(?:和|与)\s*y|y\s*(?:和|与)\s*x)/iu.test(
+      prompt
+    );
+  const requestedTitle = fallbackDisplayTitle(prompt, chinese);
+  const title = variableRelationship
+    ? chinese
+      ? 'x 与 y：输入、规则、输出'
+      : 'x and y: input, rule, output'
+    : requestedTitle;
+  const summary = chinese
+    ? '这是自动启用的基础演示：先保留原问题，再用“观察—建立联系—检查结论”的顺序给出可播放结果，不补造题目没有提供的事实。'
+    : 'This reliable fallback keeps the original question and presents it as observe, connect, and verify without inventing facts that were not supplied.';
+  const coreClaim = variableRelationship
+    ? chinese
+      ? '只写出 x 和 y 不能唯一决定关系；还需要规则、表格、图像或成对数据。y=f(x) 表示“用某个规则把输入 x 变成输出 y”。'
+      : 'The names x and y alone do not determine a relationship. A rule, table, graph, or paired data is still required; y=f(x) only says that a rule maps input x to output y.'
+    : chinese
+      ? '当问题缺少可验证的细节时，先区分已知信息、要建立的联系和可以检查的结论，不能补造未提供的事实。'
+      : 'When a request lacks verifiable detail, separate known information, the proposed connection, and a checkable conclusion without inventing missing facts.';
+  const formula = variableRelationship
+    ? 'y=f(x)'
+    : '\\text{observe}\\;\\to\\;\\text{connect}\\;\\to\\;\\text{verify}';
+  const stepLabel = variableRelationship
+    ? chinese
+      ? '输入 · 规则 · 输出'
+      : 'Input · rule · output'
+    : chinese
+      ? '观察 · 联系 · 检查'
+      : 'Observe · connect · verify';
+  const takeawayLabel = variableRelationship
+    ? chinese
+      ? '先找规则，再判断关系'
+      : 'Find the rule before judging the relation'
+    : chinese
+      ? '只保留能够检查的结论'
+      : 'Keep only conclusions that can be checked';
+
+  const artifacts: AnimationPlanningArtifacts = {
+    intent: {
+      title,
+      summary,
+      durationSeconds: 12,
+      assumptions: [
+        chinese
+          ? '未提供的公式、数值和因果关系均不作假设。'
+          : 'No formula, value, or causal relationship is assumed unless supplied.',
+      ],
+      intent: {
+        learningGoal: variableRelationship
+          ? chinese
+            ? '知道变量名不等于关系，并能用“输入—规则—输出”描述 x 与 y。'
+            : 'Distinguish variable names from a rule and describe x and y as input, rule, and output.'
+          : chinese
+            ? '把问题拆成已知信息、待解释联系和可检查结论。'
+            : 'Separate a question into known information, a connection, and a checkable conclusion.',
+        hook: chinese
+          ? `先看问题：${requestedTitle}`
+          : `Start with: ${requestedTitle}`,
+        takeaway: takeawayLabel,
+      },
+    },
+    knowledge: {
+      knowledgeMap: [
+        {
+          id: 'known_information',
+          concept: chinese
+            ? '题目明确给出的信息'
+            : 'Information explicitly supplied',
+          dependsOn: [],
+          misconception: chinese
+            ? '把没有出现的公式当成已知条件。'
+            : 'Treating an unstated formula as known.',
+        },
+        {
+          id: 'relationship_rule',
+          concept: variableRelationship
+            ? chinese
+              ? '变量之间需要一个明确规则'
+              : 'Variables need an explicit relationship rule'
+            : chinese
+              ? '信息之间需要可说明的联系'
+              : 'Information needs an explainable connection',
+          dependsOn: ['known_information'],
+          misconception: chinese
+            ? '只凭名称或画面猜测关系。'
+            : 'Guessing a relationship from labels or appearance alone.',
+        },
+        {
+          id: 'verification',
+          concept: chinese
+            ? '用例子或条件检查结论'
+            : 'Check the conclusion with an example or condition',
+          dependsOn: ['relationship_rule'],
+          misconception: chinese
+            ? '把一个示例误当成所有情况。'
+            : 'Treating one example as every possible case.',
+        },
+      ],
+    },
+    curriculum: {
+      curriculum: [
+        {
+          id: 'observe_prompt',
+          learningJob: chinese
+            ? '识别题目真正给了什么'
+            : 'Identify what the request actually gives',
+          dependsOn: ['known_information'],
+          visualEvidence: chinese
+            ? '原问题先出现并保持可见。'
+            : 'The original topic appears first and stays visible.',
+          notationBudget: 0,
+        },
+        {
+          id: 'connect_ideas',
+          learningJob: variableRelationship
+            ? chinese
+              ? '把 x、规则和 y 排成输入输出关系'
+              : 'Arrange x, the rule, and y as an input-output relationship'
+            : chinese
+              ? '把观察、联系和检查排成顺序'
+              : 'Order observation, connection, and verification',
+          dependsOn: ['relationship_rule', 'observe_prompt'],
+          visualEvidence: chinese
+            ? '核心关系式在画面中央写出并被强调。'
+            : 'The central relationship is written and emphasized.',
+          notationBudget: variableRelationship ? 1 : 0,
+        },
+        {
+          id: 'verify_takeaway',
+          learningJob: chinese
+            ? '记住不能补造缺失条件'
+            : 'Remember not to invent missing conditions',
+          dependsOn: ['verification', 'connect_ideas'],
+          visualEvidence: chinese
+            ? '结尾将标题变成可检查的行动提示。'
+            : 'The final title becomes a checkable action cue.',
+          notationBudget: 0,
+        },
+      ],
+    },
+    mathematics: {
+      mathDossier: {
+        coreClaim,
+        invariants: [
+          chinese
+            ? '画面不声明题目未给出的具体函数或定理。'
+            : 'The scene does not claim an unstated function or theorem.',
+          chinese
+            ? '示意关系只用于解释结构，不冒充唯一答案。'
+            : 'The displayed relationship explains structure and is not presented as a unique answer.',
+        ],
+        commonMisreading: variableRelationship
+          ? chinese
+            ? '因为变量叫 x 和 y，就默认 y=x。'
+            : 'Assuming y=x merely because the variables are named x and y.'
+          : chinese
+            ? '把通用解释框架误认为原问题的具体答案。'
+            : 'Mistaking a general explanation framework for a specific factual answer.',
+        visualProof: chinese
+          ? '动画依次呈现题目、联系框架和检查提示；每一步只使用前一步已经明确的信息。'
+          : 'The animation reveals the request, the connection framework, and a verification cue in order; every step uses only already stated information.',
+        definitions: [
+          {
+            concept: variableRelationship ? 'y=f(x)' : 'verification',
+            statement: variableRelationship
+              ? chinese
+                ? 'f 代表一个尚待说明的规则；该记号本身不指定 f 的具体形式。'
+                : 'f denotes a rule that still must be specified; the notation alone does not choose its form.'
+              : chinese
+                ? '检查是把结论与题目给出的条件或一个明确示例进行比较。'
+                : 'Verification compares a conclusion with supplied conditions or an explicit example.',
+          },
+        ],
+        derivationSteps: [
+          chinese
+            ? '第一步只保留题目中明确出现的对象或目标。'
+            : 'First retain only the objects or goal explicitly present in the request.',
+          chinese
+            ? '第二步用一个不增加额外事实的结构表示可能的联系。'
+            : 'Then represent the possible connection without adding a new factual claim.',
+          chinese
+            ? '最后给出检查条件，提醒观众需要更多规则或证据才能得到具体结论。'
+            : 'Finally add a check that makes clear when more rules or evidence are needed.',
+        ],
+        checks: [
+          {
+            claim: chinese
+              ? '没有具体规则就不能推出唯一关系。'
+              : 'No unique relationship follows without a specific rule.',
+            method: chinese
+              ? '列出两个都符合变量命名但不同的可能规则。'
+              : 'Exhibit two different possible rules using the same variable names.',
+            expected: variableRelationship
+              ? chinese
+                ? '例如 y=x 与 y=2x 都使用 x、y，但关系不同。'
+                : 'For example, y=x and y=2x use the same names but define different relationships.'
+              : chinese
+                ? '不同补充条件会产生不同的具体结论。'
+                : 'Different added conditions can produce different specific conclusions.',
+          },
+        ],
+        limitations: [
+          chinese
+            ? '这是模型或严格审查失败时的基础保底演示，不替代针对具体题目的完整推导。'
+            : 'This is a baseline delivery used when model planning or strict review fails; it does not replace a topic-specific derivation.',
+        ],
+      },
+    },
+    storyboard: {
+      direction: {
+        preset: 'clean-classroom',
+        frame: '16:9',
+        pacing: 'calm',
+        textPolicy: { maxWordsPerObject: 12, maxSimultaneousText: 2 },
+      },
+      cinematography: { scene: 'static', emphasis: 'spotlight' },
+      shots: [
+        {
+          id: 'fallback_hook',
+          beat: 'hook',
+          purpose: chinese
+            ? '呈现原问题并建立注意力。'
+            : 'Present the original topic and establish attention.',
+          startAt: 0,
+          endAt: 4,
+          focusRef: 'topic_title',
+          transition: 'build',
+          acceptance: [
+            chinese
+              ? '标题与核心关系可见。'
+              : 'The title and central relationship are visible.',
+          ],
+        },
+        {
+          id: 'fallback_mechanism',
+          beat: 'mechanism',
+          purpose: chinese
+            ? '把解释压缩成三个明确步骤。'
+            : 'Compress the explanation into three explicit steps.',
+          startAt: 4,
+          endAt: 8,
+          focusRef: 'core_relation',
+          transition: 'emphasis',
+          acceptance: [
+            chinese
+              ? '核心关系得到一次聚焦强调。'
+              : 'The central relationship receives a clear emphasis.',
+          ],
+        },
+        {
+          id: 'fallback_memory',
+          beat: 'memory',
+          purpose: chinese
+            ? '留下一个不会误导的检查提示。'
+            : 'Leave a non-misleading verification cue.',
+          startAt: 8,
+          endAt: 12,
+          focusRef: 'topic_title',
+          transition: 'morph',
+          acceptance: [
+            chinese
+              ? '结尾提示与核心关系同时保留。'
+              : 'The final cue and central relationship remain together.',
+          ],
+        },
+      ],
+    },
+    scene: {
+      style: {
+        background: '#090B14',
+        palette: ['#7C8CFF', '#62D9C3', '#F4C95D'],
+        camera:
+          'Static centered classroom composition with generous safe margins.',
+      },
+      objects: [
+        {
+          id: 'topic_title',
+          kind: 'text',
+          region: 'title',
+          importance: 'hero',
+          label: title,
+          color: '#F4EDE1',
+        },
+        {
+          id: 'step_title',
+          kind: 'text',
+          region: 'title',
+          importance: 'hero',
+          label: stepLabel,
+          color: '#7C8CFF',
+        },
+        {
+          id: 'takeaway_title',
+          kind: 'text',
+          region: 'title',
+          importance: 'hero',
+          label: takeawayLabel,
+          color: '#62D9C3',
+        },
+        {
+          id: 'core_relation',
+          kind: 'formula',
+          region: 'formula',
+          importance: 'hero',
+          expr: formula,
+          color: '#F4C95D',
+        },
+      ],
+      timeline: [
+        {
+          id: 'fallback_title_in',
+          shotId: 'fallback_hook',
+          at: 0,
+          op: 'fade_in',
+          ref: 'topic_title',
+          runTime: 0.8,
+          ease: 'smooth',
+        },
+        {
+          id: 'fallback_relation_in',
+          shotId: 'fallback_hook',
+          at: 1,
+          op: 'write',
+          ref: 'core_relation',
+          runTime: 0.8,
+          ease: 'smooth',
+        },
+        {
+          id: 'fallback_hook_emphasis',
+          shotId: 'fallback_hook',
+          at: 2,
+          op: 'emphasize',
+          ref: 'core_relation',
+          runTime: 0.8,
+          ease: 'there_and_back',
+        },
+        {
+          id: 'fallback_steps',
+          shotId: 'fallback_mechanism',
+          at: 4,
+          op: 'transform',
+          ref: 'topic_title',
+          targetRef: 'step_title',
+          runTime: 0.8,
+          ease: 'smooth',
+        },
+        {
+          id: 'fallback_spotlight',
+          shotId: 'fallback_mechanism',
+          at: 5,
+          op: 'spotlight',
+          ref: 'core_relation',
+          runTime: 0.8,
+          ease: 'smooth',
+        },
+        {
+          id: 'fallback_mechanism_hold',
+          shotId: 'fallback_mechanism',
+          at: 6,
+          op: 'hold',
+          ref: 'core_relation',
+          runTime: 1.2,
+          ease: 'linear',
+        },
+        {
+          id: 'fallback_takeaway',
+          shotId: 'fallback_memory',
+          at: 8,
+          op: 'transform',
+          ref: 'topic_title',
+          targetRef: 'takeaway_title',
+          runTime: 0.8,
+          ease: 'smooth',
+        },
+        {
+          id: 'fallback_glow',
+          shotId: 'fallback_memory',
+          at: 9,
+          op: 'glow',
+          ref: 'core_relation',
+          runTime: 0.8,
+          ease: 'smooth',
+        },
+        {
+          id: 'fallback_final_hold',
+          shotId: 'fallback_memory',
+          at: 10,
+          op: 'hold',
+          ref: 'core_relation',
+          runTime: 1.5,
+          ease: 'linear',
+        },
+      ],
+      layout: { regions: 'top|bottom' },
+      dependencies: ['Manim Community', 'LaTeX'],
+      notes: [
+        chinese
+          ? '严格模型规划或数学审查未完成，已自动切换为本地可编译的基础演示。'
+          : 'Strict model planning or mathematical review did not finish, so CurvG delivered a locally compilable baseline scene.',
+      ],
+    },
+  };
+  composeAnimationSpecFromArtifacts(artifacts);
+  return artifacts;
+}
+
 export function buildDeterministicAnimationPlanningProfile(
   prompt: string
 ): DeterministicAnimationPlanningProfile | undefined {

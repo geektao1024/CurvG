@@ -195,6 +195,7 @@ export function CreatorWorkspace({
     modelRetryLoad: m['creator.model.retry_load'](),
     modelUnavailable: m['creator.model.unavailable'](),
     modelUnavailableShort: m['creator.model.unavailable_short'](),
+    modelDeterministicFallback: m['creator.model.deterministic_fallback'](),
     curatedModels: {
       kieGemini36Flash: {
         label: m['creator.model.kie_gemini_36_flash.label'](),

@@ -11,6 +11,7 @@ import { animationFailureCodeFromHttpStatus } from '../src/lib/animation';
 import {
   buildDeterministicAnimationPlanningProfile,
   buildDeterministicCycloidArtifacts,
+  buildDeterministicDeliveryFallbackArtifacts,
   buildDeterministicQuadraticTangentArtifacts,
   buildDeterministicSceneArtifact,
   composeAnimationSpecFromArtifacts,
@@ -497,6 +498,28 @@ test('parametric compiler rejects non-allowlisted expressions', () => {
   );
 });
 
+test('provider-independent delivery fallback validates and compiles for specific and generic prompts', () => {
+  for (const prompt of [
+    '我想做一个 y 和 x 的动画演示说明，这两个是什么关系。怎么向小学生介绍？',
+    'Explain the idea visually even when no exact formula was supplied.',
+  ]) {
+    const artifacts = buildDeterministicDeliveryFallbackArtifacts(prompt);
+    const spec = composeAnimationSpecFromArtifacts(artifacts);
+    const code = compileAnimationSpec(spec);
+
+    assert.equal(spec.schemaVersion, 5);
+    assert.equal(spec.durationSeconds, 12);
+    assert.equal(spec.shots.at(-1)?.endAt, 12);
+    assert.match(code, /from manim import \*/);
+    assert.match(code, /class CurvGScene\(Scene\)/);
+    assert.match(code, /obj_core_relation/);
+  }
+
+  const relation = buildDeterministicDeliveryFallbackArtifacts('解释 x 和 y');
+  assert.equal(relation.scene.objects.at(-1)?.expr, 'y=f(x)');
+  assert.match(relation.mathematics.mathDossier.coreClaim, /不能唯一决定关系/);
+});
+
 test('deterministic proof profiles compile locally until the renderer requests repair', () => {
   const base = {
     hasProvider: true,
@@ -513,6 +536,14 @@ test('deterministic proof profiles compile locally until the renderer requests r
   assert.equal(
     shouldUseAnimationCodeComposer({ ...base, regenerateCode: true }),
     true
+  );
+  assert.equal(
+    shouldUseAnimationCodeComposer({
+      ...base,
+      modelName: 'deterministic-fallback-v1',
+      regenerateCode: false,
+    }),
+    false
   );
   assert.equal(
     shouldUseAnimationCodeComposer({
@@ -953,6 +984,39 @@ test('Gemini code composition streams and deterministically recovers two empty c
   assert.match(result.code, /from manim import/);
   assert.match(result.code, /class CurvGScene\(Scene\)/);
   assert.ok(result.code.length > 100);
+});
+
+test('initial code composition degrades to the local compiler when the provider is unavailable', async () => {
+  const provider: ChatProvider = {
+    name: 'kie',
+    async complete() {
+      throw new ChatProviderError('upstream unavailable', {
+        code: 'upstream_unavailable',
+        retryable: true,
+        provider: 'kie',
+        model: 'gemini-3.6-flash',
+      });
+    },
+    async stream() {
+      throw new ChatProviderError('upstream unavailable', {
+        code: 'upstream_unavailable',
+        retryable: true,
+        provider: 'kie',
+        model: 'gemini-3.6-flash',
+      });
+    },
+  };
+
+  const result = await composeAnimationCode({
+    provider,
+    model: 'gemini-3.6-flash',
+    prompt: 'Explain a relationship.',
+    spec: auditedGeometrySpec(),
+  });
+
+  assert.equal(result.result.provider, 'curvg');
+  assert.equal(result.result.model, 'deterministic-compiler-v1');
+  assert.match(result.code, /class CurvGScene\(Scene\)/);
 });
 
 test('Gemini repairs an add_updater scene before it reaches the renderer', async () => {

@@ -358,10 +358,11 @@ async function reviewAnimationMathematics(params: {
     maxTokens: 3_000,
     reasoningEffort: getAnimationReasoningEffort(params.model),
     signal: params.signal,
-    // Planning is resumable and may legitimately consume the original
-    // request window. The independent audit therefore receives its own
-    // provider budget instead of inheriting an already-expired deadline.
-    deadlineAt: Math.max(params.deadlineAt || 0, animationStageDeadlineAt()),
+    // The audit shares the strict planning budget. Extending it here used to
+    // turn a completed six-stage plan into another five-minute wait before a
+    // terminal error. The persistent planner now degrades locally when this
+    // absolute deadline has already been consumed.
+    deadlineAt: params.deadlineAt ?? animationStageDeadlineAt(),
   };
   return parseAnimationMathReviewWithRepairs({
     provider: params.provider,
@@ -707,36 +708,50 @@ export async function composeAnimationCode(params: {
     signal: params.signal,
     deadlineAt: animationStageDeadlineAt(),
   };
-  let result = await requestAnimationCodeCompletion(params.provider, input);
-  let code: string;
   try {
-    code = parseManimCode(result.content);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : 'invalid output';
-    result = await requestAnimationCodeCompletion(params.provider, {
-      ...input,
-      messages: [
-        ...input.messages,
-        { role: 'assistant' as const, content: result.content },
-        {
-          role: 'user' as const,
-          content: `The previous scene failed the application-side source contract: ${reason}. Return one corrected complete Python module only. Preserve the approved mathematics and the requested visual repair.`,
-        },
-      ],
-      temperature: 0,
-    });
+    let result = await requestAnimationCodeCompletion(params.provider, input);
+    let code: string;
     try {
       code = parseManimCode(result.content);
-    } catch (correctionError) {
-      // A valid, independently audited specification is still executable even
-      // when the model returns an empty or malformed code envelope twice. Only
-      // use this fallback for initial composition; a visual-quality repair must
-      // not silently replace an already-rendered scene with a generic compile.
-      if (params.currentCode) throw correctionError;
-      code = compileAnimationSpec(params.spec);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'invalid output';
+      result = await requestAnimationCodeCompletion(params.provider, {
+        ...input,
+        messages: [
+          ...input.messages,
+          { role: 'assistant' as const, content: result.content },
+          {
+            role: 'user' as const,
+            content: `The previous scene failed the application-side source contract: ${reason}. Return one corrected complete Python module only. Preserve the approved mathematics and the requested visual repair.`,
+          },
+        ],
+        temperature: 0,
+      });
+      code = parseManimCode(result.content);
     }
+    return { result, code };
+  } catch (error) {
+    // Initial delivery must not depend on a second successful model call. A
+    // validated specification is directly executable by CurvG's compiler.
+    // Targeted visual repairs still fail closed so an existing good render is
+    // never replaced by a less specific baseline without review.
+    if (params.currentCode || params.signal?.aborted) throw error;
+    const code = compileAnimationSpec(params.spec);
+    console.warn('[animation-generation] code composer degraded to compiler', {
+      provider: params.provider.name,
+      model: params.model,
+      reason:
+        error instanceof ChatProviderError ? error.code : 'invalid_output',
+    });
+    return {
+      result: {
+        content: code,
+        provider: 'curvg',
+        model: 'deterministic-compiler-v1',
+      },
+      code,
+    };
   }
-  return { result, code };
 }
 
 function orchestrationState(params: {
@@ -2091,10 +2106,10 @@ export function shouldUseAnimationCodeComposer(params: {
   modelName: string | null;
 }) {
   if (!params.hasProvider || !params.hasModel) return false;
-  const deterministicProof =
+  const deterministicDelivery =
     params.providerName === 'curvg' &&
-    params.modelName === 'deterministic-scene-v1';
-  if (deterministicProof && !params.regenerateCode) return false;
+    params.modelName?.startsWith('deterministic-');
+  if (deterministicDelivery && !params.regenerateCode) return false;
   return (
     params.status === 'awaiting_approval' ||
     !params.hasCode ||
