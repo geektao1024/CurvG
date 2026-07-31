@@ -168,6 +168,9 @@ function compileObject(
     case 'curve':
       constructor = `${variable} = ${axesVariable}.plot(lambda x: ${compileExpression(object.expr || 'x')}, x_range=[${domain[0]}, ${domain[1]}], color=${color}, stroke_width=5)`;
       break;
+    case 'parametric':
+      constructor = `${variable} = ParametricFunction(lambda t: ${axesVariable}.c2p(${compileExpression(object.xExpr || 't')}, ${compileExpression(object.yExpr || 't')}), t_range=[${domain[0]}, ${domain[1]}], color=${color}, stroke_width=5)`;
+      return [constructor];
     case 'area': {
       const helper = `${variable}_curve`;
       return [
@@ -317,9 +320,16 @@ export function compileAnimationSpec(input: AnimationSpec): string {
     isAnimationSpecV4(spec) && spec.cinematography.scene === 'moving-camera';
   const axes = spec.objects.find((object) => object.kind === 'axes');
   const needsAxes = spec.objects.some((object) =>
-    ['curve', 'area', 'circle', 'point', 'line', 'arrow', 'arc'].includes(
-      object.kind
-    )
+    [
+      'curve',
+      'parametric',
+      'area',
+      'circle',
+      'point',
+      'line',
+      'arrow',
+      'arc',
+    ].includes(object.kind)
   );
   const axesVariable = axes ? variableName(axes.id) : 'obj_auto_axes';
   const frameConfig =

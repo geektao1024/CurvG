@@ -5,6 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
+import {
+  buildDeterministicCycloidArtifacts,
+  composeAnimationSpecFromArtifacts,
+} from '../src/lib/animation-pipeline';
 import { compileAnimationSpec } from '../src/lib/manim-compiler';
 import { auditedGeometrySpec } from './animation-spec-fixture';
 
@@ -50,6 +54,28 @@ test('renderer validator accepts deterministic geometry IR output', () => {
   const result = validate(source);
   assert.equal(result.status, 0, result.stderr);
   assert.match(source, /MoveAlongPath\(obj_rotating_point, obj_unit_circle\)/);
+});
+
+test('renderer validator accepts the deterministic rolling-circle cycloid profile', () => {
+  const artifacts =
+    buildDeterministicCycloidArtifacts('对比摆线与生成它的滚动圆。');
+  assert.ok(artifacts);
+
+  const source = compileAnimationSpec(
+    composeAnimationSpecFromArtifacts(artifacts)
+  );
+  const result = validate(source);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(source, /ParametricFunction/);
+  assert.match(
+    source,
+    /Transform\(obj_rolling_circle, obj_rolling_circle_mid\.copy\(\)\)/
+  );
+  assert.match(
+    source,
+    /Transform\(obj_cycloid_trace, obj_cycloid_trace_full\.copy\(\)\)/
+  );
 });
 
 test('renderer validator rejects empty scenes, fake 3D, and file reads', () => {

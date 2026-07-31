@@ -84,6 +84,7 @@ export type AnimationMathObjectType =
 export type AnimationObjectKind =
   | 'axes'
   | 'curve'
+  | 'parametric'
   | 'area'
   | 'formula'
   | 'text'
@@ -111,6 +112,9 @@ export interface AnimationObjectSpec {
   importance?: 'hero' | 'supporting' | 'context';
   label?: string;
   expr?: string;
+  /** Safe parameter expressions used by a parametric graph curve. */
+  xExpr?: string;
+  yExpr?: string;
   domain?: [number, number];
   color?: string;
   values?: number[][];

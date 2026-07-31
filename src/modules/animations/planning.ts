@@ -25,7 +25,7 @@ import {
 } from '@/lib/animation-math';
 import {
   ANIMATION_PLANNING_STAGES,
-  buildDeterministicQuadraticTangentArtifacts,
+  buildDeterministicAnimationPlanningProfile,
   buildDeterministicSceneArtifact,
   composeAnimationSpecFromArtifacts,
   parseAnimationPlanningArtifact,
@@ -115,7 +115,7 @@ const STAGE_CONTRACTS: Record<AnimationPlanningStageName, string> = {
   "style": {"background": "#0B0D14", "palette": ["#7C8CFF", "#62D9C3"], "camera": "camera description"},
   "objects": [{
     "id": "unique_object_id",
-    "kind": "axes|curve|area|formula|text|series|matrix|circle|point|line|arrow|arc",
+    "kind": "axes|curve|parametric|area|formula|text|series|matrix|circle|point|line|arrow|arc",
     "region": "title|formula|graph"
   }],
   "timeline": [{
@@ -145,7 +145,7 @@ const STAGE_ROLES: Record<AnimationPlanningStageName, string> = {
   storyboard:
     'Translate the approved learning and mathematics artifacts into 3-6 non-overlapping shots. Begin with a hook at 0 and end with payoff or memory exactly at durationSeconds. term-tour emphasis requires a moving-camera scene; never combine term-tour with static.',
   scene:
-    'Declare the concrete visual objects and timed actions that realize every storyboard acceptance condition and the mathematical visual proof. Preserve every storyboard shot id exactly, create an object for every focusRef, and keep every timeline event inside its referenced shot.',
+    'Declare the concrete visual objects and timed actions that realize every storyboard acceptance condition and the mathematical visual proof. Preserve every storyboard shot id exactly, create an object for every focusRef, and keep every timeline event inside its referenced shot. Parametric curves require safe xExpr, yExpr and an increasing domain for t.',
 };
 
 export interface PersistentAnimationPlanningContext {
@@ -705,17 +705,41 @@ export function deterministicMathReviewForScene(
         .includes('y=2x-1')
   );
   if (
-    !hasQuadraticClaim ||
-    !hasQuadraticCurve ||
-    !hasExactTangent ||
-    !hasExactFormula
+    hasQuadraticClaim &&
+    hasQuadraticCurve &&
+    hasExactTangent &&
+    hasExactFormula
   ) {
-    return undefined;
+    return {
+      status: 'approved',
+      summary:
+        'The deterministic quadratic-tangent profile preserves the approved dossier and exact y=x^2 / y=2x-1 geometry.',
+      checkedClaims: (spec.mathDossier.checks || [])
+        .map((check) => check.claim)
+        .slice(0, 20),
+      issues: [],
+    };
   }
+  const cycloid = spec.objects?.find(
+    (object) =>
+      object.kind === 'parametric' && object.id === 'cycloid_trace_full'
+  );
+  const normalizedX = cycloid?.xExpr?.replaceAll(' ', '');
+  const normalizedY = cycloid?.yExpr?.replaceAll(' ', '');
+  const hasExactCycloid =
+    /(?:cycloid|摆线)/iu.test(evidence) &&
+    normalizedX === 't-pi-sin(t)' &&
+    normalizedY === '1-cos(t)' &&
+    Math.abs((cycloid?.domain?.[0] || 0) - 0) < 1e-9 &&
+    Math.abs((cycloid?.domain?.[1] || 0) - Math.PI * 2) < 1e-9 &&
+    spec.objects?.some(
+      (object) => object.kind === 'circle' && object.radius === 1
+    );
+  if (!hasExactCycloid) return undefined;
   return {
     status: 'approved',
     summary:
-      'The deterministic quadratic-tangent profile preserves the approved dossier and exact y=x^2 / y=2x-1 geometry.',
+      'The deterministic cycloid profile preserves the unit rolling-circle invariant and exact centered parameterization.',
     checkedClaims: (spec.mathDossier.checks || [])
       .map((check) => check.claim)
       .slice(0, 20),
@@ -761,10 +785,11 @@ export async function generatePersistentAnimationSpec(
   spec: AnimationSpec;
   mathReview?: AnimationMathReview;
 }> {
-  const deterministicArtifacts = buildDeterministicQuadraticTangentArtifacts(
+  const deterministicProfile = buildDeterministicAnimationPlanningProfile(
     planning.prompt
   );
-  if (deterministicArtifacts) {
+  if (deterministicProfile) {
+    const deterministicArtifacts = deterministicProfile.artifacts;
     let result: ChatCompletionResult | undefined;
     for (const item of ANIMATION_PLANNING_STAGES) {
       planning.onPhase?.(item.phase);
@@ -772,7 +797,7 @@ export async function generatePersistentAnimationSpec(
       const inputHash = md5(
         JSON.stringify({
           pipelineVersion: PIPELINE_VERSION,
-          profile: 'quadratic-tangent-v1',
+          profile: deterministicProfile.id,
           stage: item.name,
           prompt: planning.prompt,
         })
@@ -809,7 +834,7 @@ export async function generatePersistentAnimationSpec(
     console.info('[animation-planning] used deterministic proof profile', {
       chatId: planning.context.chatId,
       runId: planning.context.runId,
-      profile: 'quadratic-tangent-v1',
+      profile: deterministicProfile.id,
     });
     return {
       result: result!,

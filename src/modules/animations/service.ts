@@ -154,11 +154,13 @@ Return valid JSON only with this shape:
   },
   "objects": [{
     "id": "axes",
-    "kind": "axes|curve|area|formula|text|series|matrix|circle|point|line|arrow|arc",
+    "kind": "axes|curve|parametric|area|formula|text|series|matrix|circle|point|line|arrow|arc",
     "region": "title|formula|graph",
     "importance": "hero|supporting|context",
     "label": "optional plain text",
     "expr": "safe math expression for curves, full LaTeX for formulas",
+    "xExpr": "safe x(t) expression for parametric curves",
+    "yExpr": "safe y(t) expression for parametric curves",
     "parts": [{
       "id": "semantic term id such as delta_x",
       "latex": "one independently renderable LaTeX chunk",

@@ -22,6 +22,7 @@ const objectSchema = z.object({
   kind: z.enum([
     'axes',
     'curve',
+    'parametric',
     'area',
     'formula',
     'text',
@@ -37,6 +38,8 @@ const objectSchema = z.object({
   importance: z.enum(['hero', 'supporting', 'context']).optional(),
   label: z.string().max(500).optional(),
   expr: z.string().max(1000).optional(),
+  xExpr: z.string().max(1000).optional(),
+  yExpr: z.string().max(1000).optional(),
   domain: z
     .tuple([z.number().min(-100).max(100), z.number().min(-100).max(100)])
     .optional(),
@@ -269,6 +272,16 @@ export const animationSpecSchema = z
           path: ['objects', index, 'expr'],
         });
       }
+      if (
+        object.kind === 'parametric' &&
+        (!object.xExpr || !object.yExpr || !object.domain)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: 'parametric requires xExpr, yExpr and domain',
+          path: ['objects', index],
+        });
+      }
       if (object.kind === 'matrix' && !object.values) {
         context.addIssue({
           code: 'custom',
@@ -277,6 +290,7 @@ export const animationSpecSchema = z
         });
       }
       const geometryKinds = new Set([
+        'parametric',
         'circle',
         'point',
         'line',
@@ -400,7 +414,10 @@ export const animationSpecSchema = z
             path: ['timeline', index, 'ref'],
           });
         }
-        if (!path || !['circle', 'curve', 'arc', 'line'].includes(path.kind)) {
+        if (
+          !path ||
+          !['circle', 'curve', 'parametric', 'arc', 'line'].includes(path.kind)
+        ) {
           context.addIssue({
             code: 'custom',
             message:
@@ -755,11 +772,64 @@ export const animationSpecSchema = z
       const path = spec.objects.find((object) => object.id === event.pathRef);
       return subject?.kind === 'point' && path?.kind === 'circle';
     });
-    if (requiresCircularPointMotion && !hasCircularPointMotion) {
+    const objectById = new Map(
+      spec.objects.map((object) => [object.id, object] as const)
+    );
+    const pointOnCircle = (
+      point: (typeof spec.objects)[number] | undefined,
+      circle: (typeof spec.objects)[number] | undefined
+    ) => {
+      if (
+        point?.kind !== 'point' ||
+        !point.position ||
+        circle?.kind !== 'circle' ||
+        !circle.center ||
+        !circle.radius
+      ) {
+        return false;
+      }
+      const dx = point.position[0] - circle.center[0];
+      const dy = point.position[1] - circle.center[1];
+      return Math.abs(Math.hypot(dx, dy) - circle.radius) < 1e-6;
+    };
+    const synchronizedRollingSteps = spec.timeline.filter((pointEvent) => {
+      if (pointEvent.op !== 'transform') return false;
+      const sourcePoint = objectById.get(pointEvent.ref);
+      const targetPoint = objectById.get(pointEvent.targetRef || '');
+      if (sourcePoint?.kind !== 'point' || targetPoint?.kind !== 'point') {
+        return false;
+      }
+      const circleEvent = spec.timeline.find(
+        (candidate) =>
+          candidate.op === 'transform' &&
+          Math.abs(candidate.at - pointEvent.at) < 0.001 &&
+          objectById.get(candidate.ref)?.kind === 'circle' &&
+          objectById.get(candidate.targetRef || '')?.kind === 'circle'
+      );
+      const traceEvent = spec.timeline.find(
+        (candidate) =>
+          candidate.op === 'transform' &&
+          Math.abs(candidate.at - pointEvent.at) < 0.001 &&
+          objectById.get(candidate.ref)?.kind === 'parametric' &&
+          objectById.get(candidate.targetRef || '')?.kind === 'parametric'
+      );
+      if (!circleEvent || !traceEvent) return false;
+      return (
+        pointOnCircle(sourcePoint, objectById.get(circleEvent.ref)) &&
+        pointOnCircle(targetPoint, objectById.get(circleEvent.targetRef || ''))
+      );
+    });
+    const hasSynchronizedRollingMotion =
+      new Set(synchronizedRollingSteps.map((event) => event.at)).size >= 2;
+    if (
+      requiresCircularPointMotion &&
+      !hasCircularPointMotion &&
+      !hasSynchronizedRollingMotion
+    ) {
       context.addIssue({
         code: 'custom',
         message:
-          'A claimed moving or rotating circle point requires a point move_along event whose pathRef is the circle; a static sample does not prove the dynamic relationship',
+          'A claimed moving or rotating circle point requires either point move_along on a circle or at least two synchronized point, circle, and parametric-trace transformations; a static sample does not prove the dynamic relationship',
         path: ['timeline'],
       });
     }

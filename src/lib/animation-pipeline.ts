@@ -759,3 +759,486 @@ export function buildDeterministicQuadraticTangentArtifacts(
   composeAnimationSpecFromArtifacts(artifacts);
   return artifacts;
 }
+
+/**
+ * A provider-independent cycloid profile. The unit circle rolls on y=0 while
+ * a marked point traces one complete arch. The horizontal -pi translation is
+ * only a framing choice; it keeps the two cusps centered in the 16:9 graph.
+ */
+export function buildDeterministicCycloidArtifacts(
+  prompt: string
+): AnimationPlanningArtifacts | undefined {
+  const isCycloid =
+    /(?:cycloid|摆线)/iu.test(prompt) &&
+    /(?:rolling\s+circle|generat|滚动圆|生成|轨迹|trace)/iu.test(prompt);
+  if (!isCycloid) return undefined;
+
+  const durationSeconds = deterministicDuration(prompt);
+  const quarter = durationSeconds / 4;
+  const eventRuntime = Number(Math.min(1.35, quarter * 0.45).toFixed(3));
+  const intent = intentArtifactSchema.parse({
+    title: 'Cycloid from a rolling circle',
+    summary:
+      'A marked point on a unit circle rolls without slipping and traces one centered cycloid arch.',
+    durationSeconds,
+    assumptions: [
+      'The circle has radius 1 and rolls without slipping on y=0.',
+      'The parameter t is both the rotation angle and horizontal travel distance.',
+    ],
+    intent: {
+      learningGoal:
+        'Connect the rolling circle geometry to the cycloid parameterization.',
+      hook: 'What curve does one point on a rolling wheel leave behind?',
+      takeaway:
+        'Combining translation with circular rotation produces a cycloid.',
+    },
+  });
+  const knowledge = knowledgeArtifactSchema.parse({
+    knowledgeMap: [
+      {
+        id: 'rolling_without_slip',
+        concept:
+          'For a unit circle rolling without slipping, rotation t equals horizontal travel t.',
+        dependsOn: [],
+        misconception:
+          'The marked point does not move around a stationary circle.',
+      },
+      {
+        id: 'marked_point_motion',
+        concept:
+          'The marked point combines center translation with a rotating radius vector.',
+        dependsOn: ['rolling_without_slip'],
+        misconception:
+          'The cycloid is not the circular path relative to the moving center.',
+      },
+      {
+        id: 'cycloid_arch',
+        concept: 'One full turn traces a cusp-to-cusp cycloid arch.',
+        dependsOn: ['marked_point_motion'],
+        misconception:
+          'The cusps occur when the marked point touches the baseline, not at the top.',
+      },
+    ],
+  });
+  const curriculum = curriculumArtifactSchema.parse({
+    curriculum: [
+      {
+        id: 'establish_wheel',
+        learningJob:
+          'Identify the rolling circle, contact point, and baseline.',
+        dependsOn: ['rolling_without_slip'],
+        visualEvidence:
+          'A unit circle begins with its marked point on the baseline.',
+        notationBudget: 1,
+      },
+      {
+        id: 'combine_motion',
+        learningJob:
+          'See the circle translate while the marked radius rotates.',
+        dependsOn: ['marked_point_motion', 'establish_wheel'],
+        visualEvidence:
+          'The circle, radius, and marked point move together to the top of the arch.',
+        notationBudget: 2,
+      },
+      {
+        id: 'trace_arch',
+        learningJob: 'Connect the moving point to the growing cycloid trace.',
+        dependsOn: ['cycloid_arch', 'combine_motion'],
+        visualEvidence:
+          'The trace grows from the first cusp through the arch to the second cusp.',
+        notationBudget: 2,
+      },
+      {
+        id: 'read_parameterization',
+        learningJob: 'Read the centered unit-cycloid parameterization.',
+        dependsOn: ['trace_arch'],
+        visualEvidence:
+          'The final frame pairs the complete arch with x=t-pi-sin(t), y=1-cos(t).',
+        notationBudget: 2,
+      },
+    ],
+  });
+  const mathematics = mathematicsArtifactSchema.parse({
+    mathDossier: {
+      coreClaim:
+        'A marked point on a unit circle rolling without slipping along y=0 traces x=t-pi-sin(t), y=1-cos(t) for 0<=t<=2pi.',
+      invariants: [
+        'The rolling circle keeps radius 1 and its center stays one unit above y=0.',
+        'The center horizontal coordinate is t-pi.',
+        'The marked point remains exactly one unit from the moving center.',
+      ],
+      commonMisreading:
+        'The -pi term only centers the arch; it does not change the cycloid shape.',
+      visualProof:
+        'Translate the center from -pi to pi while rotating the radius through one turn, and grow the marked point trace from cusp to cusp.',
+      definitions: [
+        {
+          concept: 'Rolling without slipping',
+          statement:
+            'For radius 1, arc length t equals the center displacement t.',
+        },
+        {
+          concept: 'Centered cycloid',
+          statement: 'P(t)=(t-pi-sin(t), 1-cos(t)) for 0<=t<=2pi.',
+        },
+      ],
+      derivationSteps: [
+        'The rolling center is C(t)=(t-pi,1).',
+        'The rotating radius from C to the marked point is (-sin(t),-cos(t)).',
+        'Adding translation and rotation gives P(t)=(t-pi-sin(t),1-cos(t)).',
+        'At t=0 and t=2pi the point lies on y=0, producing the two cusps.',
+      ],
+      checks: [
+        {
+          claim: 'The point stays on the rolling circle.',
+          method: 'Subtract C(t) from P(t) and compute the squared length.',
+          expected: 'sin(t)^2+cos(t)^2=1.',
+        },
+        {
+          claim: 'The endpoints are cusps on the baseline.',
+          method: 'Substitute t=0 and t=2pi.',
+          expected: 'P(0)=(-pi,0) and P(2pi)=(pi,0).',
+        },
+      ],
+      limitations: [
+        'This deterministic profile uses a unit circle and displays one arch.',
+      ],
+    },
+  });
+  const storyboard = storyboardArtifactSchema.parse({
+    direction: {
+      preset: 'geometric-proof',
+      frame: '16:9',
+      pacing: 'balanced',
+      textPolicy: { maxWordsPerObject: 8, maxSimultaneousText: 2 },
+    },
+    cinematography: { scene: 'static', emphasis: 'clean' },
+    shots: [
+      {
+        id: 'cycloid_hook',
+        beat: 'hook',
+        purpose: 'Reveal the wheel, baseline, marked point, and first cusp.',
+        startAt: 0,
+        endAt: quarter,
+        focusRef: 'rolling_circle',
+        transition: 'build',
+        acceptance: ['The marked point begins on the baseline.'],
+      },
+      {
+        id: 'cycloid_roll',
+        beat: 'mechanism',
+        purpose: 'Move the rolling circle to the midpoint of the arch.',
+        startAt: quarter,
+        endAt: quarter * 2,
+        focusRef: 'rolling_circle',
+        transition: 'morph',
+        acceptance: [
+          'The circle, radius, point, and partial trace advance together.',
+        ],
+      },
+      {
+        id: 'cycloid_proof',
+        beat: 'proof',
+        purpose: 'Complete the turn and connect it to the parameterization.',
+        startAt: quarter * 2,
+        endAt: quarter * 3,
+        focusRef: 'parametric_formula',
+        transition: 'morph',
+        acceptance: ['The trace reaches the second cusp at y=0.'],
+      },
+      {
+        id: 'cycloid_payoff',
+        beat: 'payoff',
+        purpose: 'Leave the complete cycloid and its rolling-circle cause.',
+        startAt: quarter * 3,
+        endAt: durationSeconds,
+        focusRef: 'cycloid_result',
+        transition: 'emphasis',
+        acceptance: [
+          'The complete arch and exact parameterization remain readable.',
+        ],
+      },
+    ],
+  });
+  const pi = Math.PI;
+  const scene = sceneArtifactSchema.parse({
+    style: {
+      background: '#0B0D14',
+      palette: ['#7C8CFF', '#62D9C3', '#F4C95D', '#F4EDE1'],
+      camera: 'Fixed 16:9 rolling-geometry frame',
+    },
+    objects: [
+      {
+        id: 'cycloid_axes',
+        kind: 'axes',
+        region: 'graph',
+        importance: 'context',
+        color: '#8B92A8',
+      },
+      {
+        id: 'cycloid_baseline',
+        kind: 'line',
+        region: 'graph',
+        importance: 'context',
+        start: [-4.4, 0],
+        end: [4.4, 0],
+        color: '#8B92A8',
+      },
+      {
+        id: 'rolling_circle',
+        kind: 'circle',
+        region: 'graph',
+        importance: 'hero',
+        center: [-pi, 1],
+        radius: 1,
+        color: '#7C8CFF',
+      },
+      {
+        id: 'rolling_circle_mid',
+        kind: 'circle',
+        region: 'graph',
+        center: [0, 1],
+        radius: 1,
+        color: '#7C8CFF',
+      },
+      {
+        id: 'rolling_circle_end',
+        kind: 'circle',
+        region: 'graph',
+        center: [pi, 1],
+        radius: 1,
+        color: '#7C8CFF',
+      },
+      {
+        id: 'generator_point',
+        kind: 'point',
+        region: 'graph',
+        importance: 'hero',
+        position: [-pi, 0],
+        color: '#F4C95D',
+      },
+      {
+        id: 'generator_point_mid',
+        kind: 'point',
+        region: 'graph',
+        position: [0, 2],
+        color: '#F4C95D',
+      },
+      {
+        id: 'generator_point_end',
+        kind: 'point',
+        region: 'graph',
+        position: [pi, 0],
+        color: '#F4C95D',
+      },
+      {
+        id: 'rolling_radius',
+        kind: 'line',
+        region: 'graph',
+        start: [-pi, 1],
+        end: [-pi, 0],
+        color: '#F4C95D',
+      },
+      {
+        id: 'rolling_radius_mid',
+        kind: 'line',
+        region: 'graph',
+        start: [0, 1],
+        end: [0, 2],
+        color: '#F4C95D',
+      },
+      {
+        id: 'rolling_radius_end',
+        kind: 'line',
+        region: 'graph',
+        start: [pi, 1],
+        end: [pi, 0],
+        color: '#F4C95D',
+      },
+      {
+        id: 'cycloid_trace',
+        kind: 'parametric',
+        region: 'graph',
+        importance: 'hero',
+        xExpr: 't-pi-sin(t)',
+        yExpr: '1-cos(t)',
+        domain: [0, 0.08],
+        color: '#62D9C3',
+      },
+      {
+        id: 'cycloid_trace_mid',
+        kind: 'parametric',
+        region: 'graph',
+        xExpr: 't-pi-sin(t)',
+        yExpr: '1-cos(t)',
+        domain: [0, pi],
+        color: '#62D9C3',
+      },
+      {
+        id: 'cycloid_trace_full',
+        kind: 'parametric',
+        region: 'graph',
+        xExpr: 't-pi-sin(t)',
+        yExpr: '1-cos(t)',
+        domain: [0, pi * 2],
+        color: '#62D9C3',
+      },
+      {
+        id: 'parametric_formula',
+        kind: 'formula',
+        region: 'formula',
+        importance: 'hero',
+        parts: [
+          {
+            id: 'cycloid_x',
+            latex: 'x=t-\\pi-\\sin t,',
+            meaning: 'translation minus horizontal rotation component',
+            color: '#62D9C3',
+          },
+          {
+            id: 'cycloid_y',
+            latex: '\\quad y=1-\\cos t',
+            meaning: 'vertical rotation component above the baseline',
+            color: '#F4C95D',
+          },
+        ],
+      },
+      {
+        id: 'cycloid_result',
+        kind: 'formula',
+        region: 'formula',
+        importance: 'hero',
+        parts: [
+          {
+            id: 'rolling_label',
+            latex: '\\text{rolling circle}',
+            meaning: 'the geometric generator',
+            color: '#7C8CFF',
+          },
+          {
+            id: 'cycloid_label',
+            latex: '\\Longrightarrow\\text{cycloid}',
+            meaning: 'the generated trace',
+            color: '#62D9C3',
+          },
+        ],
+      },
+    ],
+    timeline: [
+      ...[
+        ['cycloid_axes', 'draw'],
+        ['cycloid_baseline', 'draw'],
+        ['rolling_circle', 'draw'],
+        ['generator_point', 'fade_in'],
+        ['rolling_radius', 'draw'],
+        ['cycloid_trace', 'draw'],
+        ['parametric_formula', 'write'],
+      ].map(([ref, op], index) => ({
+        id: `cycloid_open_${index + 1}`,
+        shotId: 'cycloid_hook',
+        at: 0,
+        op,
+        ref,
+        runTime: eventRuntime,
+        ease: 'smooth',
+      })),
+      ...[
+        ['rolling_circle', 'rolling_circle_mid'],
+        ['generator_point', 'generator_point_mid'],
+        ['rolling_radius', 'rolling_radius_mid'],
+        ['cycloid_trace', 'cycloid_trace_mid'],
+      ].map(([ref, targetRef], index) => ({
+        id: `cycloid_mid_${index + 1}`,
+        shotId: 'cycloid_roll',
+        at: quarter,
+        op: 'transform',
+        ref,
+        targetRef,
+        runTime: eventRuntime,
+        ease: 'smooth',
+      })),
+      ...[
+        ['rolling_circle', 'rolling_circle_end'],
+        ['generator_point', 'generator_point_end'],
+        ['rolling_radius', 'rolling_radius_end'],
+        ['cycloid_trace', 'cycloid_trace_full'],
+      ].map(([ref, targetRef], index) => ({
+        id: `cycloid_end_${index + 1}`,
+        shotId: 'cycloid_proof',
+        at: quarter * 2,
+        op: 'transform',
+        ref,
+        targetRef,
+        runTime: eventRuntime,
+        ease: 'smooth',
+      })),
+      {
+        id: 'cycloid_formula_emphasis',
+        shotId: 'cycloid_proof',
+        at: quarter * 2,
+        op: 'emphasize',
+        ref: 'parametric_formula',
+        runTime: eventRuntime,
+        ease: 'smooth',
+      },
+      {
+        id: 'cycloid_formula_out',
+        shotId: 'cycloid_payoff',
+        at: quarter * 3,
+        op: 'fade_out',
+        ref: 'parametric_formula',
+        runTime: eventRuntime,
+        ease: 'smooth',
+      },
+      {
+        id: 'cycloid_result_in',
+        shotId: 'cycloid_payoff',
+        at: quarter * 3,
+        op: 'write',
+        ref: 'cycloid_result',
+        runTime: eventRuntime,
+        ease: 'smooth',
+      },
+      {
+        id: 'cycloid_trace_emphasis',
+        shotId: 'cycloid_payoff',
+        at: quarter * 3,
+        op: 'glow',
+        ref: 'cycloid_trace',
+        runTime: eventRuntime,
+        ease: 'smooth',
+      },
+    ],
+    layout: { regions: 'left|right' },
+    dependencies: ['Manim Community', 'LaTeX'],
+    notes: [
+      'Deterministic profile cycloid-v1.',
+      'The centered parameterization is an exact horizontal translation of the standard unit cycloid.',
+    ],
+  });
+  const artifacts = {
+    intent,
+    knowledge,
+    curriculum,
+    mathematics,
+    storyboard,
+    scene,
+  };
+  composeAnimationSpecFromArtifacts(artifacts);
+  return artifacts;
+}
+
+export interface DeterministicAnimationPlanningProfile {
+  id: 'quadratic-tangent-v1' | 'cycloid-v1';
+  artifacts: AnimationPlanningArtifacts;
+}
+
+export function buildDeterministicAnimationPlanningProfile(
+  prompt: string
+): DeterministicAnimationPlanningProfile | undefined {
+  const quadratic = buildDeterministicQuadraticTangentArtifacts(prompt);
+  if (quadratic) return { id: 'quadratic-tangent-v1', artifacts: quadratic };
+  const cycloid = buildDeterministicCycloidArtifacts(prompt);
+  if (cycloid) return { id: 'cycloid-v1', artifacts: cycloid };
+  return undefined;
+}
