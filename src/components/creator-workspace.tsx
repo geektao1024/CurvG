@@ -141,7 +141,7 @@ interface CreatorGenerationRequest {
   model?: string;
 }
 
-export type CreatorCuratedModelKey = 'kuaipaoGpt56Sol';
+export type CreatorCuratedModelKey = 'kieGemini36Flash';
 
 interface CreatorCuratedModelPreset {
   key: CreatorCuratedModelKey;
@@ -152,9 +152,9 @@ interface CreatorCuratedModelPreset {
 
 const CURATED_MODEL_PRESETS: CreatorCuratedModelPreset[] = [
   {
-    key: 'kuaipaoGpt56Sol',
-    provider: 'kuaipao',
-    models: ['gpt-5.6-sol'],
+    key: 'kieGemini36Flash',
+    provider: 'kie',
+    models: ['gemini-3.6-flash'],
     tier: 'free',
   },
 ];
@@ -352,7 +352,7 @@ export interface CreatorWorkspaceCopy {
 }
 
 function isModelProvider(value: string): value is AnimationModelProvider {
-  return value === 'kuaipao';
+  return value === 'kie';
 }
 
 const progressByStatus: Record<AnimationStatus, number> = {

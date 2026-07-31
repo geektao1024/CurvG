@@ -21,26 +21,34 @@ import {
   parseModelChoice,
 } from '../src/routes/api/animations/-shared';
 
-test('the default free model is explicitly allowlisted on Kuaipao', () => {
-  const policy = getAnimationModelPolicy('kuaipao', DEFAULT_ANIMATION_MODEL);
+test('the default free model is explicitly allowlisted on KIE', () => {
+  const policy = getAnimationModelPolicy('kie', DEFAULT_ANIMATION_MODEL);
 
   assert.ok(policy);
-  assert.equal(policy.model, 'gpt-5.6-sol');
+  assert.equal(policy.model, 'gemini-3.6-flash');
   assert.equal(policy.requiredTier, 'free');
   assert.equal(canUseAnimationModel('free', policy), true);
 });
 
-test('only GPT-5.6 receives the high-effort quality comparison hint', () => {
-  assert.equal(getAnimationReasoningEffort('gpt-5.6-sol'), 'high');
+test('only Gemini 3.6 receives the high-effort planning hint', () => {
+  assert.equal(getAnimationReasoningEffort('gemini-3.6-flash'), 'high');
+  assert.equal(getAnimationReasoningEffort('gpt-5.6-sol'), undefined);
   assert.equal(getAnimationReasoningEffort('gpt-5.5'), undefined);
 });
 
-test('large GPT-5.6 composition stages use bounded medium effort', () => {
-  assert.equal(getAnimationCompositionReasoningEffort('gpt-5.6-sol'), 'medium');
+test('large Gemini composition stages use bounded medium effort', () => {
+  assert.equal(
+    getAnimationCompositionReasoningEffort('gemini-3.6-flash'),
+    'medium'
+  );
+  assert.equal(
+    getAnimationCompositionReasoningEffort('gpt-5.6-sol'),
+    undefined
+  );
   assert.equal(getAnimationCompositionReasoningEffort('gpt-5.5'), undefined);
 });
 
-test('Auto and explicit API selections resolve only to GPT-5.6', () => {
+test('Auto and explicit API selections resolve only to KIE Gemini 3.6', () => {
   const freeAuto = decideAnimationModelAccess({ tier: 'free', choice: 'auto' });
   assert.equal(freeAuto.allowed, true);
   if (freeAuto.allowed)
@@ -49,8 +57,8 @@ test('Auto and explicit API selections resolve only to GPT-5.6', () => {
   assert.equal(
     decideAnimationModelAccess({
       tier: 'free',
-      choice: 'kuaipao',
-      requestedModel: 'gpt-5.6-sol',
+      choice: 'kie',
+      requestedModel: 'gemini-3.6-flash',
     }).allowed,
     true
   );
@@ -59,24 +67,24 @@ test('Auto and explicit API selections resolve only to GPT-5.6', () => {
     decideAnimationModelAccess({
       tier: 'free',
       choice: 'auto',
-      requestedModel: 'gpt-5.6-sol',
+      requestedModel: 'gemini-3.6-flash',
     }),
     { allowed: false, reason: 'INVALID_MODEL' }
   );
 });
 
-test('the generation catalog contains only reviewed Kuaipao GPT-5.6', () => {
+test('the generation catalog contains only reviewed KIE Gemini 3.6', () => {
   assert.deepEqual(animationModelPolicies, [
     {
-      provider: 'kuaipao',
-      model: 'gpt-5.6-sol',
-      presetKey: 'kuaipaoGpt56Sol',
+      provider: 'kie',
+      model: 'gemini-3.6-flash',
+      presetKey: 'kieGemini36Flash',
       requiredTier: 'free',
     },
   ]);
 });
 
-test('KIE Gemini is a hidden resilience target after Kuaipao GPT-5.6', () => {
+test('KIE Gemini is primary and Kuaipao GPT-5.6 is hidden resilience', () => {
   const primary = animationModelPolicies[0];
   assert.deepEqual(
     animationProviderTargetPlan(
@@ -88,23 +96,23 @@ test('KIE Gemini is a hidden resilience target after Kuaipao GPT-5.6', () => {
     ),
     [
       {
-        provider: 'kuaipao',
-        model: 'gpt-5.6-sol',
+        provider: 'kie',
+        model: 'gemini-3.6-flash',
         reasoningEffort: 'high',
       },
       {
-        provider: 'kie',
-        model: 'gemini-3.6-flash',
+        provider: 'kuaipao',
+        model: 'gpt-5.6-sol',
         reasoningEffort: 'high',
       },
     ]
   );
   assert.deepEqual(
-    animationProviderTargetPlan({ kuaipao_api_key: 'configured' }, primary),
+    animationProviderTargetPlan({ kie_api_key: 'configured' }, primary),
     [
       {
-        provider: 'kuaipao',
-        model: 'gpt-5.6-sol',
+        provider: 'kie',
+        model: 'gemini-3.6-flash',
         reasoningEffort: 'high',
       },
     ]
@@ -127,11 +135,12 @@ test('Pro access can use every allowlisted model', () => {
   }
 });
 
-test('unknown providers, legacy Kie values, and aliases fail closed', () => {
+test('unknown providers, legacy Kuaipao values, and aliases fail closed', () => {
   const unknowns = [
     getAnimationModelPolicy('unknown-provider', DEFAULT_ANIMATION_MODEL),
     getAnimationModelPolicy('yunwu', 'deepseek-v4-pro'),
     getAnimationModelPolicy('kie', 'gemini-3-pro'),
+    getAnimationModelPolicy('kuaipao', 'gpt-5.6-sol'),
     getAnimationModelPolicy('kuaipao', 'gpt-5.6'),
     getAnimationModelPolicy('kuaipao', 'new-unreviewed-model'),
   ];
@@ -144,8 +153,8 @@ test('unknown providers, legacy Kie values, and aliases fail closed', () => {
 
 test('stale API provider choices are rejected instead of becoming Auto', () => {
   assert.equal(parseModelChoice(undefined), 'auto');
-  assert.equal(parseModelChoice('kuaipao'), 'kuaipao');
-  for (const provider of ['yunwu', 'openai', 'kie']) {
+  assert.equal(parseModelChoice('kie'), 'kie');
+  for (const provider of ['yunwu', 'openai', 'kuaipao']) {
     assert.throws(
       () => parseModelChoice(provider),
       (error: unknown) =>
@@ -157,14 +166,14 @@ test('stale API provider choices are rejected instead of becoming Auto', () => {
   }
 });
 
-test('client model values preserve the explicit Kuaipao boundary', () => {
+test('client model values preserve the explicit KIE boundary', () => {
   assert.equal(
-    animationModelValue('kuaipao', 'gpt-5.6-sol'),
-    'kuaipao:gpt-5.6-sol'
+    animationModelValue('kie', 'gemini-3.6-flash'),
+    'kie:gemini-3.6-flash'
   );
-  assert.deepEqual(parseAnimationModelValue('kuaipao:gpt-5.6-sol'), {
-    modelChoice: 'kuaipao',
-    model: 'gpt-5.6-sol',
+  assert.deepEqual(parseAnimationModelValue('kie:gemini-3.6-flash'), {
+    modelChoice: 'kie',
+    model: 'gemini-3.6-flash',
   });
   assert.deepEqual(parseAnimationModelValue('unknown:gpt-5.6-sol'), {
     modelChoice: 'auto',

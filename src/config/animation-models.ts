@@ -8,9 +8,9 @@
  */
 export const animationModelPolicies = [
   {
-    provider: 'kuaipao',
-    model: 'gpt-5.6-sol',
-    presetKey: 'kuaipaoGpt56Sol',
+    provider: 'kie',
+    model: 'gemini-3.6-flash',
+    presetKey: 'kieGemini36Flash',
     requiredTier: 'free',
   },
 ] as const;
@@ -18,14 +18,12 @@ export const animationModelPolicies = [
 export type AnimationModelPolicy = (typeof animationModelPolicies)[number];
 export type AnimationAccessTier = 'free' | 'starter' | 'pro';
 
-export const DEFAULT_ANIMATION_MODEL = 'gpt-5.6-sol';
-export const DEFAULT_ANIMATION_PROVIDER = 'kuaipao';
+export const DEFAULT_ANIMATION_MODEL = 'gemini-3.6-flash';
+export const DEFAULT_ANIMATION_PROVIDER = 'kie';
 
 /**
- * Provider tuning is allowlisted just like model access. GPT-5.6 is currently
- * the sole generation model so quality comparisons exercise its full
- * reasoning mode instead of conflating a cheap reasoning budget with model
- * capability.
+ * Provider tuning is allowlisted just like model access. The reviewed Gemini
+ * route keeps high reasoning for mathematical and curriculum stages.
  */
 export function getAnimationReasoningEffort(model: string): 'high' | undefined {
   return model === DEFAULT_ANIMATION_MODEL ? 'high' : undefined;
@@ -34,8 +32,7 @@ export function getAnimationReasoningEffort(model: string): 'high' | undefined {
 /**
  * Scene assembly and Python composition consume already-approved planning
  * artifacts. Medium effort keeps those large synthesis responses inside the
- * provider deadline while the mathematical and storyboard stages retain the
- * high-effort quality policy above.
+ * provider deadline while the mathematical stages retain high effort.
  */
 export function getAnimationCompositionReasoningEffort(
   model: string
@@ -44,13 +41,13 @@ export function getAnimationCompositionReasoningEffort(
 }
 
 export const FREE_AUTO_MODEL_TARGETS = [
-  { provider: 'kuaipao', model: 'gpt-5.6-sol' },
+  { provider: 'kie', model: 'gemini-3.6-flash' },
 ] as const;
 
 // Keep the Pro Auto target identical during the focused comparison period so
 // subscription tier cannot silently change the model under evaluation.
 export const PRO_AUTO_MODEL_TARGETS = [
-  { provider: 'kuaipao', model: 'gpt-5.6-sol' },
+  { provider: 'kie', model: 'gemini-3.6-flash' },
 ] as const;
 
 export function getAnimationModelPolicy(
@@ -88,8 +85,7 @@ export function decideAnimationModelAccess(params: {
   requestedModel?: string;
 }): AnimationModelDecision {
   const auto = params.choice === 'auto';
-  const explicitProvider =
-    params.choice === 'kuaipao' ? params.choice : undefined;
+  const explicitProvider = params.choice === 'kie' ? params.choice : undefined;
   if ((!auto && !explicitProvider) || (auto && params.requestedModel)) {
     return { allowed: false, reason: 'INVALID_MODEL' };
   }

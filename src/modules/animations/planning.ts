@@ -49,7 +49,9 @@ const PIPELINE_VERSION = 1;
 const MAX_STAGE_FORMAT_REPAIRS = 1;
 const MAX_INTEGRATION_REPAIRS = 2;
 const MAX_MATH_REVISIONS = 2;
-const STAGE_PROVIDER_TIMEOUT_MS = 60_000;
+// Reserve one minute for KIE Gemini and one minute for the independent
+// Kuaipao fallback. ProviderFailoverChatProvider enforces the per-target cap.
+const STAGE_PROVIDER_TIMEOUT_MS = 120_000;
 
 const STAGE_CONTRACTS: Record<AnimationPlanningStageName, string> = {
   intent: `{

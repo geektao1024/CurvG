@@ -196,9 +196,9 @@ export function CreatorWorkspace({
     modelUnavailable: m['creator.model.unavailable'](),
     modelUnavailableShort: m['creator.model.unavailable_short'](),
     curatedModels: {
-      kuaipaoGpt56Sol: {
-        label: m['creator.model.kuaipao_gpt_56_sol.label'](),
-        description: m['creator.model.kuaipao_gpt_56_sol.description'](),
+      kieGemini36Flash: {
+        label: m['creator.model.kie_gemini_36_flash.label'](),
+        description: m['creator.model.kie_gemini_36_flash.description'](),
       },
     },
     failureMessages: {

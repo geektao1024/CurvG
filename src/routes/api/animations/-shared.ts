@@ -44,7 +44,7 @@ const subjects = new Set<AnimationSubject>([
   'economics',
 ]);
 
-const modelChoices = new Set<AnimationModelChoice>(['auto', 'kuaipao']);
+const modelChoices = new Set<AnimationModelChoice>(['auto', 'kie']);
 
 export class AnimationApiError extends Error {
   constructor(
@@ -227,37 +227,34 @@ function kieProvider(configs: ConfigMap) {
 export interface AnimationProviderTargetPlan {
   provider: 'kuaipao' | 'kie';
   model: string;
-  reasoningEffort?: 'high';
+  reasoningEffort?: 'high' | 'medium';
 }
 
-// KIE's GPT-5.6 route currently returns a provider-side "Server exception"
-// even for the smallest authenticated request. Keep Kuaipao GPT-5.6 as the
-// product model, but use the independently healthy Gemini route for disaster
-// recovery so the fallback is not coupled to the same model outage.
-const KIE_RESILIENCE_MODEL = 'gemini-3.6-flash' satisfies KieChatModel;
+const KIE_PRIMARY_MODEL = 'gemini-3.6-flash' satisfies KieChatModel;
+const KUAIPAO_RESILIENCE_MODEL = 'gpt-5.6-sol';
 
 /**
- * Keep the public product choice pinned to GPT-5.6 while giving both Auto and
- * an explicit Kuaipao selection a genuinely independent recovery route. The
- * fallback is intentionally server-owned: it is invoked only after the
- * primary provider fails, and is not advertised as another selectable model.
+ * Keep KIE Gemini as the public product model and retain Kuaipao GPT-5.6 only
+ * as an independent server-owned recovery route. Provider order is part of
+ * the product reliability contract and must never depend on key insertion
+ * order or a client-supplied model alias.
  */
 export function animationProviderTargetPlan(
   configs: ConfigMap,
   primary: Pick<AnimationModelPolicy, 'provider' | 'model'>
 ): AnimationProviderTargetPlan[] {
   const targets: AnimationProviderTargetPlan[] = [];
-  if (primary.provider === 'kuaipao' && configs.kuaipao_api_key) {
+  if (primary.provider === 'kie' && configs.kie_api_key) {
     targets.push({
-      provider: 'kuaipao',
-      model: primary.model,
+      provider: 'kie',
+      model: KIE_PRIMARY_MODEL,
       reasoningEffort: getAnimationReasoningEffort(primary.model),
     });
   }
-  if (configs.kie_api_key) {
+  if (configs.kuaipao_api_key) {
     targets.push({
-      provider: 'kie',
-      model: KIE_RESILIENCE_MODEL,
+      provider: 'kuaipao',
+      model: KUAIPAO_RESILIENCE_MODEL,
       reasoningEffort: 'high',
     });
   }
@@ -270,11 +267,9 @@ interface ProviderResolution {
 }
 
 const autoModelCircuitBreaker = new ChatModelCircuitBreaker();
-// GPT-5.6 scene/code synthesis regularly needs more than 105 seconds even at
-// bounded composition effort. Give the primary target a realistic window;
-// the caller's absolute stage deadline still caps the complete failover chain
-// and leaves KIE the remaining budget when Kuaipao does not respond.
-const ANIMATION_PROVIDER_TIMEOUT_MS = 180_000;
+// The caller gives a two-provider stage 120 seconds. Cap each target at 60
+// seconds so KIE cannot consume the fallback's reserved half of that budget.
+const ANIMATION_PROVIDER_TIMEOUT_MS = 60_000;
 
 function policyOptions(
   tier: AnimationAccessTier,
@@ -306,7 +301,7 @@ function policyKey(policy: Pick<AnimationModelOption, 'provider' | 'model'>) {
 }
 
 function policyAvailable(policy: AnimationModelPolicy, configs: ConfigMap) {
-  return policy.provider === 'kuaipao' && !!configs.kuaipao_api_key;
+  return policy.provider === 'kie' && !!configs.kie_api_key;
 }
 
 function resilientProvider(
@@ -354,10 +349,10 @@ export async function listAnimationModels(
   // The product catalog is the intersection of the reviewed model allowlist
   // and a configured credential. We deliberately do not expose every model
   // returned by the upstream `/models` endpoint.
-  const kuaipaoOptions = configs.kuaipao_api_key
-    ? policyOptions(viewerTier, 'kuaipao')
+  const kieOptions = configs.kie_api_key
+    ? policyOptions(viewerTier, 'kie')
     : [];
-  const discoveredOptions = kuaipaoOptions;
+  const discoveredOptions = kieOptions;
   const entitledTargets = new Set(
     discoveredOptions.filter((option) => option.entitled).map(policyKey)
   );
@@ -390,16 +385,14 @@ export async function resolveChatProvider(
   requestedModel?: string
 ): Promise<ProviderResolution> {
   const tier = await getAnimationAccessTier(userId);
-  // Historic animation rows may still carry a Kie selection. Public requests
-  // pass through parseModelChoice and reject that stale value; only trusted
-  // persisted rows are migrated to the new Auto target here so approval and
-  // repair of existing work do not become permanently blocked.
-  const normalizedChoice =
-    (choice as string) === 'kuaipao' ? 'kuaipao' : 'auto';
+  // Historic animation rows may still carry an explicit Kuaipao selection.
+  // Public requests reject it, while trusted persisted rows migrate to the
+  // new Auto target so approval and repair are not permanently blocked.
+  const normalizedChoice = (choice as string) === 'kie' ? 'kie' : 'auto';
   const decision = decideAnimationModelAccess({
     tier,
     choice: normalizedChoice,
-    requestedModel: normalizedChoice === 'kuaipao' ? requestedModel : undefined,
+    requestedModel: normalizedChoice === 'kie' ? requestedModel : undefined,
   });
   if (!decision.allowed) {
     const errors = {

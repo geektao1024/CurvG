@@ -27,6 +27,11 @@ import type { AnimationWorkflowPayload } from '@/lib/cloudflare-workflow';
 
 type AnimationWorkflowEnv = Record<string, unknown>;
 
+// Each planning stage already has a KIE -> Kuaipao provider failover. Keep one
+// whole-plan recovery attempt without replaying the complete six-stage chain
+// three times when an upstream model is persistently unavailable.
+const MAX_PLANNING_ATTEMPTS = 2;
+
 function exposeRuntimeEnv(env: AnimationWorkflowEnv) {
   (
     globalThis as typeof globalThis & {
@@ -76,7 +81,7 @@ export class AnimationWorkflow extends WorkflowEntrypoint<
     const payload = event.payload;
 
     let planningError: unknown;
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
+    for (let attempt = 1; attempt <= MAX_PLANNING_ATTEMPTS; attempt += 1) {
       try {
         const outcome = await step.do(
           `plan-animation-attempt-${attempt}`,
@@ -137,14 +142,15 @@ export class AnimationWorkflow extends WorkflowEntrypoint<
           break;
         }
         planningError = new AnimationGenerationError(outcome.failure);
-        if (!outcome.failure.retryable || attempt === 3) break;
+        if (!outcome.failure.retryable || attempt === MAX_PLANNING_ATTEMPTS)
+          break;
         await step.sleep(
           `wait-before-planning-attempt-${attempt + 1}`,
           '5 seconds'
         );
       } catch (error) {
         planningError = error;
-        if (attempt === 3) break;
+        if (attempt === MAX_PLANNING_ATTEMPTS) break;
         await step.sleep(
           `wait-before-planning-attempt-${attempt + 1}`,
           '5 seconds'

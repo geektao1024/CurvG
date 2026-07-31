@@ -672,7 +672,7 @@ async function requestAnimationCodeCompletion(
   // Long code generations use streaming so gateways keep an observable
   // response body and adapters can distinguish reasoning events from final
   // Python output. Keep the former Gemini behavior for historical tasks even
-  // though the current catalog exposes only GPT-5.6.
+  // though the current catalog exposes only one reviewed generation model.
   if (
     ['gpt-5.6-sol', 'gemini-3.6-flash'].includes(input.model.toLowerCase()) &&
     provider.stream
