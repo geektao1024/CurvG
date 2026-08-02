@@ -72,7 +72,7 @@ const MAX_ANIMATIONS_PER_USER = 200;
 // This budget is shared by planning, schema correction, an independent math
 // audit, at most three specification rebuilds, provider retries, and Auto
 // fallbacks. It remains one absolute deadline instead of multiplying a timeout
-// per call, but gives the audited v5 pipeline enough room to finish.
+// per call, but gives the audited v6 pipeline enough room to finish.
 export const ANIMATION_STAGE_TIMEOUT_MS = 300_000;
 const MAX_SPEC_SCHEMA_REPAIRS = 2;
 const MAX_MATH_SPEC_REPAIRS = 3;
@@ -100,11 +100,11 @@ interface StoredAnimationParts extends AnimationParts {
   qualityControl?: AnimationQualityControlState;
 }
 
-const SPEC_SYSTEM_PROMPT = `You are CurvG's mathematical animation director. Convert the user's request into CurvG's strict v5 intermediate representation. You never write Python.
+const SPEC_SYSTEM_PROMPT = `You are CurvG's mathematical animation director. Convert the user's request into CurvG's strict v6 intermediate representation. You never write Python.
 
 Return valid JSON only with this shape:
 {
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "title": "short title",
   "summary": "what the animation proves or explains",
   "durationSeconds": 20,
@@ -128,8 +128,12 @@ Return valid JSON only with this shape:
     "id": "concept identifier",
     "concept": "one prerequisite or target concept",
     "dependsOn": ["ids of prerequisite knowledge nodes"],
-    "misconception": "a concrete misconception this concept must avoid"
+    "misconception": "a concrete misconception this concept must avoid",
+    "depth": 0,
+    "assumed": false,
+    "visualSeed": "the most filmable mental image of this concept"
   }],
+  "spine": ["ordered knowledge node ids, foundations first, ending at the depth-0 target"],
   "curriculum": [{
     "id": "ordered teaching beat identifier",
     "learningJob": "what the viewer learns in this beat",
@@ -138,6 +142,11 @@ Return valid JSON only with this shape:
     "notationBudget": 2
   }],
   "mathDossier": {
+    "formulas": [{
+      "id": "formula identifier",
+      "purpose": "why this formula appears on screen",
+      "latexParts": [{"id": "part id", "latex": "one independently renderable LaTeX chunk", "meaning": "what this chunk means"}]
+    }],
     "coreClaim": "the exact mathematical statement the animation establishes",
     "invariants": ["facts that must remain true throughout every shot"],
     "commonMisreading": "the most likely conceptual mistake to prevent",
@@ -159,6 +168,7 @@ Return valid JSON only with this shape:
     "importance": "hero|supporting|context",
     "label": "optional plain text",
     "expr": "safe math expression for curves, full LaTeX for formulas",
+    "formulaId": "required for formula objects: the mathDossier formula this object renders",
     "xExpr": "safe x(t) expression for parametric curves",
     "yExpr": "safe y(t) expression for parametric curves",
     "parts": [{
@@ -214,7 +224,7 @@ Treat the camera as a teaching tool, not decoration. Choose moving-camera only w
 
 For formulas with multiple meaningful terms, always provide 2-8 parts as separate MathTex arguments. Each latex chunk must compile independently and concatenate into the intended formula. Reuse the same part id and color for the same mathematical role across formulas. Use ivory for neutral symbols and reserve coral, blue, teal, or gold for semantically important terms. The animation should remain understandable when prose text is hidden: formulas, geometry, motion, and color must carry the explanation.
 
-Object IDs, shot IDs, and timeline IDs must be unique. Formula part IDs must be unique inside their formula. Curves use x and only these functions: sin, cos, tan, asin, acos, atan, sqrt, abs, exp, log, ln, sinh, cosh, tanh. Timeline events that should run concurrently must use exactly the same at value. After grouping equal at values and sorting the groups, every next group must satisfy next.at >= current.at + max(current group runTime); never stagger a new event before the current group finishes. Every event must end at or before durationSeconds and remain inside its declared shot. zoom is only valid for camera_focus. Camera operations require moving-camera. Include an axes object whenever a curve or area is present. Portrait scenes cannot use left|right layout. Layout declares only semantic regions; the compiler owns all coordinates, scaling, and safe zones. Keep internal reasoning brief and begin the final JSON as soon as the requirements are understood. Do not return Python, prose fields, Markdown, or any schemaVersion other than 5.`;
+Object IDs, shot IDs, and timeline IDs must be unique. Formula part IDs must be unique inside their formula. The mathDossier owns every formula the film may show: author each exactly once in mathDossier.formulas. Every formula object must carry formulaId naming the dossier formula it renders and copy that formula's latexParts verbatim — as parts, or as expr when the formula has a single part. The scene never authors new LaTeX and never renders the same formula through two objects. In knowledgeMap, set depth 0 only on the target concept, mark audience-held concepts assumed (they get a nod, not a lesson), give every node a filmable visualSeed, and make spine the shortest honest path from foundations to the depth-0 target. Curves use x and only these functions: sin, cos, tan, asin, acos, atan, sqrt, abs, exp, log, ln, sinh, cosh, tanh. Timeline events that should run concurrently must use exactly the same at value. After grouping equal at values and sorting the groups, every next group must satisfy next.at >= current.at + max(current group runTime); never stagger a new event before the current group finishes. Every event must end at or before durationSeconds and remain inside its declared shot. zoom is only valid for camera_focus. Camera operations require moving-camera. Include an axes object whenever a curve or area is present. Portrait scenes cannot use left|right layout. Layout declares only semantic regions; the compiler owns all coordinates, scaling, and safe zones. Keep internal reasoning brief and begin the final JSON as soon as the requirements are understood. Do not return Python, prose fields, Markdown, or any schemaVersion other than 6.`;
 
 const MATH_REVIEW_SYSTEM_PROMPT = `You are CurvG's independent mathematical reviewer. Audit a proposed animation specification skeptically before any code is generated.
 
@@ -422,7 +432,7 @@ export async function parseAnimationSpecWithRepairs(params: {
             { role: 'assistant', content: result.content },
             {
               role: 'user',
-              content: `The previous specification failed application validation (schema repair ${repairAttempt + 1} of ${MAX_SPEC_SCHEMA_REPAIRS}):\n${reason}\n\nReturn one complete corrected schemaVersion 5 JSON object only. Preserve the approved mathematical meaning and include every required field. Treat every validator issue as mandatory. For the timeline, events that run concurrently must have exactly the same at value; after grouping equal starts and sorting the groups, enforce next.at >= current.at + max(current group runTime), keep each event inside its shot, and keep the final event within durationSeconds.`,
+              content: `The previous specification failed application validation (schema repair ${repairAttempt + 1} of ${MAX_SPEC_SCHEMA_REPAIRS}):\n${reason}\n\nReturn one complete corrected schemaVersion 6 JSON object only. Preserve the approved mathematical meaning and include every required field. Treat every validator issue as mandatory. For the timeline, events that run concurrently must have exactly the same at value; after grouping equal starts and sorting the groups, enforce next.at >= current.at + max(current group runTime), keep each event inside its shot, and keep the final event within durationSeconds.`,
             },
           ],
           temperature: 0,
@@ -609,7 +619,7 @@ export async function generateAnimationSpec(params: {
         { role: 'assistant', content: JSON.stringify(spec) },
         {
           role: 'user',
-          content: `An independent mathematical audit rejected the specification (repair ${repairAttempt} of ${MAX_MATH_SPEC_REPAIRS}):\n${JSON.stringify(mathReview)}\n\nRebuild and return the complete corrected schemaVersion 5 JSON specification. Treat every audit issue as a mandatory acceptance criterion and correct it at the specification level instead of merely rephrasing it. Every visible entity required by the audit must be an explicit object with timeline evidence; use circle, point, line, arrow and arc geometry plus move_along/pathRef when appropriate. Do not claim an issue is fixed only in summary, visualProof, purpose, acceptance or notes. When the original request is underspecified, choose one conventional mathematical interpretation, state it explicitly in assumptions and limitations, narrow coreClaim to that scope, and keep every definition, derivation, check, shot, object and timeline event consistent with it. Preserve the user's intent and include every required field.`,
+          content: `An independent mathematical audit rejected the specification (repair ${repairAttempt} of ${MAX_MATH_SPEC_REPAIRS}):\n${JSON.stringify(mathReview)}\n\nRebuild and return the complete corrected schemaVersion 6 JSON specification. Treat every audit issue as a mandatory acceptance criterion and correct it at the specification level instead of merely rephrasing it. Every visible entity required by the audit must be an explicit object with timeline evidence; use circle, point, line, arrow and arc geometry plus move_along/pathRef when appropriate. Do not claim an issue is fixed only in summary, visualProof, purpose, acceptance or notes. When the original request is underspecified, choose one conventional mathematical interpretation, state it explicitly in assumptions and limitations, narrow coreClaim to that scope, and keep every definition, derivation, check, shot, object and timeline event consistent with it. Preserve the user's intent and include every required field.`,
         },
       ],
       temperature: 0,
@@ -2445,7 +2455,7 @@ export async function composeAnimationMathematicalRepair(params: {
       { role: 'system', content: SPEC_SYSTEM_PROMPT },
       {
         role: 'user',
-        content: `ORIGINAL USER REQUEST:\n${params.context.prompt}\n\nCURRENT REJECTED SPECIFICATION:\n${JSON.stringify(params.context.spec)}\n\nPOST-RENDER MATHEMATICAL REVIEW:\n${JSON.stringify(params.review)}\n\nRebuild the complete schemaVersion 5 specification so the mathematical defect is corrected at its source. Return JSON only.`,
+        content: `ORIGINAL USER REQUEST:\n${params.context.prompt}\n\nCURRENT REJECTED SPECIFICATION:\n${JSON.stringify(params.context.spec)}\n\nPOST-RENDER MATHEMATICAL REVIEW:\n${JSON.stringify(params.review)}\n\nRebuild the complete schemaVersion 6 specification so the mathematical defect is corrected at its source. Return JSON only.`,
       },
     ],
     temperature: 0,
@@ -2482,7 +2492,7 @@ export async function composeAnimationMathematicalRepair(params: {
         { role: 'system', content: SPEC_SYSTEM_PROMPT },
         {
           role: 'user',
-          content: `ORIGINAL USER REQUEST:\n${params.context.prompt}\n\nCURRENT REJECTED SPECIFICATION:\n${JSON.stringify(spec)}\n\nPOST-RENDER MATHEMATICAL REVIEW:\n${JSON.stringify(params.review)}\n\nINDEPENDENT MATHEMATICAL AUDIT (repair ${repairAttempt} of ${MAX_MATH_SPEC_REPAIRS}):\n${JSON.stringify(mathReview)}\n\nRebuild the complete schemaVersion 5 specification. Treat every post-render issue and independent audit correction as mandatory. Correct the visual proof at its source: the timeline and shots must visibly demonstrate the core claim, not merely place correct formulas beside static geometry. Preserve already-correct definitions and return JSON only.`,
+          content: `ORIGINAL USER REQUEST:\n${params.context.prompt}\n\nCURRENT REJECTED SPECIFICATION:\n${JSON.stringify(spec)}\n\nPOST-RENDER MATHEMATICAL REVIEW:\n${JSON.stringify(params.review)}\n\nINDEPENDENT MATHEMATICAL AUDIT (repair ${repairAttempt} of ${MAX_MATH_SPEC_REPAIRS}):\n${JSON.stringify(mathReview)}\n\nRebuild the complete schemaVersion 6 specification. Treat every post-render issue and independent audit correction as mandatory. Correct the visual proof at its source: the timeline and shots must visibly demonstrate the core claim, not merely place correct formulas beside static geometry. Preserve already-correct definitions and return JSON only.`,
         },
       ],
       temperature: 0,

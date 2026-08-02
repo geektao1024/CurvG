@@ -1,7 +1,7 @@
 # CurvG 网站架构规划（第一性原理版）
 
 更新时间：2026-07-22
-状态：已评审的规划基线（本文档为战略层，实施细节见 `TECHNICAL_ARCHITECTURE.md` 与 `CURVG_CREATOR_ARCHITECTURE.md`）
+状态：已评审的规划基线（本文档为战略层，实施细节见 `ANIMATION_ORCHESTRATION.md` 与 `CURVG_CREATOR_ARCHITECTURE.md`）
 
 ---
 
@@ -102,6 +102,6 @@ animg 的 library 是"用户作品堆"。CurvG 做成 **"曲线百科 + 作品�
 ## 7. 与既有文档的关系
 
 - `ROADMAP.md`：本文档第 5 节的优先级已同步至路线图"当前最优先的下一步"。
-- `TECHNICAL_ARCHITECTURE.md`：基础设施选型（Cloudflare、D1、R2、Sandbox）不变。
+- `ANIMATION_ORCHESTRATION.md`：基础设施选型（Cloudflare、D1、R2、Sandbox）不变；该文档取代了已删除的 `TECHNICAL_ARCHITECTURE.md`，并补充了 provider 路由与确定性兜底。
 - `CURVG_CREATOR_ARCHITECTURE.md`：四层事实模型与状态机不变，本文档在其上补充数学验证层与模板库。
 - `docs/research/animg.app/COMPETITOR_ANALYSIS.md`：竞品结论的战略化落地即本文档第 2、3 节。

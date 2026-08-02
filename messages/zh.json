@@ -35,7 +35,7 @@
   "creator.characters": "字符",
   "creator.welcome_eyebrow": "从想法到 Manim · 中间多一步检查",
   "creator.welcome_title": "不用放弃控制，也能更快创建 Manim 场景",
-  "creator.welcome_description": "告诉 CurvG 希望观众理解什么。你会先得到可检查的场景方案，再生成能够复制、下载或在服务可用时渲染的 Manim 代码。",
+  "creator.welcome_description": "告诉 CurvG 希望观众理解什么。你会先得到可检查的场景方案，再生成能够复制、下载或直接渲染成视频的 Manim 代码。",
   "creator.tips_title": "为了得到更好的初稿，建议写清",
   "creator.tip_formula": "准确的公式、定义或来源数据",
   "creator.tip_viewport": "坐标轴、范围、标签与镜头构图",

@@ -85,7 +85,10 @@ class MathDossier(ForwardCompatibleModel):
 
 
 class AnimationSpec(ForwardCompatibleModel):
-    schemaVersion: int = Field(default=5, ge=5, le=5)
+    # Schema 6 adds dossier-owned formulas, knowledge depth/assumed/visualSeed
+    # and spine; the orchestrator's checks read shared v5 fields, and
+    # ForwardCompatibleModel already tolerates the additions.
+    schemaVersion: int = Field(default=5, ge=5, le=6)
     title: str = Field(min_length=1, max_length=160)
     summary: str = Field(min_length=1, max_length=1200)
     durationSeconds: float = Field(gt=0, le=180)

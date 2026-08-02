@@ -15,6 +15,7 @@ import {
   buildDeterministicQuadraticTangentArtifacts,
   buildDeterministicSceneArtifact,
   composeAnimationSpecFromArtifacts,
+  QUADRATIC_TANGENT_FORMULAS,
   supportsDeterministicSceneProfile,
   type AnimationPlanningArtifacts,
 } from '../src/lib/animation-pipeline';
@@ -92,7 +93,7 @@ function planningArtifacts(): AnimationPlanningArtifacts {
       assumptions: spec.assumptions,
       intent: spec.intent!,
     },
-    knowledge: { knowledgeMap: spec.knowledgeMap! },
+    knowledge: { knowledgeMap: spec.knowledgeMap!, spine: spec.spine! },
     curriculum: { curriculum: spec.curriculum! },
     mathematics: { mathDossier: spec.mathDossier! },
     storyboard: {
@@ -108,7 +109,10 @@ function planningArtifacts(): AnimationPlanningArtifacts {
       dependencies: spec.dependencies,
       notes: spec.notes,
     },
-  };
+    // The fixture uses the wider AnimationSpec field types; every test that
+    // consumes these artifacts re-validates them through the stage schemas,
+    // so the runtime parse is the real gate.
+  } as unknown as AnimationPlanningArtifacts;
 }
 
 function request(path: string, cookie: string) {
@@ -297,6 +301,60 @@ test('SSE relays real planning phases to the creator workspace', async () => {
   assert.match(body, /"type":"phase","phase":"auditing"/);
 });
 
+test('scene checkpoints reject internally inconsistent scenes', () => {
+  // A scene can satisfy the schema, compile, render, and pass pixel QA while
+  // still being incoherent. These three cases all could ship without any of
+  // those gates firing. `mathematics` is omitted so the full-contract check
+  // is skipped and these checks are exercised on their own.
+  const base = planningArtifacts();
+  const context = { ...base, mathematics: undefined };
+  const check = (scene: AnimationPlanningArtifacts['scene']) =>
+    validateAnimationPlanningStageSemantics('scene', scene, context);
+
+  assert.doesNotThrow(() => check(base.scene));
+
+  // Two beats rendering the same formula — the production defect: four beats,
+  // one formula, 17 seconds of implied progress that never happened.
+  const duplicated = structuredClone(base.scene);
+  const original = duplicated.objects.find((o) => o.kind === 'formula');
+  assert.ok(original, 'fixture should carry a formula object');
+  const clonedId = `${original.id}_clone`;
+  duplicated.objects.push({ ...structuredClone(original), id: clonedId });
+  const showOriginal = duplicated.timeline.find(
+    (event) => event.ref === original.id
+  )!;
+  duplicated.timeline.push({
+    ...structuredClone(showOriginal),
+    id: `${showOriginal.id}_clone`,
+    ref: clonedId,
+  });
+  assert.throws(() => check(duplicated), /render identical content/);
+
+  // Removing something the viewer was never shown.
+  const premature = structuredClone(base.scene);
+  const shown = premature.timeline.find((event) =>
+    ['draw', 'write', 'fade_in'].includes(event.op)
+  )!;
+  premature.timeline = [
+    {
+      ...structuredClone(shown),
+      id: `${shown.id}_out`,
+      op: 'fade_out' as const,
+      at: 0,
+    },
+    ...premature.timeline,
+  ];
+  assert.throws(() => check(premature), /before it appears/);
+
+  // A formula declared but never brought on screen.
+  const unshown = structuredClone(base.scene);
+  const formula = unshown.objects.find((o) => o.kind === 'formula')!;
+  unshown.timeline = unshown.timeline.filter(
+    (event) => event.ref !== formula.id
+  );
+  assert.throws(() => check(unshown), /timeline never shows/);
+});
+
 test('scene checkpoints reject cross-stage references before the pipeline restarts', () => {
   const artifacts = planningArtifacts();
   assert.doesNotThrow(() =>
@@ -378,6 +436,11 @@ test('quadratic tangent fallback preserves exact curve and tangent geometry', ()
     'For h not equal to zero, expand the numerator.',
     '[(1+h)^2-1]/h=2+h tends to 2.',
   ];
+  // Schema 6 ownership: the quadratic scene renders the four fixed formulas,
+  // so the dossier must actually author them for the profile to activate.
+  artifacts.mathematics.mathDossier.formulas = structuredClone(
+    QUADRATIC_TANGENT_FORMULAS
+  ) as unknown as typeof artifacts.mathematics.mathDossier.formulas;
   const scene = buildDeterministicSceneArtifact({
     intent: artifacts.intent,
     knowledge: artifacts.knowledge,
@@ -439,6 +502,76 @@ test('quadratic tangent requests have a complete provider-independent proof prof
     ),
     undefined
   );
+});
+
+test('every quadratic tangent beat renders different mathematics', () => {
+  // A production spec had four beats — parabola base, secant triangle, moving
+  // secant, tangent line — all rendering `P=(1,1), Q=(1+h,(1+h)^2)`. The
+  // timeline faded the same formula in and out for 17 seconds while implying
+  // four steps of progress. The cause was keyword matching: a bare `点` hint
+  // matched every Chinese beat in a tangent lesson (切点, 定点, 邻近点), so the
+  // first branch swallowed them all. Distinctness is the guarantee here, not
+  // any particular wording.
+  const artifacts = planningArtifacts();
+  artifacts.intent.title = 'y=x² at x=1';
+  artifacts.intent.summary = 'Secants approach the tangent at x=1.';
+  artifacts.intent.intent.learningGoal =
+    'See why the derivative and tangent slope equal 2.';
+  artifacts.mathematics.mathDossier.coreClaim =
+    'For y=x² at x=1, secant slopes approach 2 and the tangent is y=2x-1.';
+  artifacts.mathematics.mathDossier.derivationSteps = [
+    'For h not equal to zero, expand the numerator.',
+    '[(1+h)^2-1]/h=2+h tends to 2.',
+  ];
+  // Schema 6 ownership: the quadratic scene renders the four fixed formulas,
+  // so the dossier must actually author them for the profile to activate.
+  artifacts.mathematics.mathDossier.formulas = structuredClone(
+    QUADRATIC_TANGENT_FORMULAS
+  ) as unknown as typeof artifacts.mathematics.mathDossier.formulas;
+  assert.equal(supportsDeterministicSceneProfile(artifacts), true);
+
+  // Chinese beat text that all mentions 点 — the exact shape that collapsed.
+  const purposes = [
+    '建立抛物线与切点 P 的基础画面',
+    '画出割线三角形，标出邻近点 Q',
+    '让割线上的点逐步逼近切点',
+    '锁定最终切线并给出结论',
+  ];
+  artifacts.storyboard.shots = purposes.map((purpose, index) => ({
+    id: `shot-${index + 1}`,
+    beat: index === purposes.length - 1 ? 'payoff' : 'mechanism',
+    purpose,
+    startAt: index * 3,
+    endAt: (index + 1) * 3,
+    focusRef: `focus-${index + 1}`,
+    transition: 'build',
+    acceptance: [`Beat ${index + 1} is visible.`],
+  })) as AnimationPlanningArtifacts['storyboard']['shots'];
+
+  const scene = buildDeterministicSceneArtifact({
+    intent: artifacts.intent,
+    knowledge: artifacts.knowledge,
+    curriculum: artifacts.curriculum,
+    mathematics: artifacts.mathematics,
+    storyboard: artifacts.storyboard,
+  });
+  assert.ok(scene, 'expected a deterministic scene');
+
+  const formulas = scene.objects.filter((object) => object.kind === 'formula');
+  assert.ok(formulas.length >= 2, 'expected multiple formula beats');
+
+  const rendered = formulas.map((object) =>
+    (object.parts ?? []).map((part) => part.latex).join('')
+  );
+  assert.equal(
+    new Set(rendered).size,
+    rendered.length,
+    `duplicate formula content: ${JSON.stringify(rendered)}`
+  );
+
+  // The conclusion belongs to the payoff beat, not to whichever earlier beat
+  // happened to mention 切线.
+  assert.match(rendered.at(-1) ?? '', /m_\{\\mathrm\{tan\}\}=2/);
 });
 
 test('cycloid requests use an exact provider-independent rolling-circle profile', () => {
@@ -509,7 +642,7 @@ test('heart requests use a verified provider-independent parametric profile', ()
     buildDeterministicAnimationPlanningProfile(prompt)?.id,
     'heart-curve-v1'
   );
-  assert.equal(spec.schemaVersion, 5);
+  assert.equal(spec.schemaVersion, 6);
   assert.equal(spec.durationSeconds, 12);
   assert.equal(spec.shots.at(-1)?.endAt, 12);
   assert.ok(spec.objects.some((object) => object.kind === 'axes'));
@@ -585,6 +718,11 @@ test('quadratic tangent proof selects the deterministic scene before provider co
     'For h not equal to zero, expand the numerator.',
     '[(1+h)^2-1]/h=2+h tends to 2.',
   ];
+  // Schema 6 ownership: the quadratic scene renders the four fixed formulas,
+  // so the dossier must actually author them for the profile to activate.
+  artifacts.mathematics.mathDossier.formulas = structuredClone(
+    QUADRATIC_TANGENT_FORMULAS
+  ) as unknown as typeof artifacts.mathematics.mathDossier.formulas;
   assert.equal(supportsDeterministicSceneProfile(artifacts), true);
 
   const unrelated = structuredClone(artifacts);

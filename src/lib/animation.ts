@@ -134,6 +134,8 @@ export interface AnimationObjectSpec {
    * without asking a model to write Python.
    */
   parts?: AnimationFormulaPartSpec[];
+  /** v6: the `mathDossier.formulas` entry this object renders. */
+  formulaId?: string;
 }
 
 export type AnimationTimelineOperation =
@@ -224,6 +226,16 @@ export interface AnimationMathDossierSpec {
     expected: string;
   }>;
   limitations?: string[];
+  /**
+   * Required by v6. The single owner of every formula in the film: scene
+   * formula objects reference one by `formulaId` and copy its parts verbatim
+   * rather than composing LaTeX of their own.
+   */
+  formulas?: Array<{
+    id: string;
+    purpose: string;
+    latexParts: Array<{ id: string; latex: string; meaning: string }>;
+  }>;
 }
 
 export interface AnimationKnowledgeNodeSpec {
@@ -231,6 +243,15 @@ export interface AnimationKnowledgeNodeSpec {
   concept: string;
   dependsOn: string[];
   misconception: string;
+  /**
+   * Required by v6; optional here so archived v5 records remain readable.
+   * `depth` is 0 at the target concept and grows toward foundations,
+   * `assumed` marks what the audience already holds (a nod, not a lesson),
+   * and `visualSeed` carries the most filmable image of the concept forward.
+   */
+  depth?: number;
+  assumed?: boolean;
+  visualSeed?: string;
 }
 
 export interface AnimationCurriculumBeatSpec {
@@ -364,7 +385,7 @@ export interface AnimationAreaSpec {
 }
 
 export interface AnimationSpec {
-  schemaVersion?: 1 | 2 | 3 | 4 | 5;
+  schemaVersion?: 1 | 2 | 3 | 4 | 5 | 6;
   title: string;
   summary: string;
   durationSeconds: number;
@@ -383,6 +404,8 @@ export interface AnimationSpec {
   cinematography?: AnimationCinematographySpec;
   mathDossier?: AnimationMathDossierSpec;
   knowledgeMap?: AnimationKnowledgeNodeSpec[];
+  /** v6: the shortest honest path through the knowledge map, foundations first. */
+  spine?: string[];
   curriculum?: AnimationCurriculumBeatSpec[];
   shots?: AnimationShotSpec[];
   areas?: AnimationAreaSpec[];
@@ -434,7 +457,7 @@ export function isAnimationSpecV3(
 export function isAnimationSpecV4(
   spec: AnimationSpec | undefined
 ): spec is AnimationSpec & {
-  schemaVersion: 4 | 5;
+  schemaVersion: 4 | 5 | 6;
   objects: AnimationObjectSpec[];
   timeline: AnimationTimelineSpec[];
   layout: AnimationLayoutSpec;
@@ -445,7 +468,9 @@ export function isAnimationSpecV4(
   shots: AnimationShotSpec[];
 } {
   return (
-    (spec?.schemaVersion === 4 || spec?.schemaVersion === 5) &&
+    (spec?.schemaVersion === 4 ||
+      spec?.schemaVersion === 5 ||
+      spec?.schemaVersion === 6) &&
     Array.isArray(spec.objects) &&
     Array.isArray(spec.timeline) &&
     !!spec.layout &&
@@ -461,7 +486,7 @@ export function isAnimationSpecV4(
 export function isAnimationSpecDirected(
   spec: AnimationSpec | undefined
 ): spec is AnimationSpec & {
-  schemaVersion: 3 | 4 | 5;
+  schemaVersion: 3 | 4 | 5 | 6;
   objects: AnimationObjectSpec[];
   timeline: AnimationTimelineSpec[];
   layout: AnimationLayoutSpec;
@@ -475,7 +500,7 @@ export function isAnimationSpecDirected(
 export function isAnimationSpecRenderable(
   spec: AnimationSpec | undefined
 ): spec is AnimationSpec & {
-  schemaVersion: 2 | 3 | 4 | 5;
+  schemaVersion: 2 | 3 | 4 | 5 | 6;
   objects: AnimationObjectSpec[];
   timeline: AnimationTimelineSpec[];
   layout: AnimationLayoutSpec;
@@ -677,4 +702,35 @@ const busyStatuses = new Set<AnimationStatus>([
 
 export function isAnimationBusy(status?: AnimationStatus): boolean {
   return status ? busyStatuses.has(status) : false;
+}
+
+/**
+ * States the server advances on its own, without user input.
+ *
+ * This is deliberately wider than `busyStatuses`, which drives spinners and
+ * disabled controls. `draft` is a progressing state: creation writes it before
+ * the Workflow moves to `generating_spec`, so a client whose event stream drops
+ * during that window would otherwise stop polling and freeze on a stale view
+ * while the server runs to completion.
+ *
+ * `awaiting_approval` and `code_ready` are excluded — they wait for the user,
+ * so polling them would never terminate.
+ */
+const progressingStatuses = new Set<AnimationStatus>([
+  ...busyStatuses,
+  'draft',
+]);
+
+export function isAnimationProgressing(status?: AnimationStatus): boolean {
+  return status ? progressingStatuses.has(status) : false;
+}
+
+const settledStatuses = new Set<AnimationStatus>([
+  'completed',
+  'failed',
+  'canceled',
+]);
+
+export function isAnimationSettled(status?: AnimationStatus): boolean {
+  return status ? settledStatuses.has(status) : false;
 }

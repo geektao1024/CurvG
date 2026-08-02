@@ -45,15 +45,28 @@ stateDiagram-v2
 
 ## Provider boundary
 
-CurvG exposes a provider-neutral chat completion interface. The first adapters are:
+Creator runs on a fixed, server-authoritative provider pair. Ordering lives in
+`animationProviderTargetPlan` (`src/routes/api/animations/-shared.ts`) and is
+part of the reliability contract — it must never depend on key insertion order
+or a client-supplied model alias.
 
-- OpenAI-compatible `/chat/completions`, which also supports gateways such as OpenRouter when configured by the administrator.
-- Yunwu through its OpenAI-compatible `/v1/chat/completions` endpoint, with credentials stored separately from OpenAI.
-- Anthropic `/v1/messages`.
+| Order | Provider  | Model              | Base URL                 | Role                        |
+| ----- | --------- | ------------------ | ------------------------ | --------------------------- |
+| 1     | `kie`     | `gemini-3.6-flash` | `https://api.kie.ai`     | Public product model        |
+| 2     | `kuaipao` | `gpt-5.6-sol`      | `https://kuaipao.pro/v1` | Server-owned recovery route |
 
-Model IDs are configuration, not source-code constants. This prevents the application from depending on names that change over time.
+Model IDs are source-code constants in `src/config/animation-models.ts`, not
+administrator input. `animationModelPolicies` is the allowlist; unknown models
+fail closed. Free and Pro currently resolve to the same target so subscription
+tier cannot silently change the model under evaluation.
 
-The Creator model selector loads Yunwu's current OpenAI-compatible model directory from `/v1/models`, keeps text/chat-capable entries, and sends the selected provider/model pair with create, revise and approve requests. `Auto` is available only when an administrator has configured a default model; it does not silently choose an arbitrary catalog entry.
+This replaced an earlier Yunwu-based design that let the Creator selector load
+a live `/v1/models` catalog and offer seven models. Yunwu is no longer read
+anywhere in the animation path. A `yunwu_api_key` may still be present in the
+config table from that period; nothing consumes it.
+
+Generic AI modules unrelated to Creator still support OpenAI-compatible,
+Anthropic, Replicate, Gemini, and Fal adapters. Those are not Creator choices.
 
 ## Renderer boundary
 
@@ -98,6 +111,21 @@ sequenceDiagram
 
 The AST gate is defense in depth, not the primary security boundary. Generated code still runs only inside a disposable Sandbox container with no application or provider secrets.
 
+### Execution and traceability requirements
+
+Migrated from the retired `TECHNICAL_ARCHITECTURE.md` (2026-07-22). These are
+requirements, not all of them verified in production:
+
+- Hard limits on CPU, memory, disk, wall-clock, output size and concurrency.
+- Only a fixed base image with version-locked Manim dependencies.
+- Persist source hash, image version, render parameters and artifact checksums
+  so any delivered video can be traced back to its inputs. `animation_planning_stage`
+  already carries `input_hash` and `output_hash` per stage; image version and
+  artifact checksum are not yet persisted.
+- Sandbox network policy, lifecycle and concurrency limits must be measured
+  against current Cloudflare behavior rather than assumed. Deployment completing
+  is not evidence that limits or unit cost are known.
+
 ## Artifact inspection model
 
 The Creator exposes the same three persisted truths used by the backend instead of collapsing them into one preview:
@@ -133,15 +161,18 @@ The browser first plays the same-origin artifact URL so HTTP Range remains avail
 
 ## Required configuration
 
-For Creator, configure Yunwu in `/admin/settings`:
+For Creator, configure both providers in `/admin/settings`:
 
-- `yunwu_base_url` (default: `https://yunwu.ai/v1`).
-- `yunwu_api_key`.
+- `kie_base_url` (default: `https://api.kie.ai`) and `kie_api_key`.
+- `kuaipao_base_url` (default: `https://kuaipao.pro/v1`) and `kuaipao_api_key`.
 
-Creator does not accept arbitrary provider or model strings. Its API intersects
-Yunwu's live catalog with the allowlist in `src/config/animation-models.ts`.
-OpenAI and Anthropic settings remain available to unrelated generic AI modules,
-but they are not Creator model choices.
+Without `kie_api_key`, `kieProvider()` throws `MODEL_UNAVAILABLE` (HTTP 503) and
+the user sees "The AI provider is temporarily unavailable." Without
+`kuaipao_api_key`, the recovery route is silently absent and any KIE failure
+becomes a hard failure or a deterministic substitution.
+
+Creator does not accept arbitrary provider or model strings. Requests are
+checked against the allowlist in `src/config/animation-models.ts`.
 
 After deploying the renderer, configure:
 
@@ -198,7 +229,36 @@ This does not mean rendering is free or operationally zero-cost. Container start
 
 ## Verification status
 
-Verified on 2026-07-28:
+Verified against the live Cloudflare deployment on 2026-08-01:
+
+- `curvg` and `curvg-renderer` Workers are both deployed. The main app's last
+  deployment (2026-07-31T07:49:26Z) is 66 seconds after commit `a741ee2`, so
+  production runs current code.
+- `curvg-renderer.471787092.workers.dev` is reachable and rejects unauthenticated
+  requests.
+- Production config is complete: `kie_api_key`, `kuaipao_api_key` and
+  `animation_renderer_url` in D1 (encrypted, `CONFIG_ENCRYPTION_KEY` is set);
+  `ANIMATION_RENDERER_TOKEN`, `ANIMATION_ORCHESTRATOR_TOKEN` and `AUTH_SECRET`
+  as Worker secrets. `animation_renderer_token` is absent from D1 by design —
+  `src/config/index.ts:87` resolves it from the Worker secret.
+- `animation_planning_stage` holds 128 rows: 68 cached, 46 completed, 14 failed.
+- 30 animation records exist; 3 animation templates; 0 published gallery entries.
+
+Open issues found in that pass:
+
+- 23 of 46 completed stages were produced by `provider=curvg` deterministic
+  substitution rather than by a model — 71% on 2026-07-31, up from 32% the day
+  before. See [Deterministic fallback](./ANIMATION_ORCHESTRATION.md#deterministic-fallback).
+- Delivery is carried by the recovery route. Stage rows record `kuaipao` 89
+  times against `kie` 12. Because a row stores only the provider that finally
+  succeeded, this indicates the designated primary is failing most of the time
+  without leaving per-attempt evidence.
+- 14 hard failures: 8 upstream (`unavailable`, `timeout`, `saturated`,
+  `empty_response`), 2 `workflow_internal` (planning time budget exhausted),
+  2 capacity-lease busy, 1 `schema_validation` (`curve requires expr`).
+- Retry counts run high; completed stages reach `attempt=12`.
+
+Historical verification on 2026-07-28 (superseded — Yunwu is no longer used):
 
 - Yunwu `/models` returned HTTP 200 with 408 advertised model IDs.
 - Minimal, sequential chat probes returned HTTP 200 with non-empty text for the seven allowed models: `deepseek-v4-pro`, `deepseek-v4-flash`, `qwen3-coder-plus`, `gpt-5`, `gpt-5.5`, `claude-sonnet-4-6`, and `claude-opus-4-7`.
@@ -247,6 +307,7 @@ Not yet verified:
 ## Delivery phases
 
 1. Completed: Creator workspace, conversations, specification generation and approval.
-2. Completed: Manim code generation and two-stage validation.
-3. Implemented, deployment pending: Cloudflare Queue, Sandbox renderer and R2 artifact persistence.
-4. Partial: internal version snapshots exist; version restore, publishing and gallery integration remain.
+2. Completed: deterministic `spec → Manim` compilation and two-stage validation.
+3. Completed and deployed: Cloudflare Queue, Sandbox renderer and R2 artifact persistence.
+4. Partial: version snapshots and restore exist; gallery publishing has no page route and no published entry in production.
+5. Open: reduce deterministic substitution so delivered animations reflect the prompt.

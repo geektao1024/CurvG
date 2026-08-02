@@ -5,7 +5,7 @@
 ```mermaid
 flowchart TD
   A[CurvG Worker] --> B[(D1 animation and stage state)]
-  A --> C[Provider router: Kuaipao then KIE]
+  A --> C[Provider router: KIE then Kuaipao]
   A --> D[Cloudflare Workflow]
   D --> E[Python Orchestrator]
   E --> F[Visual contract and template retrieval]
@@ -23,6 +23,25 @@ The Worker remains the owner of authentication, subscriptions, credits,
 provider credentials, model selection, D1 state, and renderer callbacks. The
 Python service receives one bounded animation specification at a time and owns
 only deterministic planning and preflight decisions.
+
+## Provider routing
+
+`animationProviderTargetPlan` in `src/routes/api/animations/-shared.ts` is the
+single source of ordering. It appends KIE first and Kuaipao second:
+
+| Order | Provider  | Model              | Intended role               |
+| ----- | --------- | ------------------ | --------------------------- |
+| 1     | `kie`     | `gemini-3.6-flash` | Public product model        |
+| 2     | `kuaipao` | `gpt-5.6-sol`      | Server-owned recovery route |
+
+A stage row records only the provider that ultimately produced the artifact. A
+KIE attempt that fails and then succeeds on Kuaipao is stored as
+`provider=kuaipao, status=completed` — the KIE failure leaves no row of its
+own. Provider counts in `animation_planning_stage` therefore measure delivery,
+not attempt volume, and cannot be read as a KIE health metric.
+
+Measure KIE health from Worker logs or by adding per-attempt telemetry. The
+intended and the effective primary can diverge silently under this schema.
 
 ## Durable execution
 
@@ -47,7 +66,8 @@ render.
 
 - Transport protocol: `curvg.orchestrator/v1`
 - Visual contract: `curvg.visual/v1`
-- Animation specification: CurvG schema version 5
+- Animation specification: CurvG schema version 6. Versions 2-5 remain
+  readable as archives; the Python orchestrator accepts 5 and 6.
 
 The visual contract makes these requirements machine-readable:
 
@@ -76,6 +96,103 @@ AST preflight rejects unsupported imports, dynamic evaluation, external file
 or URL access, blocked updater patterns, invalid scene inheritance, and scenes
 without enough explicit motion. The renderer repeats a stricter AST check in
 the disposable Sandbox; preflight is not a replacement for isolation.
+
+## Deterministic fallback
+
+When a planning stage exhausts both providers, the Workflow does not hard-fail.
+It records the stage as `completed` with `provider=curvg` and a
+`deterministic-*` model id, and delivery continues from a pre-authored scene
+rather than from the user's request.
+
+| Model id                    | Meaning                                      |
+| --------------------------- | -------------------------------------------- |
+| `deterministic-scene-v1`    | Verified template matched to the request     |
+| `deterministic-fallback-v1` | Generic scene; carries little of the request |
+
+This trades a visible error for a silent quality loss. The user sees a
+successful generation and receives a scene that may be unrelated to the prompt.
+Because the fallback is stored as `completed`, the stage table's success rate
+does not distinguish model output from substituted output — split on
+`provider='curvg'` to measure real model delivery:
+
+```sql
+select date(created_at/1000,'unixepoch') d,
+       case when provider='curvg' then 'substituted' else 'model' end kind,
+       count(*) n
+from animation_planning_stage
+where status='completed'
+group by d, kind order by d;
+```
+
+Any alerting built on completion rate alone will read a total provider outage
+as healthy.
+
+## Lineage and the ownership gap
+
+The six planning stages derive from the Mythos chain in
+[Math-To-Manim](https://github.com/HarleyCoops/Math-To-Manim), which maps
+one-to-one:
+
+| Math-To-Manim                         | CurvG                  |
+| ------------------------------------- | ---------------------- |
+| intent                                | `intent`               |
+| cartographer (reverse knowledge tree) | `knowledge`            |
+| curriculum                            | `curriculum`           |
+| math-director                         | `mathematics`          |
+| cinematographer + scene-composer      | `storyboard` + `scene` |
+
+Two of the three ideas that were originally left behind are now carried over
+in schema version 6; the third remains open.
+
+**1. The mathematics stage owns the LaTeX** (schema 6). `mathDossier` carries
+`formulas` — id'd entries with ordered `latexParts` — and a scene formula
+object must name its source through `formulaId` and copy those parts
+_verbatim_; `animationSpecSchema` rejects any mismatch. Before this, the
+scene stage derived formula content itself: a deterministic template keyed on
+a bare `点` (which appears in 切点 / 定点 / 邻近点) once collapsed four
+distinct beats onto one formula in production. The keyword matcher was fixed
+first, but the schema change removes the defect class rather than one
+instance — content with a single owner cannot be invented twice.
+
+**2. Knowledge nodes carry `assumed`, `visualSeed`, and `depth`, and the map
+carries `spine`** (schema 6). `assumed` marks what the audience already owns
+(a nod, not a lesson), `visualSeed` records the most filmable mental image of
+each concept for the storyboard to harvest, `depth` orders concepts from the
+target (0) toward foundations, and `spine` is the shortest honest path from
+foundations to the depth-0 target — the film walks the spine; everything else
+is texture. The schema rejects a spine that references a missing node,
+repeats a node, or fails to end at the target.
+
+Versions 2-5 remain readable as archives. Production records predating the
+change stay valid without migration, matching the read-only archive policy in
+`CREATOR_REQUIREMENTS.md` §6.3.
+
+**3. Camera grammar still has no house rules.** CurvG's timeline `op` set is
+comparable to the Mythos verb grammar, but Mythos pairs it with invariants —
+"every ZOOM_IN gets a PULL_BACK", "every formula on screen has a live
+CAPTION", "at most two text elements visible at once" — that are mechanically
+checkable. CurvG enforces none of them yet.
+
+Math-To-Manim's own summary of why this layering exists: _"Charters are the
+product. Behavior changes in the chain usually belong in the agent charters,
+not in harness code."_
+
+## Scene reconciliation
+
+`validateSceneSemantics` (`src/modules/animations/planning.ts`) runs after the
+full-contract check and enforces what the contract cannot express. A scene can
+be schema-valid, compile, render, and pass pixel QA while still being
+incoherent, so these are checked directly:
+
+- A formula or caption the timeline never shows. Geometry is exempt — axes and
+  similar scaffolding are laid out statically.
+- Two presentation objects rendering identical content. Compared across both
+  formula representations (`parts` and `expr`).
+- `fade_out`, `emphasize`, `transform` and similar applied to an object before
+  anything has brought it on screen.
+
+Structural reference integrity — unknown object, unknown shot focus — is
+already covered by `composeAnimationSpecFromArtifacts` and is not repeated.
 
 ## Renderer quality ladder
 

@@ -307,12 +307,12 @@ function rateFunction(event: AnimationTimelineSpec): string {
   return 'smooth';
 }
 
-/** Compile validated v2/v3/v4 IR into reproducible Manim source. */
+/** Compile validated v2-v6 IR into reproducible Manim source. */
 export function compileAnimationSpec(input: AnimationSpec): string {
   const spec = validateAnimationSpec(input);
   if (!isAnimationSpecRenderable(spec)) {
     throw new Error(
-      'Only v2, v3, v4 or v5 animation specifications can be compiled'
+      'Only v2 through v6 animation specifications can be compiled'
     );
   }
   const frame = isAnimationSpecDirected(spec) ? spec.direction.frame : '16:9';

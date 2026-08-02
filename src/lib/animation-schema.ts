@@ -57,6 +57,12 @@ const objectSchema = z.object({
   startAngle: z.number().finite().min(-100).max(100).optional(),
   sweepAngle: z.number().finite().min(-100).max(100).optional(),
   parts: z.array(formulaPartSchema).min(2).max(16).optional(),
+  /**
+   * Schema 6: the `mathDossier.formulas` entry this object renders. Optional
+   * on the shared object schema because versions 2-5 predate the dossier;
+   * required for formula objects in the version 6 refinement.
+   */
+  formulaId: identifierSchema.optional(),
 });
 
 const timelineSchema = z.object({
@@ -232,12 +238,56 @@ export const v5AnimationSpecSchema = commonAnimationSpecSchema.extend({
     .max(80),
 });
 
+/**
+ * Schema 6 gives two facts a single owner.
+ *
+ * `mathDossier.formulas` is the only place LaTeX is authored. Scene formula
+ * objects reference a formula by `formulaId` and copy its `latexParts`
+ * verbatim; they may not compose their own. Before this, the scene stage
+ * derived formula content itself, and a deterministic template rendered four
+ * distinct beats with identical LaTeX because nothing owned the text.
+ *
+ * `knowledgeMap` gains the fields that let a film skip and aim: `assumed`
+ * marks what the audience already holds (a nod, not a lesson), `visualSeed`
+ * carries the most filmable image of a concept forward to the storyboard, and
+ * `depth` orders concepts from target (0) toward foundations. `spine` names
+ * the shortest honest path through them — the film walks the spine and
+ * everything else is texture.
+ */
+const v6KnowledgeNodeSchema = knowledgeNodeSchema.extend({
+  depth: z.number().int().min(0).max(12),
+  assumed: z.boolean(),
+  visualSeed: z.string().min(1).max(300),
+});
+
+const dossierLatexPartSchema = z.object({
+  id: identifierSchema,
+  latex: z.string().min(1).max(400),
+  meaning: z.string().min(1).max(300),
+});
+
+const dossierFormulaSchema = z.object({
+  id: identifierSchema,
+  purpose: z.string().min(1).max(300),
+  latexParts: z.array(dossierLatexPartSchema).min(1).max(12),
+});
+
+export const v6AnimationSpecSchema = v5AnimationSpecSchema.extend({
+  schemaVersion: z.literal(6),
+  knowledgeMap: z.array(v6KnowledgeNodeSchema).min(1).max(16),
+  spine: z.array(identifierSchema).min(1).max(16),
+  mathDossier: v5AnimationSpecSchema.shape.mathDossier.extend({
+    formulas: z.array(dossierFormulaSchema).min(1).max(12),
+  }),
+});
+
 export const animationSpecSchema = z
   .discriminatedUnion('schemaVersion', [
     v2AnimationSpecSchema,
     v3AnimationSpecSchema,
     v4AnimationSpecSchema,
     v5AnimationSpecSchema,
+    v6AnimationSpecSchema,
   ])
   .superRefine((spec, context) => {
     const objectIds = new Set<string>();
@@ -493,12 +543,16 @@ export const animationSpecSchema = z
       'camera_focus',
       'camera_reset',
     ]);
-    if (spec.schemaVersion !== 4 && spec.schemaVersion !== 5) {
+    if (
+      spec.schemaVersion !== 4 &&
+      spec.schemaVersion !== 5 &&
+      spec.schemaVersion !== 6
+    ) {
       for (const [index, event] of spec.timeline.entries()) {
         if (!cinematicOps.has(event.op)) continue;
         context.addIssue({
           code: 'custom',
-          message: 'Cinematography operations require schemaVersion 4 or 5',
+          message: 'Cinematography operations require schemaVersion 4, 5 or 6',
           path: ['timeline', index, 'op'],
         });
       }
@@ -507,7 +561,8 @@ export const animationSpecSchema = z
     if (
       spec.schemaVersion !== 3 &&
       spec.schemaVersion !== 4 &&
-      spec.schemaVersion !== 5
+      spec.schemaVersion !== 5 &&
+      spec.schemaVersion !== 6
     )
       return;
     if (
@@ -628,7 +683,12 @@ export const animationSpecSchema = z
         });
       }
     }
-    if (spec.schemaVersion !== 4 && spec.schemaVersion !== 5) return;
+    if (
+      spec.schemaVersion !== 4 &&
+      spec.schemaVersion !== 5 &&
+      spec.schemaVersion !== 6
+    )
+      return;
 
     const semanticPartColors = new Map<string, string>();
     for (const [objectIndex, object] of spec.objects.entries()) {
@@ -700,7 +760,7 @@ export const animationSpecSchema = z
       });
     }
 
-    if (spec.schemaVersion !== 5) return;
+    if (spec.schemaVersion !== 5 && spec.schemaVersion !== 6) return;
     const knowledgeIds = new Set<string>();
     for (const [index, node] of spec.knowledgeMap.entries()) {
       if (knowledgeIds.has(node.id)) {
@@ -832,6 +892,109 @@ export const animationSpecSchema = z
           'A claimed moving or rotating circle point requires either point move_along on a circle or at least two synchronized point, circle, and parametric-trace transformations; a static sample does not prove the dynamic relationship',
         path: ['timeline'],
       });
+    }
+
+    if (spec.schemaVersion !== 6) return;
+
+    // The spine is the film's through-line. An id that names no concept, or a
+    // spine that never reaches the target, is a claim the knowledge map does
+    // not support.
+    const nodeById = new Map(spec.knowledgeMap.map((node) => [node.id, node]));
+    const seenSpine = new Set<string>();
+    for (const [index, id] of spec.spine.entries()) {
+      if (!nodeById.has(id)) {
+        context.addIssue({
+          code: 'custom',
+          message: `Spine references unknown knowledge node: ${id}`,
+          path: ['spine', index],
+        });
+      }
+      if (seenSpine.has(id)) {
+        context.addIssue({
+          code: 'custom',
+          message: `Duplicate spine entry: ${id}`,
+          path: ['spine', index],
+        });
+      }
+      seenSpine.add(id);
+    }
+    const spineTarget = nodeById.get(spec.spine.at(-1) ?? '');
+    if (spineTarget && spineTarget.depth !== 0) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'The spine must end at the target concept (depth 0); it walks foundations forward to the claim',
+        path: ['spine'],
+      });
+    }
+    if (!spec.knowledgeMap.some((node) => node.depth === 0)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'The knowledge map needs one target node at depth 0',
+        path: ['knowledgeMap'],
+      });
+    }
+
+    // The dossier owns every formula. Scene formula objects reference one and
+    // copy its parts verbatim, so the same mathematics cannot be authored
+    // twice with different text — or, as shipped once, four times with the
+    // same text.
+    const formulaById = new Map<
+      string,
+      (typeof spec.mathDossier.formulas)[number]
+    >();
+    for (const [index, formula] of spec.mathDossier.formulas.entries()) {
+      if (formulaById.has(formula.id)) {
+        context.addIssue({
+          code: 'custom',
+          message: `Duplicate dossier formula id: ${formula.id}`,
+          path: ['mathDossier', 'formulas', index, 'id'],
+        });
+      }
+      formulaById.set(formula.id, formula);
+      const partIds = new Set<string>();
+      for (const [partIndex, part] of formula.latexParts.entries()) {
+        if (partIds.has(part.id)) {
+          context.addIssue({
+            code: 'custom',
+            message: `Duplicate latex part id in ${formula.id}: ${part.id}`,
+            path: ['mathDossier', 'formulas', index, 'latexParts', partIndex],
+          });
+        }
+        partIds.add(part.id);
+      }
+    }
+
+    for (const [index, object] of spec.objects.entries()) {
+      if (object.kind !== 'formula') continue;
+      if (!object.formulaId) {
+        context.addIssue({
+          code: 'custom',
+          message: `Formula object ${object.id} must reference a mathDossier formula through formulaId`,
+          path: ['objects', index, 'formulaId'],
+        });
+        continue;
+      }
+      const formula = formulaById.get(object.formulaId);
+      if (!formula) {
+        context.addIssue({
+          code: 'custom',
+          message: `Formula object ${object.id} references unknown dossier formula ${object.formulaId}`,
+          path: ['objects', index, 'formulaId'],
+        });
+        continue;
+      }
+      const authored = formula.latexParts.map((part) => part.latex).join('');
+      const rendered = object.parts
+        ? object.parts.map((part) => part.latex).join('')
+        : (object.expr ?? '');
+      if (rendered !== authored) {
+        context.addIssue({
+          code: 'custom',
+          message: `Formula object ${object.id} does not match dossier formula ${object.formulaId} verbatim`,
+          path: ['objects', index],
+        });
+      }
     }
   });
 

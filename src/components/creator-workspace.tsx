@@ -40,6 +40,7 @@ import {
   animationFailureCodeFromHttpStatus,
   animationModelValue,
   isAnimationBusy,
+  isAnimationProgressing,
   isAnimationSpecDirected,
   isAnimationSpecRenderable,
   isAnimationSpecV4,
@@ -4039,13 +4040,21 @@ export function CreatorWorkspace({
     staleTime: 30_000,
   });
 
+  // The event stream is the fast path, not the only path. If it drops after
+  // the server has accepted the animation (proxy timeout, network change, tab
+  // suspend), the server keeps working and the client must still converge.
+  // Gating the query on `pendingAnimation` would leave the optimistic view
+  // pinned forever in that case, so the gate is the presence of a real
+  // server-assigned id instead.
+  const hasServerAnimationId =
+    !!selectedId && !selectedId.startsWith('pending-');
   const detailQuery = useQuery({
     queryKey: detailQueryKey,
     queryFn: () => apiGet<AnimationDetail>(`/api/animations/${selectedId}`),
-    enabled: !!user && !!selectedId && !pendingAnimation,
+    enabled: !!user && hasServerAnimationId,
     refetchInterval: (query) => {
       const animation = query.state.data;
-      if (isAnimationBusy(animation?.status)) return 2500;
+      if (isAnimationProgressing(animation?.status)) return 2500;
       // Older Worker versions briefly persisted a retryable planning failure
       // between Workflow attempts. Keep polling that narrow recovery window so
       // an open tab can observe the durable retry returning to generating.
@@ -4060,7 +4069,9 @@ export function CreatorWorkspace({
       return false;
     },
   });
-  const detail = pendingAnimation || detailQuery.data;
+  // Server state wins once it exists. `acceptDetail` seeds the cache with the
+  // accepted animation, so this does not flash an older view.
+  const detail = detailQuery.data ?? pendingAnimation;
   const detailLoading =
     !hydrated || sessionPending || (!pendingAnimation && detailQuery.isLoading);
 

@@ -35,7 +35,7 @@
   "creator.characters": "characters",
   "creator.welcome_eyebrow": "From idea to Manim · with a review step",
   "creator.welcome_title": "Create a Manim scene without losing control of the explanation",
-  "creator.welcome_description": "Tell CurvG what the viewer should understand. You will get a scene plan to check first, then Manim code you can copy, download, or render when the service is available.",
+  "creator.welcome_description": "Tell CurvG what the viewer should understand. You will get a scene plan to check first, then Manim code you can copy, download, or render into video.",
   "creator.tips_title": "For a stronger first draft, include",
   "creator.tip_formula": "The exact formula, definition, or source data",
   "creator.tip_viewport": "Axes, ranges, labels, and camera framing",

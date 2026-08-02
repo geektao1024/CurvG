@@ -70,8 +70,12 @@ const STAGE_CONTRACTS: Record<AnimationPlanningStageName, string> = {
     "id": "unique_concept_id",
     "concept": "prerequisite or target concept",
     "dependsOn": ["other knowledge node ids"],
-    "misconception": "specific misconception to avoid"
-  }]
+    "misconception": "specific misconception to avoid",
+    "depth": 0,
+    "assumed": false,
+    "visualSeed": "the most filmable mental image of this concept"
+  }],
+  "spine": ["ordered node ids, foundations first, ending at the depth-0 target"]
 }`,
   curriculum: `{
   "curriculum": [{
@@ -84,6 +88,11 @@ const STAGE_CONTRACTS: Record<AnimationPlanningStageName, string> = {
 }`,
   mathematics: `{
   "mathDossier": {
+    "formulas": [{
+      "id": "formula_id",
+      "purpose": "why this formula appears on screen",
+      "latexParts": [{"id": "part_id", "latex": "one independently renderable LaTeX chunk", "meaning": "plain-language meaning"}]
+    }],
     "coreClaim": "exact scoped mathematical statement",
     "invariants": ["fact that must stay true"],
     "commonMisreading": "most likely conceptual mistake",
@@ -118,7 +127,8 @@ const STAGE_CONTRACTS: Record<AnimationPlanningStageName, string> = {
   "objects": [{
     "id": "unique_object_id",
     "kind": "axes|curve|parametric|area|formula|text|series|matrix|circle|point|line|arrow|arc",
-    "region": "title|formula|graph"
+    "region": "title|formula|graph",
+    "formulaId": "required for formula objects: the mathDossier formula this object renders"
   }],
   "timeline": [{
     "id": "unique_event_id",
@@ -139,15 +149,15 @@ const STAGE_ROLES: Record<AnimationPlanningStageName, string> = {
   intent:
     'Clarify the exact learning goal, scope, assumptions, hook, takeaway, duration, title, and concise summary.',
   knowledge:
-    'Build a dependency-aware concept map. Every dependsOn id must exist in this artifact, ids must be unique, and no node may depend on itself.',
+    'Build a dependency-aware concept map. Every dependsOn id must exist in this artifact, ids must be unique, and no node may depend on itself. Set depth 0 only on the target concept, increasing toward foundations. Mark concepts the audience already owns with assumed true — they get a nod, not a lesson. Give every node a visualSeed: the most filmable mental image of that concept, which the storyboard will harvest. Emit spine as the shortest honest path from foundations to the depth-0 target; the film walks the spine and everything else is texture.',
   curriculum:
     'Order 3-12 teachable beats. Every dependency must refer to a knowledge node or an earlier curriculum beat.',
   mathematics:
-    'Produce an exact, independently checkable mathematical dossier. State domains and limitations; never invent a theorem to fit a visual.',
+    'Produce an exact, independently checkable mathematical dossier. State domains and limitations; never invent a theorem to fit a visual. The dossier owns every formula the film may show: author each one exactly once in formulas, with ordered latexParts whose chunks compile independently and concatenate into the full formula. Downstream stages copy these verbatim and may not write LaTeX of their own.',
   storyboard:
     'Translate the approved learning and mathematics artifacts into 3-6 non-overlapping shots. Begin with a hook at 0 and end with payoff or memory exactly at durationSeconds. term-tour emphasis requires a moving-camera scene; never combine term-tour with static.',
   scene:
-    'Declare the concrete visual objects and timed actions that realize every storyboard acceptance condition and the mathematical visual proof. Preserve every storyboard shot id exactly, create an object for every focusRef, and keep every timeline event inside its referenced shot. Parametric curves require safe xExpr, yExpr and an increasing domain for t.',
+    'Declare the concrete visual objects and timed actions that realize every storyboard acceptance condition and the mathematical visual proof. Preserve every storyboard shot id exactly, create an object for every focusRef, and keep every timeline event inside its referenced shot. Every formula object must reference one mathDossier formula through formulaId and copy its latexParts verbatim into parts (or expr when the formula has a single part); never author new LaTeX in the scene, and never render the same formula through two objects. Parametric curves require safe xExpr, yExpr and an increasing domain for t.',
 };
 
 export interface PersistentAnimationPlanningContext {
@@ -191,6 +201,107 @@ function stageErrorCode(error: unknown) {
   return /json/i.test(error instanceof Error ? error.message : String(error))
     ? 'invalid_json'
     : 'stage_failed';
+}
+
+/**
+ * Reconciles the scene IR against itself.
+ *
+ * The scene stage decides what the viewer actually sees, and a scene can be
+ * schema-valid, compile, render, and pass pixel QA while still being
+ * incoherent. A production scene shipped four timeline beats — parabola base,
+ * secant triangle, moving secant, tangent line — that all rendered the
+ * identical LaTeX, so the film faded the same formula in and out for 17
+ * seconds while implying four steps of progress. No gate objected.
+ *
+ * Structural reference integrity (unknown object, unknown shot focus) is
+ * already enforced by the full-contract check in
+ * `validateAnimationPlanningStageSemantics`; this adds only the semantic and
+ * temporal consistency that the contract cannot express.
+ */
+function validateSceneSemantics(scene: AnimationPlanningArtifacts['scene']) {
+  const referenced = new Set(scene.timeline.map((event) => event.ref));
+
+  // 1. A formula or caption the timeline never shows is a promise the film
+  //    does not keep. Geometry is exempt: axes and similar scaffolding are
+  //    laid out statically and legitimately carry no event of their own.
+  for (const object of scene.objects) {
+    if (!scenePresentationContent(object)) continue;
+    if (!referenced.has(object.id)) {
+      throw new Error(
+        `Scene object ${object.id} carries content the timeline never shows`
+      );
+    }
+  }
+
+  // 2. Two beats that render the same thing are one beat plus a lie about
+  //    progress. Only presentation objects are compared — geometry may
+  //    legitimately repeat.
+  const presentation = new Map<string, string>();
+  for (const object of scene.objects) {
+    const content = scenePresentationContent(object);
+    if (!content) continue;
+    const owner = presentation.get(content);
+    if (owner) {
+      throw new Error(
+        `Scene objects ${owner} and ${object.id} render identical content: ${content}`
+      );
+    }
+    presentation.set(content, object.id);
+  }
+
+  // 3. Removing or emphasising something the viewer has not been shown yet is
+  //    a timeline ordering defect, not a style choice.
+  const visible = new Set<string>();
+  const ordered = [...scene.timeline].sort((left, right) => left.at - right.at);
+  for (const event of ordered) {
+    if (APPEARING_SCENE_OPS.has(event.op)) {
+      visible.add(event.ref);
+      continue;
+    }
+    if (REQUIRES_VISIBLE_SCENE_OPS.has(event.op) && !visible.has(event.ref)) {
+      throw new Error(
+        `Scene timeline event ${event.id} applies ${event.op} to ${event.ref} before it appears`
+      );
+    }
+    if (event.op === 'fade_out') visible.delete(event.ref);
+  }
+}
+
+const APPEARING_SCENE_OPS = new Set(['draw', 'write', 'fade_in']);
+
+const REQUIRES_VISIBLE_SCENE_OPS = new Set([
+  'fade_out',
+  'emphasize',
+  'spotlight',
+  'glow',
+  'move_along',
+  'transform',
+]);
+
+/**
+ * The viewer-visible content of an object, or undefined when the object is
+ * geometry whose repetition carries no false promise.
+ *
+ * A formula may be written either as ordered `parts` (the term-tour form, so
+ * the camera can address each piece) or as a single `expr`. Both are compared,
+ * because a duplicate is equally misleading in either representation.
+ */
+function scenePresentationContent(
+  object: AnimationPlanningArtifacts['scene']['objects'][number]
+): string | undefined {
+  if (object.kind === 'formula') {
+    const fromParts = (object.parts || [])
+      .map((part) => part.latex)
+      .join('')
+      .trim();
+    const latex = fromParts || (object.expr || '').trim();
+    return latex ? `formula:${latex}` : undefined;
+  }
+  if (object.kind === 'text') {
+    const label = (object.label || '').trim();
+    return label ? `text:${label}` : undefined;
+  }
+  return undefined;
 }
 
 export function validateAnimationPlanningStageSemantics(
@@ -291,6 +402,12 @@ export function validateAnimationPlanningStageSemantics(
       storyboard: artifacts.storyboard,
       scene: artifact as AnimationPlanningArtifacts['scene'],
     });
+  }
+  if (name === 'scene') {
+    // Runs after the contract check above so the established cross-stage
+    // messages (unknown shot focus, timestamps) stay the primary diagnosis.
+    // These add the internal-consistency checks the contract does not cover.
+    validateSceneSemantics(artifact as AnimationPlanningArtifacts['scene']);
   }
 }
 
@@ -673,7 +790,7 @@ export function deterministicMathReviewForScene(
   if (
     result.provider !== 'curvg' ||
     result.model !== 'deterministic-scene-v1' ||
-    spec.schemaVersion !== 5 ||
+    (spec.schemaVersion !== 5 && spec.schemaVersion !== 6) ||
     !spec.mathDossier
   ) {
     return undefined;

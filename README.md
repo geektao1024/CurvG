@@ -6,37 +6,76 @@ Website: [curvg.com](https://curvg.com)
 
 ## Current Status
 
-The repository currently contains the product foundation, not the finished AI renderer.
+The generation pipeline is implemented and deployed. Production has served real
+animations end to end. Verified against the live Cloudflare deployment and the
+`curvg-db` D1 database on 2026-08-01.
 
-Available now:
+Implemented and running in production:
 
 - Bilingual English and Chinese product site.
 - Formula-sampled SVG previews for Lissajous, rose, hypotrochoid, and Fourier curves.
-- Authentication, RBAC, admin, credits, subscriptions, payments, storage, and AI provider foundations.
-- Local SQLite development setup.
-- Cloudflare Workers, D1, and R2 deployment wiring.
-- Documented Cloudflare Sandbox rendering architecture.
+- Authentication, RBAC, admin, credits, subscriptions, payments, storage, and AI providers.
+- Three creation entry points: template, formula, and natural-language description.
+- Six-stage planning pipeline: intent, knowledge, curriculum, mathematics, storyboard, scene.
+- Structured three-layer IR (objects, timeline, layout) with an editable spec and a drag-adjustable timeline.
+- Deterministic `spec → Manim` compiler, currently used as the fallback when model code composition fails.
+- Cloudflare Workflow durable execution with per-stage checkpoints in D1.
+- Python orchestrator for visual-contract and math-contract preflight.
+- Cloudflare Sandbox render jobs through Queue, with R2 artifact persistence.
+- Preview-then-formal render ladder with contact-sheet and temporal QA.
+- Credit reservation, cancellation, version snapshots, MP4/`.py` export.
 
 Not implemented yet:
 
-- AI formula and mathematical-intent parsing.
-- Structured scene planning and editable Manim generation.
-- Cloudflare Sandbox render jobs.
-- Dynamic curve gallery data and project editor.
-- Production render queue, artifacts, and usage-based pricing.
+- Curve encyclopedia (`/curves`) and the public gallery page. Gallery API routes
+  exist; there is no gallery page route and no published entry in production.
+- Project editor over saved works.
+- SymPy or equivalent symbolic verification.
+- Published pricing tiers. Credits are wired, but no tier is on sale pending
+  real per-render cost data.
 
-## Intended Workflow
+### Known production issue
+
+Delivery is not the same as generation. When a planning stage exhausts both the
+KIE and Kuaipao providers, the Workflow substitutes a pre-authored deterministic
+scene, records the stage as `completed` with `provider=curvg`, and the user sees
+a successful generation carrying a scene that may not reflect the prompt.
+
+On 2026-07-31, 15 of 21 completed stages were substituted rather than generated
+(71%), up from 32% the previous day. Completion rate alone will therefore read a
+total provider outage as healthy. See
+[Deterministic fallback](docs/ANIMATION_ORCHESTRATION.md#deterministic-fallback)
+for the query that separates the two.
+
+## Workflow
 
 ```text
-Equation or teaching goal
-  → structured mathematical input
-  → inspectable scene plan
-  → editable Manim code
+Template, formula, or teaching goal
+  → six-stage planning (intent, knowledge, curriculum, mathematics, storyboard, scene)
+  → inspectable three-layer IR: objects, timeline, layout
+  → editable spec and drag-adjustable timeline
+  → Python: model composition, with deterministic compilation as fallback
   → isolated sandbox render
   → preview and export artifacts
 ```
 
-AI output is not assumed to be mathematically correct. The target workflow keeps human review between generation and rendering.
+Code is read-only in the product — edits belong in the spec. It can be read,
+copied, and exported as `.py`.
+
+Note that the intended design (`docs/CREATOR_REQUIREMENTS.md` §5) is for the
+compiler to own all Python and the model to emit only IR. The IR landed; the
+ownership inversion did not. `composeAnimationCode`
+(`src/modules/animations/service.ts:686`) still asks the model for Python first
+and falls back to `compileAnimationSpec` only after two failures. This is
+tracked as a P0 in the roadmap — it is a shared root cause of timeouts,
+exhausted Workflow budgets, and output variance.
+
+Editing the spec by hand recompiles directly without a model call. Sending a
+natural-language revision goes through the model using the current spec,
+including hand edits, as the draft.
+
+AI output is not assumed to be mathematically correct. Human review sits
+between generation and rendering.
 
 ## Tech Stack
 
@@ -48,7 +87,9 @@ AI output is not assumed to be mathematically correct. The target workflow keeps
 - Cloudflare Workers for orchestration.
 - Cloudflare D1 for product metadata.
 - Cloudflare R2 for source files, previews, videos, thumbnails, and logs.
-- Cloudflare Sandbox as the planned isolated Manim execution layer.
+- Cloudflare Sandbox as the isolated Manim execution layer (deployed as the `curvg-renderer` Worker).
+- Cloudflare Workflows for durable multi-stage planning.
+- Python orchestrator container for visual- and math-contract preflight.
 
 ## Local Development
 
@@ -91,9 +132,23 @@ Do not run generated or user-supplied code inside the Worker process.
 
 ## Documentation
 
+Current architecture:
+
+- [Animation orchestration](docs/ANIMATION_ORCHESTRATION.md) — Workflow, provider routing, deterministic fallback, quality ladder. Start here.
+- [Creator architecture](docs/CURVG_CREATOR_ARCHITECTURE.md) — creator product, state machine, security and renderer boundaries.
+- [Creator requirements](docs/CREATOR_REQUIREMENTS.md) — the decisions behind the deterministic-compiler design.
+- [Cloudflare deployment](docs/CLOUDFLARE_DEPLOYMENT.md)
+
+Product and planning:
+
 - [Project brief](docs/PROJECT_BRIEF.md)
-- [Technical architecture](docs/TECHNICAL_ARCHITECTURE.md)
 - [Roadmap](docs/ROADMAP.md)
+- [Site architecture plan](docs/SITE_ARCHITECTURE_PLAN.md)
+- [SEO and content strategy](docs/SEO_CONTENT_STRATEGY.md)
+- [Design system](docs/DESIGN_SYSTEM.md)
+
+Research:
+
 - [AnimG competitor analysis](docs/research/animg.app/COMPETITOR_ANALYSIS.md)
 - [Homepage topology](docs/research/PAGE_TOPOLOGY.md)
 - [Homepage behaviors](docs/research/BEHAVIORS.md)

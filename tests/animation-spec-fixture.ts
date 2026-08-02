@@ -2,7 +2,7 @@ import type { AnimationSpec } from '../src/lib/animation';
 
 export function auditedGeometrySpec(): AnimationSpec {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     title: 'Sine as a unit-circle projection',
     summary:
       'A rotating unit-circle point transfers its vertical coordinate to the sine graph.',
@@ -28,14 +28,21 @@ export function auditedGeometrySpec(): AnimationSpec {
           'A unit-circle point has coordinates (cos(theta), sin(theta)).',
         dependsOn: [],
         misconception: 'The angle is not the arc length of a non-unit circle.',
+        depth: 1,
+        assumed: true,
+        visualSeed: 'A point pinned to a circle with its angle marked.',
       },
       {
         id: 'sine-projection',
         concept: 'The sine value is the vertical coordinate of that point.',
         dependsOn: ['unit-circle-coordinate'],
         misconception: 'The sine value is not the horizontal coordinate.',
+        depth: 0,
+        assumed: false,
+        visualSeed: 'A horizontal line carrying one height across the frame.',
       },
     ],
+    spine: ['unit-circle-coordinate', 'sine-projection'],
     curriculum: [
       {
         id: 'identify-angle',
@@ -62,6 +69,24 @@ export function auditedGeometrySpec(): AnimationSpec {
       },
     ],
     mathDossier: {
+      formulas: [
+        {
+          id: 'sine_projection_formula',
+          purpose: 'State the height the projection carries to the graph.',
+          latexParts: [
+            {
+              id: 'sine_projection_lhs',
+              latex: 'y=',
+              meaning: 'the transferred height',
+            },
+            {
+              id: 'sine_projection_rhs',
+              latex: '\\sin(\\theta)',
+              meaning: 'the vertical unit-circle coordinate',
+            },
+          ],
+        },
+      ],
       coreClaim:
         'For a unit-circle point at angle theta, its vertical coordinate equals sin(theta).',
       invariants: [
@@ -163,6 +188,7 @@ export function auditedGeometrySpec(): AnimationSpec {
         kind: 'formula',
         region: 'formula',
         importance: 'supporting',
+        formulaId: 'sine_projection_formula',
         expr: 'y=\\sin(\\theta)',
         color: '#FAF9F5',
       },
