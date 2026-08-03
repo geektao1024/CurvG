@@ -9,6 +9,12 @@
 export const animationModelPolicies = [
   {
     provider: 'kie',
+    model: 'gpt-5-6-sol',
+    presetKey: 'kieGpt56Sol',
+    requiredTier: 'free',
+  },
+  {
+    provider: 'kie',
     model: 'gemini-3.6-flash',
     presetKey: 'kieGemini36Flash',
     requiredTier: 'free',
@@ -18,36 +24,44 @@ export const animationModelPolicies = [
 export type AnimationModelPolicy = (typeof animationModelPolicies)[number];
 export type AnimationAccessTier = 'free' | 'starter' | 'pro';
 
-export const DEFAULT_ANIMATION_MODEL = 'gemini-3.6-flash';
+export const DEFAULT_ANIMATION_MODEL = 'gpt-5-6-sol';
 export const DEFAULT_ANIMATION_PROVIDER = 'kie';
 
 /**
- * Provider tuning is allowlisted just like model access. The reviewed Gemini
- * route keeps high reasoning for mathematical and curriculum stages.
+ * Provider tuning is allowlisted just like model access. The GPT-5.6 route
+ * runs planning and mathematical stages at xhigh reasoning: production
+ * showed the strict scene contract needs the extra depth, and the widened
+ * stage deadlines (2026-08-03) buy the latency this costs. KIE clamps the
+ * effort to `high` automatically if the upstream rejects the higher tier.
  */
-export function getAnimationReasoningEffort(model: string): 'high' | undefined {
-  return model === DEFAULT_ANIMATION_MODEL ? 'high' : undefined;
+export function getAnimationReasoningEffort(
+  model: string
+): 'xhigh' | 'high' | undefined {
+  if (model === 'gpt-5-6-sol') return 'xhigh';
+  return model === 'gemini-3.6-flash' ? 'high' : undefined;
 }
 
 /**
  * Scene assembly and Python composition consume already-approved planning
- * artifacts. Medium effort keeps those large synthesis responses inside the
- * provider deadline while the mathematical stages retain high effort.
+ * artifacts and produce the largest responses. One tier below the planning
+ * effort keeps them inside the per-target deadline while the mathematical
+ * stages get full depth.
  */
 export function getAnimationCompositionReasoningEffort(
   model: string
-): 'medium' | undefined {
-  return model === DEFAULT_ANIMATION_MODEL ? 'medium' : undefined;
+): 'high' | 'medium' | undefined {
+  if (model === 'gpt-5-6-sol') return 'high';
+  return model === 'gemini-3.6-flash' ? 'medium' : undefined;
 }
 
 export const FREE_AUTO_MODEL_TARGETS = [
-  { provider: 'kie', model: 'gemini-3.6-flash' },
+  { provider: 'kie', model: 'gpt-5-6-sol' },
 ] as const;
 
 // Keep the Pro Auto target identical during the focused comparison period so
 // subscription tier cannot silently change the model under evaluation.
 export const PRO_AUTO_MODEL_TARGETS = [
-  { provider: 'kie', model: 'gemini-3.6-flash' },
+  { provider: 'kie', model: 'gpt-5-6-sol' },
 ] as const;
 
 export function getAnimationModelPolicy(

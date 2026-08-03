@@ -9,7 +9,7 @@ export interface ChatCompletionInput {
   temperature?: number;
   maxTokens?: number;
   /** OpenAI-compatible reasoning budget hint for supported models. */
-  reasoningEffort?: 'low' | 'medium' | 'high';
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   /** Shared absolute deadline used by retry/failover chains. */
   deadlineAt?: number;
   signal?: AbortSignal;

@@ -144,7 +144,7 @@ interface CreatorGenerationRequest {
   model?: string;
 }
 
-export type CreatorCuratedModelKey = 'kieGemini36Flash';
+export type CreatorCuratedModelKey = 'kieGpt56Sol' | 'kieGemini36Flash';
 
 interface CreatorCuratedModelPreset {
   key: CreatorCuratedModelKey;
@@ -154,6 +154,12 @@ interface CreatorCuratedModelPreset {
 }
 
 const CURATED_MODEL_PRESETS: CreatorCuratedModelPreset[] = [
+  {
+    key: 'kieGpt56Sol',
+    provider: 'kie',
+    models: ['gpt-5-6-sol'],
+    tier: 'free',
+  },
   {
     key: 'kieGemini36Flash',
     provider: 'kie',

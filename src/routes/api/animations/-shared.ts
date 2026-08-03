@@ -5,9 +5,10 @@ import {
   ChatProviderError,
   OpenAICompatibleChatProvider,
   ProviderFailoverChatProvider,
+  type ChatCompletionInput,
   type ChatProvider,
 } from '@/core/ai/chat';
-import { KieChatProvider, type KieChatModel } from '@/core/ai/kie-chat';
+import { KieChatProvider } from '@/core/ai/kie-chat';
 import { KuaipaoChatProvider } from '@/core/ai/kuaipao-chat';
 import { HttpAnimationOrchestrator } from '@/core/animation-orchestrator';
 import { HttpAnimationRenderer } from '@/core/animation-renderer';
@@ -220,8 +221,8 @@ function kieProvider(configs: ConfigMap) {
     apiKey: configs.kie_api_key,
     baseUrl: configs.kie_base_url || 'https://api.kie.ai',
     maxAttempts: 2,
-    requestTimeoutMs: 105_000,
-    overallTimeoutMs: 210_000,
+    requestTimeoutMs: 150_000,
+    overallTimeoutMs: 300_000,
   });
 }
 
@@ -246,10 +247,9 @@ function backupProvider(configs: ConfigMap) {
 export interface AnimationProviderTargetPlan {
   provider: 'kuaipao' | 'kie' | 'backup';
   model: string;
-  reasoningEffort?: 'high' | 'medium';
+  reasoningEffort?: ChatCompletionInput['reasoningEffort'];
 }
 
-const KIE_PRIMARY_MODEL = 'gemini-3.6-flash' satisfies KieChatModel;
 const KUAIPAO_RESILIENCE_MODEL = 'gpt-5.6-sol';
 
 function backupRouteConfigured(configs: ConfigMap) {
@@ -261,10 +261,11 @@ function backupRouteConfigured(configs: ConfigMap) {
 }
 
 /**
- * Keep KIE Gemini as the public product model and retain Kuaipao GPT-5.6 only
- * as an independent server-owned recovery route. Provider order is part of
- * the product reliability contract and must never depend on key insertion
- * order or a client-supplied model alias.
+ * Keep KIE as the public product route (GPT-5.6 Sol at maximum reasoning
+ * since 2026-08-03; the Gemini flash entry remains selectable) and retain
+ * Kuaipao GPT-5.6 only as an independent server-owned recovery route.
+ * Provider order is part of the product reliability contract and must never
+ * depend on key insertion order or a client-supplied model alias.
  *
  * The optional third route exists because two providers still share fate
  * often enough to matter: on 2026-08-02 both were saturated at once and a
@@ -280,7 +281,9 @@ export function animationProviderTargetPlan(
   if (primary.provider === 'kie' && configs.kie_api_key) {
     targets.push({
       provider: 'kie',
-      model: KIE_PRIMARY_MODEL,
+      // Honor the allowlisted model the user actually selected; the policy
+      // layer has already refused anything outside animationModelPolicies.
+      model: primary.model,
       reasoningEffort: getAnimationReasoningEffort(primary.model),
     });
   }
@@ -307,9 +310,10 @@ interface ProviderResolution {
 }
 
 const autoModelCircuitBreaker = new ChatModelCircuitBreaker();
-// The caller gives a two-provider stage 120 seconds. Cap each target at 60
-// seconds so KIE cannot consume the fallback's reserved half of that budget.
-const ANIMATION_PROVIDER_TIMEOUT_MS = 60_000;
+// The caller gives a two-provider stage up to 300 seconds (2026-08-03 widened
+// budget for maximum-reasoning GPT-5.6). Cap each target at 150 seconds so
+// KIE cannot consume the fallback's reserved half of that budget.
+const ANIMATION_PROVIDER_TIMEOUT_MS = 150_000;
 
 function policyOptions(
   tier: AnimationAccessTier,

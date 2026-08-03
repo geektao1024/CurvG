@@ -197,6 +197,10 @@ export function CreatorWorkspace({
     modelUnavailableShort: m['creator.model.unavailable_short'](),
     modelDeterministicFallback: m['creator.model.deterministic_fallback'](),
     curatedModels: {
+      kieGpt56Sol: {
+        label: m['creator.model.kie_gpt_56_sol.label'](),
+        description: m['creator.model.kie_gpt_56_sol.description'](),
+      },
       kieGemini36Flash: {
         label: m['creator.model.kie_gemini_36_flash.label'](),
         description: m['creator.model.kie_gemini_36_flash.description'](),

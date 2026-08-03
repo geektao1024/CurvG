@@ -230,6 +230,31 @@ function anthropicMessages(messages: ChatTurn[]) {
     .map((message) => ({ role: message.role, content: message.content }));
 }
 
+/**
+ * When the upstream rejects an above-"high" reasoning tier with a client
+ * error that names the reasoning parameter, return the same request clamped
+ * to "high"; otherwise return undefined and let the original error stand.
+ */
+function clampRejectedReasoningEffort(
+  input: ChatCompletionInput,
+  error: unknown
+): ChatCompletionInput | undefined {
+  if (input.reasoningEffort !== 'xhigh' && input.reasoningEffort !== 'max') {
+    return undefined;
+  }
+  if (
+    !(error instanceof ChatProviderError) ||
+    error.retryable ||
+    !error.status ||
+    error.status < 400 ||
+    error.status >= 500 ||
+    !/reason|effort/i.test(error.message)
+  ) {
+    return undefined;
+  }
+  return { ...input, reasoningEffort: 'high' };
+}
+
 /** Chat-only Kie adapter; asynchronous image/video jobs remain separate. */
 export class KieChatProvider implements ChatProvider {
   readonly name = 'kie';
@@ -606,7 +631,21 @@ export class KieChatProvider implements ChatProvider {
         model: input.model,
       });
     }
-    return this.completeWithRetry(input.model, input);
+    try {
+      return await this.completeWithRetry(input.model, input);
+    } catch (error) {
+      // The animation policy may request an effort tier ("xhigh"/"max") the
+      // upstream route does not accept. Clamp to "high" and retry once so a
+      // tuning mismatch degrades reasoning depth instead of taking the whole
+      // KIE route out of the failover plan.
+      const clamped = clampRejectedReasoningEffort(input, error);
+      if (!clamped) throw error;
+      console.warn('[kie-chat] reasoning effort rejected, retrying at high', {
+        model: input.model,
+        effort: input.reasoningEffort,
+      });
+      return this.completeWithRetry(input.model, clamped);
+    }
   }
 
   /**

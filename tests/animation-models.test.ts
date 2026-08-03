@@ -25,18 +25,20 @@ test('the default free model is explicitly allowlisted on KIE', () => {
   const policy = getAnimationModelPolicy('kie', DEFAULT_ANIMATION_MODEL);
 
   assert.ok(policy);
-  assert.equal(policy.model, 'gemini-3.6-flash');
+  assert.equal(policy.model, 'gpt-5-6-sol');
   assert.equal(policy.requiredTier, 'free');
   assert.equal(canUseAnimationModel('free', policy), true);
 });
 
-test('only Gemini 3.6 receives the high-effort planning hint', () => {
+test('planning effort is xhigh on GPT-5.6 Sol and high on Gemini', () => {
+  assert.equal(getAnimationReasoningEffort('gpt-5-6-sol'), 'xhigh');
   assert.equal(getAnimationReasoningEffort('gemini-3.6-flash'), 'high');
   assert.equal(getAnimationReasoningEffort('gpt-5.6-sol'), undefined);
   assert.equal(getAnimationReasoningEffort('gpt-5.5'), undefined);
 });
 
-test('large Gemini composition stages use bounded medium effort', () => {
+test('large composition stages run one effort tier below planning', () => {
+  assert.equal(getAnimationCompositionReasoningEffort('gpt-5-6-sol'), 'high');
   assert.equal(
     getAnimationCompositionReasoningEffort('gemini-3.6-flash'),
     'medium'
@@ -73,8 +75,14 @@ test('Auto and explicit API selections resolve only to KIE Gemini 3.6', () => {
   );
 });
 
-test('the generation catalog contains only reviewed KIE Gemini 3.6', () => {
+test('the generation catalog contains only the reviewed KIE models', () => {
   assert.deepEqual(animationModelPolicies, [
+    {
+      provider: 'kie',
+      model: 'gpt-5-6-sol',
+      presetKey: 'kieGpt56Sol',
+      requiredTier: 'free',
+    },
     {
       provider: 'kie',
       model: 'gemini-3.6-flash',
@@ -84,7 +92,7 @@ test('the generation catalog contains only reviewed KIE Gemini 3.6', () => {
   ]);
 });
 
-test('KIE Gemini is primary and Kuaipao GPT-5.6 is hidden resilience', () => {
+test('KIE GPT-5.6 Sol is primary and Kuaipao GPT-5.6 is hidden resilience', () => {
   const primary = animationModelPolicies[0];
   assert.deepEqual(
     animationProviderTargetPlan(
@@ -97,8 +105,8 @@ test('KIE Gemini is primary and Kuaipao GPT-5.6 is hidden resilience', () => {
     [
       {
         provider: 'kie',
-        model: 'gemini-3.6-flash',
-        reasoningEffort: 'high',
+        model: 'gpt-5-6-sol',
+        reasoningEffort: 'xhigh',
       },
       {
         provider: 'kuaipao',
@@ -112,8 +120,8 @@ test('KIE Gemini is primary and Kuaipao GPT-5.6 is hidden resilience', () => {
     [
       {
         provider: 'kie',
-        model: 'gemini-3.6-flash',
-        reasoningEffort: 'high',
+        model: 'gpt-5-6-sol',
+        reasoningEffort: 'xhigh',
       },
     ]
   );

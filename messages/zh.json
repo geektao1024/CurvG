@@ -168,6 +168,8 @@
   "creator.model.kuaipao_gpt_56_sol.description": "快跑 Responses 接口，高强度推理用于场景规划与 Manim 代码生成",
   "creator.model.kie_gemini_36_flash.label": "Gemini 3.6 Flash",
   "creator.model.kie_gemini_36_flash.description": "KIE 稳定生成链，支持流式响应、数学规划与 Manim 代码生成",
+  "creator.model.kie_gpt_56_sol.label": "GPT-5.6 Sol",
+  "creator.model.kie_gpt_56_sol.description": "KIE 最强推理链路，面向严谨的数学规划与场景编排",
   "creator.status.draft": "草稿",
   "creator.status.generating_spec": "正在拟定场景方案",
   "creator.status.awaiting_approval": "等待你检查",

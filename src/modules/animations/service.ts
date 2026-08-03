@@ -73,8 +73,12 @@ const MAX_ANIMATIONS_PER_USER = 200;
 // This budget is shared by planning, schema correction, an independent math
 // audit, at most three specification rebuilds, provider retries, and Auto
 // fallbacks. It remains one absolute deadline instead of multiplying a timeout
-// per call, but gives the audited v6 pipeline enough room to finish.
-export const ANIMATION_STAGE_TIMEOUT_MS = 300_000;
+// per call. Widened 300s -> 1200s on 2026-08-03: maximum-reasoning GPT-5.6
+// with 300-second stages cannot finish six stages plus repairs in five
+// minutes, and production showed the old budget expiring mid-plan
+// ("planning time budget was exhausted"). The Workflow step timeout (25
+// minutes) still bounds the worst case above this deadline.
+export const ANIMATION_STAGE_TIMEOUT_MS = 1_200_000;
 const MAX_SPEC_SCHEMA_REPAIRS = 2;
 const MAX_MATH_SPEC_REPAIRS = 3;
 const MAX_STRUCTURED_OUTPUT_TARGET_FAILOVERS = 3;
@@ -686,7 +690,9 @@ async function requestAnimationCodeCompletion(
   // Python output. Keep the former Gemini behavior for historical tasks even
   // though the current catalog exposes only one reviewed generation model.
   if (
-    ['gpt-5.6-sol', 'gemini-3.6-flash'].includes(input.model.toLowerCase()) &&
+    ['gpt-5-6-sol', 'gpt-5.6-sol', 'gemini-3.6-flash'].includes(
+      input.model.toLowerCase()
+    ) &&
     provider.stream
   ) {
     return provider.stream(input, () => {});

@@ -168,6 +168,8 @@
   "creator.model.kuaipao_gpt_56_sol.description": "Kuaipao Responses API with high reasoning for scene planning and Manim code generation",
   "creator.model.kie_gemini_36_flash.label": "Gemini 3.6 Flash",
   "creator.model.kie_gemini_36_flash.description": "Stable KIE generation route with streaming, mathematical planning, and Manim code generation",
+  "creator.model.kie_gpt_56_sol.label": "GPT-5.6 Sol",
+  "creator.model.kie_gpt_56_sol.description": "Maximum-reasoning KIE route for rigorous mathematical planning and scene composition",
   "creator.status.draft": "Draft",
   "creator.status.generating_spec": "Drafting scene plan",
   "creator.status.awaiting_approval": "Ready for your review",

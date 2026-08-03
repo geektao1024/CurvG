@@ -31,11 +31,11 @@ single source of ordering. It appends KIE first, Kuaipao second, and — when an
 administrator has configured all three `animation_backup_*` settings — a third
 OpenAI-compatible `/chat/completions` route last:
 
-| Order | Provider  | Model              | Intended role               |
-| ----- | --------- | ------------------ | --------------------------- |
-| 1     | `kie`     | `gemini-3.6-flash` | Public product model        |
-| 2     | `kuaipao` | `gpt-5.6-sol`      | Server-owned recovery route |
-| 3     | `backup`  | admin-configured   | Optional third failover     |
+| Order | Provider  | Model                                                        | Intended role               |
+| ----- | --------- | ------------------------------------------------------------ | --------------------------- |
+| 1     | `kie`     | `gpt-5-6-sol` (max reasoning; `gemini-3.6-flash` selectable) | Public product model        |
+| 2     | `kuaipao` | `gpt-5.6-sol`                                                | Server-owned recovery route |
+| 3     | `backup`  | admin-configured                                             | Optional third failover     |
 
 The backup route exists because two providers still share fate often enough to
 matter: on 2026-08-02 both were saturated at once. It never appears in the
