@@ -7,21 +7,21 @@ import { getLocalPosts, mergePosts } from '@/content/posts';
 const STATIC_PAGES: { path: string; title: string; description: string }[] = [
   {
     path: '',
-    title: 'AI-assisted Manim Scene and Code Generator',
+    title: 'AI Math Animation Maker',
     description:
-      'Plan a mathematical explanation, review the scene sequence, and generate portable Manim Community code.',
+      'Create math animations online: describe a concept, review the scene plan and Manim Community code, then render an MP4 in the cloud. Free to start.',
   },
   {
     path: '/creator',
-    title: 'CurvG Creator',
+    title: 'Manim AI Generator (Creator)',
     description:
-      'An early-access workspace for reviewing mathematical assumptions, scene plans, generated code, and available render output.',
+      'The creation workspace: describe a math concept, review the proposed scene plan and generated Manim code, then render the approved scene to a video.',
   },
   {
     path: '/pricing',
-    title: 'Early Access',
+    title: 'Pricing',
     description:
-      'What users can create today and the current status of paid plans and remote rendering.',
+      'Free, Starter ($9.90), and Pro ($18.90) plans with curated AI models and cloud render credits.',
   },
   {
     path: '/privacy-policy',
@@ -36,13 +36,14 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
 ];
 
 const PRODUCT_DESCRIPTION =
-  'CurvG is an AI-assisted Manim creation tool that turns a written explanation goal into a reviewable scene plan and portable Manim Community code.';
+  'CurvG is an AI math animation maker built on Manim Community. It turns a written explanation goal into a reviewable scene plan, portable Manim Community code, and a cloud-rendered MP4 video.';
 
 const PRODUCT_FACTS = [
   'CurvG does not claim that AI output is automatically mathematically correct.',
   'The Creator can generate a scene plan and Manim code that users can review, copy, and download.',
   'Direct code editing and compilation in the browser are not currently available.',
-  'Remote rendering is not currently offered as a generally available production service.',
+  'Hosted cloud rendering is available; paid plans include render credits, and failed or canceled renders are refunded.',
+  'New accounts start with free credits.',
 ];
 
 export const Route = createFileRoute('/llms.txt')({
