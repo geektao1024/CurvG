@@ -27,12 +27,19 @@ only deterministic planning and preflight decisions.
 ## Provider routing
 
 `animationProviderTargetPlan` in `src/routes/api/animations/-shared.ts` is the
-single source of ordering. It appends KIE first and Kuaipao second:
+single source of ordering. It appends KIE first, Kuaipao second, and — when an
+administrator has configured all three `animation_backup_*` settings — a third
+OpenAI-compatible `/chat/completions` route last:
 
 | Order | Provider  | Model              | Intended role               |
 | ----- | --------- | ------------------ | --------------------------- |
 | 1     | `kie`     | `gemini-3.6-flash` | Public product model        |
 | 2     | `kuaipao` | `gpt-5.6-sol`      | Server-owned recovery route |
+| 3     | `backup`  | admin-configured   | Optional third failover     |
+
+The backup route exists because two providers still share fate often enough to
+matter: on 2026-08-02 both were saturated at once. It never appears in the
+public model catalog — resilience infrastructure, not a product surface.
 
 A stage row records only the provider that ultimately produced the artifact. A
 KIE attempt that fails and then succeeds on Kuaipao is stored as
@@ -49,7 +56,15 @@ The Workflow has three durable boundaries:
 
 1. `plan-animation` runs the six persisted planning specialists. Every stage
    writes its input hash, artifact, attempt, provider diagnostic, and status to
-   D1, so a Workflow replay reuses completed stages.
+   D1, so a Workflow replay reuses completed stages. When a whole attempt
+   fails retryably (saturation, timeouts), the Workflow does not fail after
+   two quick tries: it queues, waiting out a widening ladder of
+   5s/30s/1m/2m/4m/5m/5m (eight attempts, ~17 minutes end to end). Between
+   attempts it persists `parts.queue` (attempt, nextRetryAt, since, reason) so
+   the client shows an honest "retrying automatically" banner with a live
+   countdown, and it honors cancellation before spending another provider
+   call. Only an exhausted ladder or a non-retryable failure becomes a
+   visible terminal failure — and planning never charges credits.
 2. `prepare-python-orchestrator` derives the visual contract, retrieves visual
    templates, and produces the code-generation brief. Cloudflare retries this
    external step with exponential delay. After the retry budget is exhausted,
@@ -99,21 +114,30 @@ the disposable Sandbox; preflight is not a replacement for isolation.
 
 ## Deterministic fallback
 
-When a planning stage exhausts both providers, the Workflow does not hard-fail.
-It records the stage as `completed` with `provider=curvg` and a
-`deterministic-*` model id, and delivery continues from a pre-authored scene
-rather than from the user's request.
+**The failure-triggered substitution described below was retired on
+2026-08-03.** A scene stage that fails after its provider failover now
+propagates the error to the Workflow queue (see Durable execution) instead of
+substituting a deterministic scene. The 2026-08-02 product decision:
+queue-then-succeed or fail visibly — never deliver a scene that ignores the
+request. The only deterministic scene left is the _pre-matched_ verified
+profile (quadratic tangent, cycloid, heart), which runs before any provider
+call, only when the prompt matches a hand-verified topic, and only when the
+schema-6 dossier gate confirms the dossier actually authors those formulas.
+
+Historical context — why it was retired: when a planning stage exhausted both
+providers, the Workflow recorded the stage as `completed` with
+`provider=curvg` and a `deterministic-*` model id, and delivery continued from
+a pre-authored scene rather than from the user's request.
 
 | Model id                    | Meaning                                      |
 | --------------------------- | -------------------------------------------- |
 | `deterministic-scene-v1`    | Verified template matched to the request     |
 | `deterministic-fallback-v1` | Generic scene; carries little of the request |
 
-This trades a visible error for a silent quality loss. The user sees a
-successful generation and receives a scene that may be unrelated to the prompt.
-Because the fallback is stored as `completed`, the stage table's success rate
-does not distinguish model output from substituted output — split on
-`provider='curvg'` to measure real model delivery:
+This traded a visible error for a silent quality loss: on 2026-07-31, 71% of
+completed stages were substituted rather than generated. Because the fallback
+was stored as `completed`, completion rate read a total provider outage as
+healthy. The split query remains useful for reading historical data:
 
 ```sql
 select date(created_at/1000,'unixepoch') d,
@@ -124,8 +148,8 @@ where status='completed'
 group by d, kind order by d;
 ```
 
-Any alerting built on completion rate alone will read a total provider outage
-as healthy.
+Rows with `provider='curvg'` after 2026-08-03 can only come from the
+pre-matched verified profiles, which are honest matches, not substitutions.
 
 ## Lineage and the ownership gap
 

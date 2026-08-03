@@ -57,6 +57,8 @@ import {
   type AnimationPlanningPhase,
   type AnimationPlanningPipeline,
   type AnimationPlanningStageName,
+  type AnimationPlanningStageSummary,
+  type AnimationQueueState,
   type AnimationStatus,
   type AnimationSubject,
   type AnimationSummary,
@@ -289,6 +291,16 @@ export interface CreatorWorkspaceCopy {
     { label: string; description: string }
   >;
   failureMessages: Record<AnimationFailureCode, string>;
+  /** "本次失败未消耗积分" — shown on every terminal failure card. */
+  failureNoCharge: string;
+  /** Queue banner while the Workflow waits out saturated upstream models. */
+  queueNotice: (attempt: number, total: number) => string;
+  queueRetryIn: (seconds: number) => string;
+  queueElapsed: (minutes: number) => string;
+  /** Composer warning when the balance cannot cover a render. */
+  creditShortfall: (cost: number, balance: number) => string;
+  toastCompleted: (title: string) => string;
+  toastFailed: (title: string) => string;
   subjects: CreatorOption<AnimationSubject>[];
   statuses: Record<AnimationStatus, string>;
   entryTemplate: string;
@@ -1525,6 +1537,7 @@ function Welcome({
   locale,
   creationMode,
   onCreationModeChange,
+  creditNotice,
   prompt,
   onPromptChange,
   onSubmit,
@@ -1556,6 +1569,7 @@ function Welcome({
   locale: string;
   creationMode: AnimationCreationMode;
   onCreationModeChange: (value: AnimationCreationMode) => void;
+  creditNotice?: string;
   prompt: string;
   onPromptChange: (value: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -1632,6 +1646,14 @@ function Welcome({
         <p className="text-muted-foreground mt-5 max-w-2xl text-center text-sm leading-6 sm:text-[1.05rem] sm:leading-7">
           {copy.welcomeDescription}
         </p>
+        {creditNotice && (
+          <p
+            role="status"
+            className="mt-4 max-w-2xl rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-center text-xs leading-5"
+          >
+            {creditNotice}
+          </p>
+        )}
 
         <div className="bg-card/72 border-border/80 mt-9 flex w-full max-w-3xl gap-1 rounded-2xl border p-1.5 shadow-sm backdrop-blur-sm">
           {entryTabs.map((tab) => {
@@ -1957,16 +1979,151 @@ function Welcome({
   );
 }
 
+interface StageArtifactRow {
+  text: string;
+  mono?: boolean;
+}
+
+/**
+ * Compact, defensive projection of a completed stage artifact into a few
+ * readable lines. Old records may carry artifacts from earlier schema
+ * versions, so every read is optional — an unrecognized shape simply renders
+ * nothing rather than crashing the wait screen.
+ */
+function stageArtifactRows(
+  name: AnimationPlanningStageSummary['name'],
+  artifact: unknown
+): StageArtifactRow[] {
+  if (!artifact || typeof artifact !== 'object') return [];
+  const value = artifact as {
+    title?: string;
+    durationSeconds?: number;
+    intent?: { hook?: string; learningGoal?: string };
+    knowledgeMap?: Array<{ id?: string; concept?: string }>;
+    spine?: string[];
+    curriculum?: Array<{ learningJob?: string }>;
+    mathDossier?: {
+      coreClaim?: string;
+      formulas?: Array<{ latexParts?: Array<{ latex?: string }> }>;
+    };
+    shots?: Array<{ beat?: string; purpose?: string }>;
+  };
+  if (name === 'intent') {
+    return [
+      value.title && {
+        text: value.durationSeconds
+          ? `${value.title} · ${value.durationSeconds}s`
+          : value.title,
+      },
+      value.intent?.hook && { text: value.intent.hook },
+    ].filter(Boolean) as StageArtifactRow[];
+  }
+  if (name === 'knowledge') {
+    const byId = new Map(
+      (value.knowledgeMap || []).map((node) => [node.id, node.concept])
+    );
+    const chain = (value.spine || [])
+      .map((id) => byId.get(id))
+      .filter(Boolean) as string[];
+    const fallback = (value.knowledgeMap || [])
+      .map((node) => node.concept)
+      .filter(Boolean)
+      .slice(0, 4) as string[];
+    const concepts = chain.length ? chain : fallback;
+    return concepts.length ? [{ text: concepts.join(' → ') }] : [];
+  }
+  if (name === 'curriculum') {
+    return (value.curriculum || [])
+      .map((beat) => beat.learningJob)
+      .filter(Boolean)
+      .slice(0, 4)
+      .map((job, index) => ({ text: `${index + 1}. ${job}` }));
+  }
+  if (name === 'mathematics') {
+    const rows: StageArtifactRow[] = [];
+    if (value.mathDossier?.coreClaim) {
+      rows.push({ text: value.mathDossier.coreClaim });
+    }
+    for (const formula of (value.mathDossier?.formulas || []).slice(0, 3)) {
+      const latex = (formula.latexParts || [])
+        .map((part) => part.latex)
+        .filter(Boolean)
+        .join('');
+      if (latex) rows.push({ text: latex, mono: true });
+    }
+    return rows;
+  }
+  if (name === 'storyboard') {
+    return (value.shots || [])
+      .filter((shot) => shot.purpose)
+      .slice(0, 6)
+      .map((shot) => ({
+        text: shot.beat ? `${shot.beat} · ${shot.purpose}` : `${shot.purpose}`,
+      }));
+  }
+  return [];
+}
+
+function StageArtifactCard({
+  copy,
+  stage,
+}: {
+  copy: CreatorWorkspaceCopy;
+  stage: AnimationPlanningStageSummary;
+}) {
+  const rows = stageArtifactRows(stage.name, stage.artifact);
+  if (!rows.length) return null;
+  return (
+    <div className="border-border/70 bg-background/40 rounded-lg border px-3 py-2">
+      <p className="text-muted-foreground font-mono text-[9px] tracking-[0.12em] uppercase">
+        {copy.planningStages[stage.name]}
+      </p>
+      <ul className="mt-1 space-y-0.5">
+        {rows.map((row, index) => (
+          <li
+            key={index}
+            className={cn(
+              'text-muted-foreground text-xs leading-5 break-words',
+              row.mono && 'font-mono text-[11px]'
+            )}
+          >
+            {row.text}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function PlanningStatusPanel({
   copy,
   phase,
   pipeline,
+  queue,
+  onCancel,
+  canceling,
 }: {
   copy: CreatorWorkspaceCopy;
   phase: AnimationPlanningPhase;
   pipeline?: AnimationPlanningPipeline;
+  queue?: AnimationQueueState;
+  onCancel?: () => void;
+  canceling?: boolean;
 }) {
   const activeIndex = PLANNING_PHASES.indexOf(phase);
+  // The queue banner shows a live countdown to the next automatic retry.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!queue) return;
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [queue?.nextRetryAt]);
+  const retrySeconds = queue
+    ? Math.max(0, Math.ceil((Date.parse(queue.nextRetryAt) - now) / 1_000))
+    : 0;
+  const elapsedMinutes = queue
+    ? Math.max(1, Math.round((now - Date.parse(queue.since)) / 60_000))
+    : 0;
   return (
     <div
       role="status"
@@ -1977,6 +2134,23 @@ function PlanningStatusPanel({
         aria-hidden
         className="curvg-blueprint-scan via-primary/12 pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-transparent to-transparent"
       />
+      {queue && (
+        <div
+          role="alert"
+          className="relative mb-3 rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs leading-5"
+        >
+          <p className="font-medium">
+            {copy.queueNotice(queue.attempt, queue.maxAttempts)}
+          </p>
+          <p className="text-muted-foreground mt-0.5">
+            {retrySeconds > 0
+              ? copy.queueRetryIn(retrySeconds)
+              : copy.statuses.generating_spec}
+            {' · '}
+            {copy.queueElapsed(elapsedMinutes)}
+          </p>
+        </div>
+      )}
       <div className="relative flex items-start gap-3">
         <span className="border-primary/20 bg-primary/6 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg border">
           <ListTree className="size-4" />
@@ -2086,6 +2260,33 @@ function PlanningStatusPanel({
               );
             })}
       </ol>
+      {pipeline && (
+        <div className="relative mt-3 space-y-2">
+          {pipeline.stages
+            .filter(
+              (stage) =>
+                (stage.status === 'completed' || stage.status === 'cached') &&
+                stage.artifact
+            )
+            .map((stage) => (
+              <StageArtifactCard key={stage.name} copy={copy} stage={stage} />
+            ))}
+        </div>
+      )}
+      {onCancel && (
+        <div className="relative mt-4 flex justify-end border-t pt-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={canceling}
+            onClick={onCancel}
+          >
+            {canceling ? <LoaderCircle className="animate-spin" /> : <X />}
+            {copy.cancelRender}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2303,6 +2504,9 @@ function SceneBlueprintFailure({
         <p className="text-destructive mt-2 text-sm leading-6">
           {localizedFailure(copy, detail.parts.failure)}
         </p>
+        <p className="text-muted-foreground mt-2 text-xs">
+          {copy.failureNoCharge}
+        </p>
         {detail.parts.failure?.retryable && onRetry && (
           <Button
             type="button"
@@ -2363,6 +2567,9 @@ function StatusPanel({
         copy={copy}
         phase={planningPhase}
         pipeline={detail.parts.pipeline}
+        queue={detail.parts.queue}
+        onCancel={() => cancelMutation.mutate()}
+        canceling={cancelMutation.isPending}
       />
     );
   }
@@ -2417,6 +2624,9 @@ function StatusPanel({
                   ID: {detail.parts.failure.requestId}
                 </p>
               )}
+              <p className="text-muted-foreground mt-1 text-xs">
+                {copy.failureNoCharge}
+              </p>
             </div>
           )}
         </div>
@@ -4087,6 +4297,27 @@ export function CreatorWorkspace({
     });
   }, [detail?.status, queryClient]);
 
+  // A generation takes minutes; the user is often in another tab of their
+  // life when it settles. Toast the transition from a working status to a
+  // terminal one — but only a transition observed live, so opening an old
+  // completed animation stays silent.
+  const settledStatusRef = useRef<{ id: string; status: string } | undefined>(
+    undefined
+  );
+  useEffect(() => {
+    if (!detail) return;
+    const previous = settledStatusRef.current;
+    settledStatusRef.current = { id: detail.id, status: detail.status };
+    if (!previous || previous.id !== detail.id) return;
+    if (previous.status === detail.status) return;
+    if (!isAnimationProgressing(previous.status as AnimationStatus)) return;
+    if (detail.status === 'completed') {
+      toast.success(copy.toastCompleted(detail.title));
+    } else if (detail.status === 'failed') {
+      toast.error(copy.toastFailed(detail.title));
+    }
+  }, [detail?.id, detail?.status]);
+
   const conversationTurns = useMemo<AnimationMessage[][]>(() => {
     const messages =
       detail?.messages.filter((message) => message.status !== 'failed') ?? [];
@@ -4101,6 +4332,17 @@ export function CreatorWorkspace({
     return turns;
   }, [detail?.messages]);
   const catalog = modelsQuery.data;
+  // Warn about an unrenderable balance before the user invests minutes in
+  // planning — the render step discovering it after the wait was the worst
+  // failure mode in production. Planning itself stays free and available.
+  const creditShortfallNotice =
+    user &&
+    catalog &&
+    catalog.renderCredits > 0 &&
+    typeof creditsQuery.data?.balance === 'number' &&
+    creditsQuery.data.balance < catalog.renderCredits
+      ? copy.creditShortfall(catalog.renderCredits, creditsQuery.data.balance)
+      : undefined;
   const curatedModelOptions: CreatorModelOption[] = CURATED_MODEL_PRESETS.map(
     (preset) => {
       const match = catalog?.options.find(
@@ -4842,6 +5084,7 @@ export function CreatorWorkspace({
           locale={locale}
           creationMode={creationMode}
           onCreationModeChange={setCreationMode}
+          creditNotice={creditShortfallNotice}
           prompt={prompt}
           onPromptChange={setPrompt}
           onSubmit={submit}
@@ -4923,6 +5166,7 @@ export function CreatorWorkspace({
             locale={locale}
             creationMode={creationMode}
             onCreationModeChange={setCreationMode}
+            creditNotice={creditShortfallNotice}
             prompt={prompt}
             onPromptChange={setPrompt}
             onSubmit={submit}
@@ -5189,25 +5433,35 @@ export function CreatorWorkspace({
                   </Button>
                 </div>
               ) : (
-                <PromptComposer
-                  copy={copy}
-                  prompt={prompt}
-                  onPromptChange={setPrompt}
-                  onSubmit={submit}
-                  subject={subject}
-                  onSubjectChange={setSubject}
-                  modelValue={modelValue}
-                  modelOptions={modelOptions}
-                  modelsLoading={modelsQuery.isLoading}
-                  modelsError={modelsQuery.isError}
-                  viewerTier={catalog?.viewerTier}
-                  onRetryModels={() => void modelsQuery.refetch()}
-                  onModelChange={handleModelChange}
-                  processing={processing}
-                  hasDetail={!!detail}
-                  user={hasHydratedUser}
-                  className="w-full"
-                />
+                <div className="w-full space-y-2">
+                  {creditShortfallNotice && (
+                    <p
+                      role="status"
+                      className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs leading-5"
+                    >
+                      {creditShortfallNotice}
+                    </p>
+                  )}
+                  <PromptComposer
+                    copy={copy}
+                    prompt={prompt}
+                    onPromptChange={setPrompt}
+                    onSubmit={submit}
+                    subject={subject}
+                    onSubjectChange={setSubject}
+                    modelValue={modelValue}
+                    modelOptions={modelOptions}
+                    modelsLoading={modelsQuery.isLoading}
+                    modelsError={modelsQuery.isError}
+                    viewerTier={catalog?.viewerTier}
+                    onRetryModels={() => void modelsQuery.refetch()}
+                    onModelChange={handleModelChange}
+                    processing={processing}
+                    hasDetail={!!detail}
+                    user={hasHydratedUser}
+                    className="w-full"
+                  />
+                </div>
               )}
             </div>
           </section>

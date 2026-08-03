@@ -34,6 +34,12 @@ export interface AnimationModelCatalog {
   defaultModel?: string;
   viewerTier: 'free' | 'starter' | 'pro';
   catalogStale?: boolean;
+  /**
+   * Credits reserved per video render. Exposed so the composer can warn a
+   * short-balance user before they invest minutes in planning, instead of
+   * letting the render step discover the shortfall after the wait.
+   */
+  renderCredits: number;
 }
 
 export function animationModelValue(
@@ -578,6 +584,17 @@ export interface AnimationFailure {
   requestId?: string;
 }
 
+export interface AnimationQueueState {
+  /** The attempt that just failed; the workflow is waiting to run the next one. */
+  attempt: number;
+  maxAttempts: number;
+  /** ISO timestamp of the next automatic retry. */
+  nextRetryAt: string;
+  /** ISO timestamp of the first failed attempt, so the client can show elapsed wait. */
+  since: string;
+  reason: AnimationFailureCode;
+}
+
 export type AnimationPlanningStageName =
   | 'intent'
   | 'knowledge'
@@ -602,6 +619,14 @@ export interface AnimationPlanningStageSummary {
   requestId?: string;
   startedAt?: string;
   completedAt?: string;
+  /**
+   * The completed stage's artifact, included for every stage except `scene`
+   * (whose content becomes `parts.spec` moments later and is too large to
+   * repeat here). This is what lets the workspace show the knowledge map,
+   * curriculum, formulas, and shot list while later stages are still
+   * running — the wait becomes watching the plan assemble.
+   */
+  artifact?: unknown;
 }
 
 export interface AnimationPlanningPipeline {
@@ -642,6 +667,13 @@ export interface AnimationParts {
   /** @deprecated Read failure.message. Kept for existing persisted rows. */
   error?: string;
   failure?: AnimationFailure;
+  /**
+   * Present while the Workflow is waiting out saturated upstream models
+   * between planning attempts. The client renders this as an honest queue
+   * ("retrying automatically, attempt N of M") instead of a hard failure.
+   * Cleared on success, terminal failure, and cancellation.
+   */
+  queue?: AnimationQueueState;
   versions: AnimationVersion[];
   render?: AnimationRenderState;
   pipeline?: AnimationPlanningPipeline;

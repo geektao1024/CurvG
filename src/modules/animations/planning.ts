@@ -701,66 +701,13 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
     }
     throw lastError;
   } catch (error) {
-    if (
-      definition.name === 'scene' &&
-      !planning.signal?.aborted &&
-      params.artifacts.intent &&
-      params.artifacts.knowledge &&
-      params.artifacts.curriculum &&
-      params.artifacts.mathematics &&
-      params.artifacts.storyboard
-    ) {
-      try {
-        const artifact = buildDeterministicSceneArtifact({
-          intent: params.artifacts.intent,
-          knowledge: params.artifacts.knowledge,
-          curriculum: params.artifacts.curriculum,
-          mathematics: params.artifacts.mathematics,
-          storyboard: params.artifacts.storyboard,
-        });
-        validateAnimationPlanningStageSemantics(
-          'scene',
-          artifact,
-          params.artifacts
-        );
-        const providerError =
-          error instanceof ChatProviderError ? error : undefined;
-        const completed = await completePlanningStage({
-          id: latestRow.id,
-          artifact,
-          outputHash: md5(JSON.stringify(artifact)),
-          diagnostic: safeDiagnostic(
-            providerError?.diagnostic || result?.diagnostic
-          ),
-          provider: 'curvg',
-          model: 'deterministic-scene-v1',
-        });
-        planning.context.onStage?.(planningStageSummary(completed));
-        console.warn('[animation-planning] used deterministic scene fallback', {
-          chatId: planning.context.chatId,
-          runId: planning.context.runId,
-          errorCode: stageErrorCode(error),
-        });
-        return {
-          artifact: artifact as AnimationPlanningArtifacts[Name],
-          result: {
-            content: JSON.stringify(artifact),
-            provider: 'curvg',
-            model: 'deterministic-scene-v1',
-            diagnostic: providerError?.diagnostic || result?.diagnostic,
-          },
-        };
-      } catch (fallbackError) {
-        console.error('[animation-planning] deterministic scene failed', {
-          chatId: planning.context.chatId,
-          runId: planning.context.runId,
-          error:
-            fallbackError instanceof Error
-              ? fallbackError.message.slice(0, 1_000)
-              : String(fallbackError).slice(0, 1_000),
-        });
-      }
-    }
+    // 2026-08-02 product decision: a stage that fails after its provider
+    // failover no longer substitutes a deterministic scene. Substitution made
+    // the run look successful while delivering content that could ignore the
+    // request (71% of one day's completions). The error propagates with its
+    // retryable classification instead, and the Workflow queues patient
+    // retries; the only deterministic scene left is the pre-matched verified
+    // profile above, which the schema-6 dossier gate keeps honest.
     const providerError =
       error instanceof ChatProviderError ? error : undefined;
     const failed = await failPlanningStage({

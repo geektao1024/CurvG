@@ -34,18 +34,29 @@ Not implemented yet:
 - Published pricing tiers. Credits are wired, but no tier is on sale pending
   real per-render cost data.
 
-### Known production issue
+### Reliability model
 
-Delivery is not the same as generation. When a planning stage exhausts both the
-KIE and Kuaipao providers, the Workflow substitutes a pre-authored deterministic
-scene, records the stage as `completed` with `provider=curvg`, and the user sees
-a successful generation carrying a scene that may not reflect the prompt.
+Delivery is honest by construction (decided 2026-08-02, shipped 2026-08-03):
 
-On 2026-07-31, 15 of 21 completed stages were substituted rather than generated
-(71%), up from 32% the previous day. Completion rate alone will therefore read a
-total provider outage as healthy. See
+- When upstream models are saturated, the Workflow queues and retries on a
+  widening ladder (~17 minutes) with a live "retrying automatically" banner,
+  instead of hard-failing in seconds. A third admin-configured
+  OpenAI-compatible failover route can be added behind KIE and Kuaipao.
+- Failure-triggered scene substitution is retired: a run either delivers
+  model-planned content (or a pre-matched, hand-verified topic profile) or
+  fails visibly. On 2026-07-31, 71% of one day's "successful" stages had been
+  silent substitutions; that mechanism is gone.
+- Credits settle only on success: planning never charges, and the render
+  reservation is revoked on failure, cancellation, and callback errors. A
+  short balance is flagged before planning starts, not after the wait.
+- The wait itself shows the six-stage pipeline with per-stage artifacts
+  (knowledge spine, curriculum beats, formulas, shot list), a cancel button,
+  and a completion toast.
+
+See
 [Deterministic fallback](docs/ANIMATION_ORCHESTRATION.md#deterministic-fallback)
-for the query that separates the two.
+for the retirement record and the query that separates substituted from
+model-delivered stages in historical data.
 
 ## Workflow
 

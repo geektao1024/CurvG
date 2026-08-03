@@ -33,6 +33,7 @@ import {
   type AnimationPlanningStageSummary,
   type AnimationQualityControlState,
   type AnimationQualityGateAction,
+  type AnimationQueueState,
   type AnimationSpec,
   type AnimationStatus,
   type AnimationSubject,
@@ -1719,6 +1720,32 @@ export async function planAnimation(params: {
 
 /** Publish a planning failure only after the durable workflow retry budget is
  * exhausted (or immediately for a non-retryable provider error). */
+/**
+ * Persists or clears the honest-queue marker the Workflow maintains while it
+ * waits out saturated upstream models between planning attempts. The client
+ * polls the animation while it is busy, so this is the only channel needed to
+ * turn "hard failure in seconds" into "queued, retrying automatically".
+ */
+export async function recordAnimationQueueState(params: {
+  userId: string;
+  id: string;
+  queue?: AnimationQueueState;
+}): Promise<void> {
+  const row = await ownedRow(params.userId, params.id);
+  const parts = animationParts(row);
+  if (params.queue) {
+    parts.queue = params.queue;
+  } else if (parts.queue) {
+    delete parts.queue;
+  } else {
+    return;
+  }
+  await db()
+    .update(chat)
+    .set({ parts: JSON.stringify(parts) })
+    .where(eq(chat.id, row.id));
+}
+
 export async function finalizeAnimationPlanningFailure(params: {
   userId: string;
   id: string;
@@ -1726,6 +1753,9 @@ export async function finalizeAnimationPlanningFailure(params: {
 }): Promise<AnimationDetail> {
   const row = await ownedRow(params.userId, params.id);
   const parts = animationParts(row);
+  // The queue marker promised an upcoming retry; a terminal failure must not
+  // leave that promise on screen.
+  delete parts.queue;
   const failure = animationFailure(params.error, 'spec');
   if (parts.planningRunId) {
     await failRunningPlanningStages({

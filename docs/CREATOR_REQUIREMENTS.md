@@ -240,3 +240,33 @@ layout:   { regions: 'left|right' }
 Phase 3 的「预览质量与最终质量两档渲染」在本期被浏览器端即时预览部分替代——即时预览解决的是「形状对不对」，低清快渲解决的是「构图和时序对不对」，两者不互斥，低清档保留在 Phase 3。
 
 Roadmap P1 的「SymPy 数学验证」不在本期范围。
+
+## 九、可靠性与体验决策（2026-08-02 苏格拉底问答定案，08-03 实施）
+
+背景：生产同时存在三类「生成不了」——A. 上游全忙秒失败（π 请求，KIE 满载 + Kuaipao 同挂）；B. scene 阶段静默模板替换（"成功"但内容可能不贴题）；C. 走完全部规划后才发现积分不足。四项决策：
+
+### 9.1 成功底线 = 分层交付
+
+「每次都能生成」由零成本层兑现：过程产物随阶段流式可见（9.3），AI 视频是异步升级。预览 ≠ 成片，界面如实区分。
+
+### 9.2 全挂兜底 = 排队自动重试 + 第三模型路（不选模板兜底）
+
+- Workflow 重试从 2 次 × 5 秒改为退避阶梯 5s/30s/1m/2m/4m/5m/5m（8 次，约 17 分钟），每次失败持久化 `parts.queue`（attempt/nextRetryAt/since/reason），UI 显示排队横幅 + 倒计时；阶梯耗尽才落可见失败。排队期间可取消。
+- **失败触发的 deterministic-scene 替换退役**（planning.ts 原 703 块删除）。唯一保留的确定性场景是提交前预匹配的 verified profile（quadratic/cycloid/heart），且受 schema 6 dossier 门约束。
+- 第三模型路：`animation_backup_base_url/api_key/model` 三项齐备时启用，OpenAI 兼容 `/chat/completions`（复用 `OpenAICompatibleChatProvider`，name='backup'），排在 KIE、Kuaipao 之后，不进公开模型目录。
+
+### 9.3 等待体验 = 三项全选
+
+- 阶段进度 + 可取消：规划期 `PlanningStatusPanel` 已接 `parts.pipeline.stages` 六阶段实时状态，新增取消按钮（复用既有 cancel 路由与 mutation）。
+- 过程产物边等边看：`planningStageSummary` 携带非 scene 阶段的 artifact，面板按阶段渲染紧凑摘要——intent 标题/hook、knowledge 沿 spine 的概念链、curriculum 教学节拍、mathematics coreClaim 与公式（等宽）、storyboard 分镜。
+- 提交即走 + 完成通知：busy→终态的实时转变触发 toast（打开旧记录不触发）；Workflow 本就 durable，关页不中断。
+
+### 9.4 积分 = 只为成功付费
+
+经济上已成立并经核实：规划阶段从不预扣；渲染预留（`creditTaskId`）在 dispatch 失败、渲染回调 failed、取消三条路径均 revoke。本期补可见性：models 接口暴露 `renderCredits`，余额不足在提交前显示预警（不阻断规划——方案与代码仍有价值）；所有失败卡片显示「本次失败未消耗积分」。
+
+### 尚未实施（记录为后续项）
+
+- 描述模式的 0 秒即时预览层（公式采样搬进创作页首屏）；formula 模式已有。
+- 站内红点/邮件通知（当前为前台 toast）。
+- 排队横幅中的预计总等待时间估算。

@@ -21,16 +21,25 @@ import {
   getAnimation,
   planAnimation,
   prepareAnimationOrchestration,
+  recordAnimationQueueState,
 } from '@/modules/animations/service';
 import { getAllConfigs } from '@/modules/config/service';
+import type { AnimationFailure } from '@/lib/animation';
 import type { AnimationWorkflowPayload } from '@/lib/cloudflare-workflow';
 
 type AnimationWorkflowEnv = Record<string, unknown>;
 
-// Each planning stage already has a KIE -> Kuaipao provider failover. Keep one
-// whole-plan recovery attempt without replaying the complete six-stage chain
-// three times when an upstream model is persistently unavailable.
-const MAX_PLANNING_ATTEMPTS = 2;
+// Saturated upstreams recover on their own schedule, not on a five-second
+// timer. Instead of failing after two quick tries, the workflow queues: each
+// planning stage still runs its own KIE -> Kuaipao failover, and when a whole
+// attempt fails retryably the workflow waits out this widening ladder
+// (~17 minutes end to end), recording the queue state so the client shows an
+// honest "retrying automatically" instead of a dead error. Substituted
+// content is not an outcome here — the 2026-08-02 product decision is
+// queue-then-succeed or fail visibly, never deliver a scene that ignores the
+// request.
+const PLANNING_RETRY_DELAY_SECONDS = [5, 30, 60, 120, 240, 300, 300] as const;
+const MAX_PLANNING_ATTEMPTS = PLANNING_RETRY_DELAY_SECONDS.length + 1;
 
 function exposeRuntimeEnv(env: AnimationWorkflowEnv) {
   (
@@ -81,7 +90,10 @@ export class AnimationWorkflow extends WorkflowEntrypoint<
     const payload = event.payload;
 
     let planningError: unknown;
+    let planningCanceled = false;
+    let queueSince: string | undefined;
     for (let attempt = 1; attempt <= MAX_PLANNING_ATTEMPTS; attempt += 1) {
+      let failureCode: string = 'UNKNOWN';
       try {
         const outcome = await step.do(
           `plan-animation-attempt-${attempt}`,
@@ -103,6 +115,11 @@ export class AnimationWorkflow extends WorkflowEntrypoint<
               payload.userId,
               payload.animationId
             );
+            // The user can cancel while the workflow is queued between
+            // attempts; honor it before spending another provider call.
+            if (animation.status === 'canceled') {
+              return { canceled: true as const };
+            }
             const selection = animation.parts.modelSelection || {
               choice: 'auto',
             };
@@ -137,25 +154,95 @@ export class AnimationWorkflow extends WorkflowEntrypoint<
             }
           }
         );
-        if (outcome.completed) {
+        if ('canceled' in outcome && outcome.canceled) {
+          planningCanceled = true;
           planningError = undefined;
           break;
         }
-        planningError = new AnimationGenerationError(outcome.failure);
-        if (!outcome.failure.retryable || attempt === MAX_PLANNING_ATTEMPTS)
+        if ('completed' in outcome && outcome.completed) {
+          planningError = undefined;
           break;
-        await step.sleep(
-          `wait-before-planning-attempt-${attempt + 1}`,
-          '5 seconds'
-        );
+        }
+        if ('failure' in outcome) {
+          planningError = new AnimationGenerationError(outcome.failure);
+          failureCode = outcome.failure.code;
+          if (!outcome.failure.retryable || attempt === MAX_PLANNING_ATTEMPTS)
+            break;
+        }
       } catch (error) {
         planningError = error;
         if (attempt === MAX_PLANNING_ATTEMPTS) break;
-        await step.sleep(
-          `wait-before-planning-attempt-${attempt + 1}`,
-          '5 seconds'
+      }
+      const delaySeconds = PLANNING_RETRY_DELAY_SECONDS[attempt - 1];
+      if (!queueSince) {
+        queueSince = await step.do('queue-since', async () =>
+          new Date().toISOString()
         );
       }
+      const since = queueSince;
+      await step.do(
+        `record-queue-state-${attempt}`,
+        {
+          retries: { limit: 2, delay: '2 seconds', backoff: 'exponential' },
+          timeout: '30 seconds',
+        },
+        async () => {
+          exposeRuntimeEnv(this.env);
+          await recordAnimationQueueState({
+            userId: payload.userId,
+            id: payload.animationId,
+            queue: {
+              attempt,
+              maxAttempts: MAX_PLANNING_ATTEMPTS,
+              nextRetryAt: new Date(
+                Date.now() + delaySeconds * 1000
+              ).toISOString(),
+              since,
+              reason: failureCode as AnimationFailure['code'],
+            },
+          });
+          return { recorded: attempt };
+        }
+      );
+      await step.sleep(
+        `wait-before-planning-attempt-${attempt + 1}`,
+        `${delaySeconds} seconds`
+      );
+    }
+    if (planningCanceled) {
+      await step.do(
+        'clear-queue-after-cancel',
+        {
+          retries: { limit: 2, delay: '2 seconds', backoff: 'exponential' },
+          timeout: '30 seconds',
+        },
+        async () => {
+          exposeRuntimeEnv(this.env);
+          await recordAnimationQueueState({
+            userId: payload.userId,
+            id: payload.animationId,
+          });
+          return { cleared: true };
+        }
+      );
+      return { animationId: payload.animationId };
+    }
+    if (queueSince && !planningError) {
+      await step.do(
+        'clear-queue-after-success',
+        {
+          retries: { limit: 2, delay: '2 seconds', backoff: 'exponential' },
+          timeout: '30 seconds',
+        },
+        async () => {
+          exposeRuntimeEnv(this.env);
+          await recordAnimationQueueState({
+            userId: payload.userId,
+            id: payload.animationId,
+          });
+          return { cleared: true };
+        }
+      );
     }
     if (planningError) {
       await step.do(

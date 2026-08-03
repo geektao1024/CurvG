@@ -892,6 +892,33 @@ export function getSettings(): Setting[] {
       group: 'animation_renderer',
       tab: 'ai',
     },
+    // ─── AI / Animation backup route ─────────────────────────────────
+    {
+      name: 'animation_backup_base_url',
+      title: 'Backup Base URL',
+      type: 'text',
+      placeholder: 'https://api.example.com/v1',
+      tip: 'Optional third failover route for animation planning, tried after KIE and Kuaipao. Any OpenAI-compatible /chat/completions endpoint.',
+      group: 'animation_backup',
+      tab: 'ai',
+    },
+    {
+      name: 'animation_backup_api_key',
+      title: 'Backup API Key',
+      type: 'password',
+      placeholder: '',
+      group: 'animation_backup',
+      tab: 'ai',
+    },
+    {
+      name: 'animation_backup_model',
+      title: 'Backup Model',
+      type: 'text',
+      placeholder: 'gpt-5.5',
+      tip: 'Model id sent to the backup endpoint. The route activates only when all three backup settings are present.',
+      group: 'animation_backup',
+      tab: 'ai',
+    },
 
     // ─── AI / Replicate ──────────────────────────────────────────────
     {

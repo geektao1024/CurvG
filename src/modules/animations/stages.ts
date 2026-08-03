@@ -33,7 +33,24 @@ export function planningStageSummary(
     requestId: row.requestId || undefined,
     startedAt: isoDate(row.startedAt),
     completedAt: isoDate(row.completedAt),
+    artifact: summaryArtifact(row),
   };
+}
+
+/**
+ * The scene artifact is excluded: it is the largest stage output and becomes
+ * `parts.spec` immediately after planning, so repeating it in every summary
+ * would bloat the detail payload for nothing the client cannot already read.
+ */
+function summaryArtifact(row: AnimationPlanningStage): unknown {
+  if (row.stage === 'scene') return undefined;
+  if (row.status !== 'completed' && row.status !== 'cached') return undefined;
+  if (!row.artifact) return undefined;
+  try {
+    return JSON.parse(row.artifact);
+  } catch {
+    return undefined;
+  }
 }
 
 export async function findReusablePlanningStage(params: {

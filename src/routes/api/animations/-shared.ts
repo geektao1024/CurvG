@@ -3,6 +3,7 @@ import { and, eq, isNull, lte, or } from 'drizzle-orm';
 import {
   ChatModelCircuitBreaker,
   ChatProviderError,
+  OpenAICompatibleChatProvider,
   ProviderFailoverChatProvider,
   type ChatProvider,
 } from '@/core/ai/chat';
@@ -224,8 +225,26 @@ function kieProvider(configs: ConfigMap) {
   });
 }
 
+function backupProvider(configs: ConfigMap) {
+  if (!backupRouteConfigured(configs)) {
+    throw new AnimationApiError(
+      'Backup chat provider is not configured',
+      'MODEL_UNAVAILABLE',
+      503
+    );
+  }
+  return new OpenAICompatibleChatProvider({
+    name: 'backup',
+    apiKey: configs.animation_backup_api_key,
+    baseUrl: configs.animation_backup_base_url,
+    maxAttempts: 2,
+    requestTimeoutMs: 105_000,
+    overallTimeoutMs: 210_000,
+  });
+}
+
 export interface AnimationProviderTargetPlan {
-  provider: 'kuaipao' | 'kie';
+  provider: 'kuaipao' | 'kie' | 'backup';
   model: string;
   reasoningEffort?: 'high' | 'medium';
 }
@@ -233,11 +252,25 @@ export interface AnimationProviderTargetPlan {
 const KIE_PRIMARY_MODEL = 'gemini-3.6-flash' satisfies KieChatModel;
 const KUAIPAO_RESILIENCE_MODEL = 'gpt-5.6-sol';
 
+function backupRouteConfigured(configs: ConfigMap) {
+  return !!(
+    configs.animation_backup_base_url &&
+    configs.animation_backup_api_key &&
+    configs.animation_backup_model
+  );
+}
+
 /**
  * Keep KIE Gemini as the public product model and retain Kuaipao GPT-5.6 only
  * as an independent server-owned recovery route. Provider order is part of
  * the product reliability contract and must never depend on key insertion
  * order or a client-supplied model alias.
+ *
+ * The optional third route exists because two providers still share fate
+ * often enough to matter: on 2026-08-02 both were saturated at once and a
+ * request hard-failed in seconds. It is an admin-configured OpenAI-compatible
+ * `/chat/completions` endpoint, tried last, and absent from the public model
+ * catalog — resilience infrastructure, not a product surface.
  */
 export function animationProviderTargetPlan(
   configs: ConfigMap,
@@ -255,6 +288,13 @@ export function animationProviderTargetPlan(
     targets.push({
       provider: 'kuaipao',
       model: KUAIPAO_RESILIENCE_MODEL,
+      reasoningEffort: 'high',
+    });
+  }
+  if (backupRouteConfigured(configs)) {
+    targets.push({
+      provider: 'backup',
+      model: configs.animation_backup_model,
       reasoningEffort: 'high',
     });
   }
@@ -323,7 +363,9 @@ function resilientProvider(
       provider =
         spec.provider === 'kuaipao'
           ? kuaipaoProvider(configs)
-          : kieProvider(configs);
+          : spec.provider === 'backup'
+            ? backupProvider(configs)
+            : kieProvider(configs);
       providers.set(spec.provider, provider);
     }
     return {
@@ -365,12 +407,19 @@ export async function listAnimationModels(
       option.provider === effectiveDefault?.provider &&
       option.model === effectiveDefault.model,
   }));
+  const configuredRenderCredits = Number.parseInt(
+    configs.animation_render_credits || '20',
+    10
+  );
   return {
     options,
     defaultProvider: effectiveDefault?.provider,
     defaultModel: effectiveDefault?.model,
     viewerTier,
     catalogStale: false,
+    renderCredits: Number.isSafeInteger(configuredRenderCredits)
+      ? Math.max(0, Math.min(configuredRenderCredits, 1_000_000))
+      : 20,
   };
 }
 

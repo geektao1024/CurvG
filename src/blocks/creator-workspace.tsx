@@ -219,6 +219,15 @@ export function CreatorWorkspace({
       BUSY: m['creator.failure.busy'](),
       UNKNOWN: m['creator.failure.unknown'](),
     },
+    failureNoCharge: m['creator.failure_no_charge'](),
+    queueNotice: (attempt: number, total: number) =>
+      m['creator.queue_notice']({ attempt, total }),
+    queueRetryIn: (seconds: number) => m['creator.queue_retry_in']({ seconds }),
+    queueElapsed: (minutes: number) => m['creator.queue_elapsed']({ minutes }),
+    creditShortfall: (cost: number, balance: number) =>
+      m['creator.credit_shortfall']({ cost, balance }),
+    toastCompleted: (title: string) => m['creator.toast_completed']({ title }),
+    toastFailed: (title: string) => m['creator.toast_failed']({ title }),
     subjects: [
       { value: 'general', label: m['creator.subject.general']() },
       { value: 'math', label: m['creator.subject.math']() },

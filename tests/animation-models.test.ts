@@ -119,6 +119,58 @@ test('KIE Gemini is primary and Kuaipao GPT-5.6 is hidden resilience', () => {
   );
 });
 
+test('the backup route joins the plan last and only when fully configured', () => {
+  const primary = animationModelPolicies[0];
+  const base = {
+    kie_api_key: 'configured',
+    kuaipao_api_key: 'configured',
+  };
+
+  // All three backup settings present: the route is appended after the two
+  // first-party providers, never before them.
+  const plan = animationProviderTargetPlan(
+    {
+      ...base,
+      animation_backup_base_url: 'https://backup.example.com/v1',
+      animation_backup_api_key: 'configured',
+      animation_backup_model: 'gpt-5.5',
+    },
+    primary
+  );
+  assert.deepEqual(
+    plan.map((target) => target.provider),
+    ['kie', 'kuaipao', 'backup']
+  );
+  assert.deepEqual(plan.at(-1), {
+    provider: 'backup',
+    model: 'gpt-5.5',
+    reasoningEffort: 'high',
+  });
+
+  // A partially configured backup route must stay inert — activating on a
+  // base URL without a key would turn a typo into silent request failures.
+  for (const missing of [
+    'animation_backup_base_url',
+    'animation_backup_api_key',
+    'animation_backup_model',
+  ]) {
+    const partial: Record<string, string> = {
+      ...base,
+      animation_backup_base_url: 'https://backup.example.com/v1',
+      animation_backup_api_key: 'configured',
+      animation_backup_model: 'gpt-5.5',
+    };
+    delete partial[missing];
+    assert.deepEqual(
+      animationProviderTargetPlan(partial, primary).map(
+        (target) => target.provider
+      ),
+      ['kie', 'kuaipao'],
+      `expected inert backup route without ${missing}`
+    );
+  }
+});
+
 test('Starter inherits Free models but not Pro models', () => {
   for (const policy of animationModelPolicies) {
     assert.equal(
