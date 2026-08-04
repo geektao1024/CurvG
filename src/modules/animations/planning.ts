@@ -55,11 +55,29 @@ function maxStageFormatRepairs(stage: AnimationPlanningStageName): number {
 }
 const MAX_INTEGRATION_REPAIRS = 2;
 const MAX_MATH_REVISIONS = 2;
-// Reserve half the widened stage window for KIE GPT-5.6 at maximum reasoning
-// and half for the independent Kuaipao fallback (2026-08-03).
-// ProviderFailoverChatProvider enforces the 150-second per-target cap, which
-// also keeps every provider call below the Worker's five-minute execution cap.
+// Reserve an equal share of the stage window for each of the two lead
+// failover targets (2026-08-04). The scene stage produces the largest
+// artifact by far — production showed both vendors cut at a flat 150s cap
+// while still writing — so it gets a 300s per-target window inside a 600s
+// stage window. Small stages keep 150s/300s. Every window stays below the
+// Worker's five-minute per-call cap at the provider request layer, and the
+// plan's absolute deadline still bounds the sum.
 const STAGE_PROVIDER_TIMEOUT_MS = 300_000;
+const SCENE_STAGE_PROVIDER_TIMEOUT_MS = 600_000;
+const STAGE_TARGET_TIMEOUT_MS = 150_000;
+const SCENE_STAGE_TARGET_TIMEOUT_MS = 300_000;
+
+function stageProviderWindowMs(stage: AnimationPlanningStageName): number {
+  return stage === 'scene'
+    ? SCENE_STAGE_PROVIDER_TIMEOUT_MS
+    : STAGE_PROVIDER_TIMEOUT_MS;
+}
+
+function stageTargetTimeoutMs(stage: AnimationPlanningStageName): number {
+  return stage === 'scene'
+    ? SCENE_STAGE_TARGET_TIMEOUT_MS
+    : STAGE_TARGET_TIMEOUT_MS;
+}
 
 const STAGE_CONTRACTS: Record<AnimationPlanningStageName, string> = {
   intent: `{
@@ -616,6 +634,7 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
     ],
     temperature: 0.1,
     maxTokens: definition.maxTokens,
+    perTargetTimeoutMs: stageTargetTimeoutMs(definition.name),
     reasoningEffort:
       definition.name === 'scene'
         ? getAnimationCompositionReasoningEffort(planning.model)
@@ -643,7 +662,7 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
   // still gets its own provider window, bounded only by the plan deadline.
   const roundDeadlineAt = () =>
     Math.min(
-      Date.now() + STAGE_PROVIDER_TIMEOUT_MS,
+      Date.now() + stageProviderWindowMs(definition.name),
       planning.deadlineAt ?? Number.POSITIVE_INFINITY
     );
   let latestRow = await startPlanningStage({

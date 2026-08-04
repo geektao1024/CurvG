@@ -1,7 +1,13 @@
 # CurvG 网站架构规划（第一性原理版）
 
-更新时间：2026-07-22
-状态：已评审的规划基线（本文档为战略层，实施细节见 `ANIMATION_ORCHESTRATION.md` 与 `CURVG_CREATOR_ARCHITECTURE.md`）
+更新时间：2026-08-04（在 07-22 评审基线上标注实施进展）
+状态：已评审的规划基线（本文档为战略层，实施细节见 `ANIMATION_ORCHESTRATION.md` 与 `CURVG_CREATOR_ARCHITECTURE.md`；曲线百科实施细节见 `CURVE_ENCYCLOPEDIA.md`）
+
+> **实施进展（2026-08-04）**：`/curves` 百科（30 条）与 SEO 内页矩阵
+> （`/math-animation-tool`、`/free-math-video-creator`、`/manim-alternative`、
+> `/blog/best-math-video-apps`）已建成并通过验证，待部署。百科采用静态内容模块
+> 而非数据表（决策记录见 `CURVE_ENCYCLOPEDIA.md` §2）；`gallery_entry` 数据表
+> 仍是 UGC 画廊层的待办。`/gallery`、`/playground`、`/learn` 未实施。
 
 ---
 

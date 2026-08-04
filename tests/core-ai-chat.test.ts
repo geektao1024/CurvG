@@ -48,7 +48,7 @@ function providerWith(params: {
   });
 }
 
-test('Kie chat allowlist contains exactly the eight product models', () => {
+test('Kie chat allowlist contains exactly the nine product models', () => {
   assert.deepEqual(Object.keys(kieChatModelRoutes), [
     'gemini-3.6-flash',
     'grok-4-5',
@@ -56,6 +56,7 @@ test('Kie chat allowlist contains exactly the eight product models', () => {
     'gpt-5-2',
     'gpt-5-5',
     'gpt-5-6-sol',
+    'gpt-5-6-luna',
     'claude-sonnet-4-6',
     'claude-opus-4-7',
   ]);

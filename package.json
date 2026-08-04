@@ -28,7 +28,7 @@
     "rbac:assign": "tsx scripts/with-env.ts tsx scripts/assign-role.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "node --import tsx --test tests/core-ai-chat.test.ts tests/kuaipao-chat.test.ts tests/animation-models.test.ts tests/animation-orchestrator.test.ts tests/animation-resilience.test.ts tests/animation-ir.test.ts tests/animation-math.test.ts tests/animation-qa.test.ts tests/renderer-validator.test.ts tests/config-cache.test.ts tests/credit-revocation.test.ts tests/request-body.test.ts tests/subscription-access.test.ts tests/payment-policy.test.ts tests/payment-provider-events.test.ts",
+    "test": "node --import tsx --test tests/core-ai-chat.test.ts tests/kuaipao-chat.test.ts tests/deepseek-chat.test.ts tests/animation-models.test.ts tests/animation-orchestrator.test.ts tests/animation-resilience.test.ts tests/animation-ir.test.ts tests/animation-math.test.ts tests/animation-qa.test.ts tests/renderer-validator.test.ts tests/config-cache.test.ts tests/credit-revocation.test.ts tests/request-body.test.ts tests/subscription-access.test.ts tests/payment-policy.test.ts tests/payment-provider-events.test.ts",
     "seo:check": "node scripts/seo-check.mjs",
     "prepare": "husky"
   },

@@ -8,6 +8,7 @@
  * import it without pulling provider SDKs.
  */
 
+import { DeepSeekChatProvider } from '@/core/ai/deepseek-chat';
 import { FalProvider } from '@/core/ai/fal';
 import { KieChatProvider } from '@/core/ai/kie-chat';
 import {
@@ -59,6 +60,8 @@ export async function runTest(
         return await testOpenAI(inputs, configs);
       case 'kuaipao':
         return await testKuaipao(inputs, configs);
+      case 'deepseek':
+        return await testDeepSeek(inputs, configs);
       case 'kie':
         return await testKie(inputs, configs);
       case 'anthropic':
@@ -515,6 +518,36 @@ async function testKuaipao(
   return {
     success: true,
     message: 'Kuaipao GPT-5.6 accepted the request',
+    details: {
+      Model: result.model,
+      Reply: result.content.slice(0, 200),
+    },
+  };
+}
+
+async function testDeepSeek(
+  inputs: Record<string, string>,
+  configs: Record<string, string>
+): Promise<TestResult> {
+  const missing = need(configs, ['deepseek_api_key']);
+  if (missing) return { success: false, message: missing };
+
+  const provider = new DeepSeekChatProvider({
+    apiKey: configs.deepseek_api_key,
+    baseUrl: configs.deepseek_base_url || 'https://api.deepseek.com',
+    maxAttempts: 1,
+    requestTimeoutMs: 120_000,
+    overallTimeoutMs: 120_000,
+  });
+  const result = await provider.complete({
+    model: 'deepseek-v4-flash',
+    messages: [{ role: 'user', content: inputs.prompt }],
+    maxTokens: 2_048,
+    reasoningEffort: 'high',
+  });
+  return {
+    success: true,
+    message: 'DeepSeek v4-flash accepted the request',
     details: {
       Model: result.model,
       Reply: result.content.slice(0, 200),

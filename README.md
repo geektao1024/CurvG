@@ -25,10 +25,26 @@ Implemented and running in production:
 - Preview-then-formal render ladder with contact-sheet and temporal QA.
 - Credit reservation, cancellation, version snapshots, MP4/`.py` export.
 
+Implemented and build-verified, awaiting deployment (2026-08-04):
+
+- SEO repositioning: the homepage targets the "math animation maker" cluster
+  (free tier confirmed live), `/creator` owns "Manim AI generator", and the
+  copy angle was reworked from internal/ops phrasing to market-facing wording
+  in both locales. Decisions recorded in `docs/SEO_CONTENT_STRATEGY.md` §0.
+- Curve encyclopedia (`/curves`): 30 bilingual editorial entries with
+  interactive SVG parameter previews, SSR KaTeX equations, and a
+  "generate this animation" handoff into the Creator via `?prompt=`.
+  See `docs/CURVE_ENCYCLOPEDIA.md`.
+- Marketing page matrix: `/math-animation-tool`, `/free-math-video-creator`,
+  `/manim-alternative`, plus the `/blog/best-math-video-apps` listicle —
+  one target keyword per page, en/zh, FAQ structured data.
+- Sitemap (84 URLs), llms.txt/llms-full.txt, and header/footer internal links
+  updated accordingly.
+
 Not implemented yet:
 
-- Curve encyclopedia (`/curves`) and the public gallery page. Gallery API routes
-  exist; there is no gallery page route and no published entry in production.
+- The public gallery page. Gallery API routes exist; there is no gallery page
+  route and no published entry in production.
 - Project editor over saved works.
 - SymPy or equivalent symbolic verification.
 - Published pricing tiers. Credits are wired, but no tier is on sale pending
@@ -162,6 +178,7 @@ Product and planning:
 - [Roadmap](docs/ROADMAP.md)
 - [Site architecture plan](docs/SITE_ARCHITECTURE_PLAN.md)
 - [SEO and content strategy](docs/SEO_CONTENT_STRATEGY.md)
+- [Curve encyclopedia](docs/CURVE_ENCYCLOPEDIA.md)
 - [Design system](docs/DESIGN_SYSTEM.md)
 
 Research:

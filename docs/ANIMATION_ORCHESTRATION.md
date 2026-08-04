@@ -27,19 +27,28 @@ only deterministic planning and preflight decisions.
 ## Provider routing
 
 `animationProviderTargetPlan` in `src/routes/api/animations/-shared.ts` is the
-single source of ordering. It appends KIE first, Kuaipao second, and — when an
-administrator has configured all three `animation_backup_*` settings — a third
-OpenAI-compatible `/chat/completions` route last:
+single source of ordering. Since 2026-08-04 the public catalog is two branded
+tiers with cross-fallback chains; the admin-configured OpenAI-compatible
+backup route stays last for both:
 
-| Order | Provider  | Model                                                        | Intended role               |
-| ----- | --------- | ------------------------------------------------------------ | --------------------------- |
-| 1     | `kie`     | `gpt-5-6-sol` (max reasoning; `gemini-3.6-flash` selectable) | Public product model        |
-| 2     | `kuaipao` | `gpt-5.6-sol`                                                | Server-owned recovery route |
-| 3     | `backup`  | admin-configured                                             | Optional third failover     |
+| Tier                 | Chain                                                                 |
+| -------------------- | --------------------------------------------------------------------- |
+| CurvG Lite (default) | `deepseek/deepseek-v4-flash` (thinking high) → `kuaipao/gpt-5.6-sol`  |
+| CurvG Pro            | `kie/gpt-5-6-luna` (max reasoning) → `kuaipao/gpt-5.6-sol` → DeepSeek |
 
-The backup route exists because two providers still share fate often enough to
-matter: on 2026-08-02 both were saturated at once. It never appears in the
-public model catalog — resilience infrastructure, not a product surface.
+DeepSeek is a first-class provider (`src/core/ai/deepseek-chat.ts`, official
+Responses API, non-streaming, effort normalized to `high`). Retired catalog
+entries (`gpt-5-6-sol`, `gemini-3.6-flash`) keep `publicCatalog: false`
+allowlist rows so historical conversations replay, approve, and repair.
+Fallback legs are pinned to `high` effort and the failover layer caps a
+caller's stage effort at each target's ceiling — a Pro `max` never leaks into
+a leg whose upstream would reject it. Within one stage window the Pro third
+leg is reachable only on fast failures (auth, 4xx/5xx, saturation); slow
+dual-timeouts exhaust the window first and the queue ladder retries.
+
+The Auto selection resolves to the first tier with a configured credential
+(Lite, then Pro), so a deployment window without a DeepSeek key degrades Auto
+to Pro instead of failing default requests.
 
 A stage row records only the provider that ultimately produced the artifact. A
 KIE attempt that fails and then succeeds on Kuaipao is stored as

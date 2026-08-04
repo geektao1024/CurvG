@@ -44,15 +44,19 @@ CurvG 的差异不是“输入一句话立即得到视频”，而是让公式�
 
 当前没有接入关键词搜索量服务。以上表达来自产品定位、竞品页面和实际搜索结果中的用词，只用于信息架构与语义覆盖，不宣称具体搜索量或排名难度。
 
-## 3. 页面关键词映射
+## 3. 页面关键词映射（2026-08-04 与 §0 词簇分配对齐）
 
-| 页面       | 主搜索意图                                             | 辅助语义                                                               | 转化目标                   |
-| ---------- | ------------------------------------------------------ | ---------------------------------------------------------------------- | -------------------------- |
-| `/`        | math curve animation gallery、math animation generator | equation animation、parametric curve animation、formula-first workflow | 浏览公式预览或进入 Creator |
-| `/creator` | AI Manim animation generator、online Manim generator   | scene plan、Manim code generation、isolated rendering                  | 创建并审查动画方案         |
-| `/pricing` | CurvG pricing                                          | early access、render cost、Manim rendering                             | 注册早期访问               |
-| `/blog`    | Manim math animation guides                            | equation visualization、teaching with animation                        | 建立主题权威并导向 Creator |
-| 法律页面   | 品牌导航查询                                           | privacy、terms、project content                                        | 建立信任，不承担获客任务   |
+| 页面                       | 主搜索意图                                                   | 辅助语义                                  | 转化目标                 |
+| -------------------------- | ------------------------------------------------------------ | ----------------------------------------- | ------------------------ |
+| `/`                        | math animation maker、ai math animations                     | 3Blue1Brown-style、online free、no coding | 进入 Creator             |
+| `/creator`                 | manim ai generator                                           | scene plan、review、cloud render          | 创建并检查动画方案       |
+| `/math-animation-tool`     | online math animation tool                                   | functions、geometry、calculus、no install | 进入 Creator             |
+| `/free-math-video-creator` | create animated math videos free                             | starter credits、免费边界、退款规则       | 注册并首次渲染           |
+| `/manim-alternative`       | manim alternative no coding                                  | comparison、code export、no lock-in       | 进入 Creator             |
+| `/curves` 及 30 详情页     | {curve} equation / graph / animation 长尾                    | LaTeX、interactive、parameter             | 预填进入 Creator         |
+| `/pricing`                 | CurvG pricing                                                | 套餐、渲染积分、账单                      | 升级付费                 |
+| `/blog`                    | manim math animation guides、best app for making math videos | listicle、教学工作流                      | 导流内页与 Creator       |
+| 法律页面                   | 品牌导航查询                                                 | privacy、terms                            | 建立信任，不承担获客任务 |
 
 ## 4. 文案框架
 
@@ -63,7 +67,7 @@ CurvG 的差异不是“输入一句话立即得到视频”，而是让公式�
 3. **方式**：CurvG 将公式、场景方案、Manim 代码和预览拆成可检查、可修改的阶段。
 4. **场景**：教师、学习者、课程作者和数学视频创作者分别能完成什么任务。
 5. **差异**：同时强调数学关系的可见性与创作过程的可控性，不用工程部署状态充当产品价值。
-6. **行动**：优先进入 `/creator`，早期访问注册作为次级路径。
+6. **行动**：优先进入 `/creator`，免费注册（含起步额度）作为次级路径。
 
 ## 5. 事实边界
 
@@ -99,18 +103,23 @@ CurvG 的差异不是“输入一句话立即得到视频”，而是让公式�
 
 ### 中文
 
-- 使用“Manim 数学动画生成器”“公式动画”“数学可视化”“场景方案”“隔离渲染”。
+- 使用“Manim 数学动画生成器”“公式动画”“数学可视化”“场景方案”“云端渲染”（面向用户；“隔离渲染/沙箱”仅用于工程文档）。
 - “审查”用于审批动作，“检查”用于用户理解文案；不滥用“精准”“专业级”“一键生成”。
 - 每段先给结论，再解释实现方式或边界。
 
 ## 7. 页面元数据基线
 
-| 页面    | 英文 Title（2026-08-04 已上线）                                         | 中文 Title                                                |
-| ------- | ----------------------------------------------------------------------- | --------------------------------------------------------- |
-| 首页    | `AI Math Animation Maker — Create Math Animations Online Free \| CurvG` | `AI 数学动画制作工具 — 在线免费生成数学动画视频 \| CurvG` |
-| Creator | `Manim AI Generator — Plan, Review & Render \| CurvG`                   | `Manim AI 生成器 — 规划、检查、渲染 \| CurvG`             |
-| Pricing | `CurvG Pricing \| Free, Starter, and Pro Manim Plans`                   | `CurvG 定价 \| 免费版、入门版与 Pro 套餐`                 |
-| Blog    | `Manim Math Animation Guides \| CurvG`                                  | `Manim 数学动画指南 \| CurvG`                             |
+| 页面     | 英文 Title（2026-08-04 已上线）                                         | 中文 Title                                                |
+| -------- | ----------------------------------------------------------------------- | --------------------------------------------------------- |
+| 首页     | `AI Math Animation Maker — Create Math Animations Online Free \| CurvG` | `AI 数学动画制作工具 — 在线免费生成数学动画视频 \| CurvG` |
+| Creator  | `Manim AI Generator — Plan, Review & Render \| CurvG`                   | `Manim AI 生成器 — 规划、检查、渲染 \| CurvG`             |
+| Pricing  | `CurvG Pricing \| Free, Starter, and Pro Manim Plans`                   | `CurvG 定价 \| 免费版、入门版与 Pro 套餐`                 |
+| Blog     | `Manim Math Animation Guides \| CurvG`                                  | `Manim 数学动画指南 \| CurvG`                             |
+| Tool 页  | `Online Math Animation Tool — Plan, Review & Render \| CurvG`           | `在线数学动画工具 — 规划、检查、云端渲染 \| CurvG`        |
+| Free 页  | `Create Animated Math Videos Online Free \| CurvG`                      | `在线免费制作数学动画视频 \| CurvG`                       |
+| Alt 页   | `Manim Alternative With No Coding Required \| CurvG`                    | `无需写代码的 Manim 替代方案 \| CurvG`                    |
+| Curves   | `Math Curve Encyclopedia — Equations, Graphs & Animations \| CurvG`     | `数学曲线百科 — 方程、图像与动画 \| CurvG`                |
+| 曲线详情 | `{Name}: Equation, Graph & Animation \| CurvG`                          | `{Name}：方程、图像与动画 \| CurvG`                       |
 
 Meta description 必须说明页面能解决的任务，同时保留当前产品阶段；不能只写品牌口号。
 

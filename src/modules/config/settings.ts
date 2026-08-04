@@ -165,6 +165,12 @@ export function getSettingGroups(): SettingGroup[] {
       tab: 'ai',
     },
     {
+      name: 'deepseek',
+      title: 'DeepSeek',
+      description: 'Official DeepSeek Responses API (CurvG Lite tier)',
+      tab: 'ai',
+    },
+    {
       name: 'kie',
       title: 'Kie',
       description: 'Legacy chat and visual review gateway',
@@ -812,6 +818,24 @@ export function getSettings(): Setting[] {
       type: 'password',
       placeholder: 'sk-xxx',
       group: 'kuaipao',
+      tab: 'ai',
+    },
+    // ─── AI / DeepSeek ──────────────────────────────────────────────
+    {
+      name: 'deepseek_base_url',
+      title: 'Base URL',
+      type: 'text',
+      placeholder: 'https://api.deepseek.com',
+      group: 'deepseek',
+      tab: 'ai',
+      defaultValue: 'https://api.deepseek.com',
+    },
+    {
+      name: 'deepseek_api_key',
+      title: 'API Key',
+      type: 'password',
+      placeholder: 'sk-xxx',
+      group: 'deepseek',
       tab: 'ai',
     },
     // ─── AI / Kie ───────────────────────────────────────────────────

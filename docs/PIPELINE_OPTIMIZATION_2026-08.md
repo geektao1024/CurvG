@@ -113,3 +113,14 @@ KIE_API_KEY=<你的key> node scripts/probe-kie-luna.mjs
 3. **渲染产物 sanity check**:renderer 上传后校验正式 MP4 ≥ 32KB(`MIN_VIDEO_BYTES`),不足即抛错、不得报 completed;`updateRender` 的 completed 分支要求 videoUrl 存在(路由层已有同款防线,双保险)。
 
 仍未动工:B1-B4/B6(LaTeX 派生、时间戳吸附、id 归一、targetRef 推断、增量定点修复合同)、路径 C(json_schema 结构化输出)、D 模板库扩展。另采纳的高优先待办:**真实提示词回归测试集**(代数/几何/微积分/物理/3D/中文公式/长视频),用于每次模型/预算/合同改动后的离线验收。
+
+## 2026-08-04 增量二:CurvG Lite/Pro 双档与 scene 时窗根治
+
+生产遥测证实 scene 4 连败全部是**被自有 150s 单目标上限掐断**(kie/kuaipao 均整 150s `upstream_timeout`,前五阶段 13-93s 一次过),据此实施:
+
+1. **时窗根治**:`ChatCompletionInput.perTargetTimeoutMs` 按阶段传入——scene 单目标 300s/阶段窗口 600s,其余 150s/300s;代码合成与 spec 重建(同为大输出)单目标 300s;三家 provider request 超时 290s(留平台余量)。
+2. **双档产品**(用户拍板):CurvG Lite = `deepseek/deepseek-v4-flash` 官方 Responses API 直连(新 provider `src/core/ai/deepseek-chat.ts`,思考 high,max/xhigh 归一)、CurvG Pro = `kie/gpt-5-6-luna` 全阶段 max。默认 Lite;交叉兜底 Lite: DS→Kuaipao,Pro: KIE→Kuaipao→DS→backup。auto 目标 [Lite, Pro] 按凭证择先,DeepSeek 密钥未配置期 auto 自动落 Pro 不 503。
+3. **对抗审查修复**:failover 层 effort 上限钳制(Pro 的 max 不再泄漏进 kuaipao/backup 兜底腿);DeepSeek in-body failed 非重试化;assistant 轮 output_text;admin 后台新增 DeepSeek 配置组+连接测试;退役 preset 不再渲染为永久禁用行。
+4. **验收**:193 项测试(新增 deepseek-chat 套件 10 项)、vite/cf 双 build、191 基线类型错误零新增。
+
+已知边界(诚实记录):Pro 链第三腿(DeepSeek)在"双慢超时"模式下单轮内拿不到时间,只在快失败(auth/4xx/5xx/饱和)时可达;慢超时场景靠排队梯子下一轮 + 断路器接管。DeepSeek 上游对 Responses 严格性(assistant 轮内容类型、'high' 档接受度)以上线后 `animation_planning_attempt` 遥测为准。

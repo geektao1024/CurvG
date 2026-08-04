@@ -724,6 +724,9 @@ export async function composeAnimationCode(params: {
     reasoningEffort: getAnimationCompositionReasoningEffort(params.model),
     signal: params.signal,
     deadlineAt: animationStageDeadlineAt(),
+    // Full Manim module output — same large-output class as the scene stage,
+    // so it gets the wide single-provider window (2026-08-04).
+    perTargetTimeoutMs: 300_000,
   };
   try {
     let result = await requestAnimationCodeCompletion(params.provider, input);
@@ -2499,6 +2502,8 @@ export async function composeAnimationMathematicalRepair(params: {
     reasoningEffort: getAnimationReasoningEffort(params.model),
     signal: params.signal,
     deadlineAt,
+    // Rebuilds the complete spec — large-output class, wide target window.
+    perTargetTimeoutMs: 300_000,
   };
   let result = await params.provider.complete(input);
   let parsed = await parseAnimationSpecWithRepairs({

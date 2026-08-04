@@ -184,6 +184,18 @@ export const testSpecs: Record<string, TestSpec> = {
       },
     ],
   },
+  deepseek: {
+    group: 'deepseek',
+    fields: [
+      {
+        name: 'prompt',
+        label: 'Prompt',
+        type: 'textarea',
+        defaultValue: 'Reply with exactly: DeepSeek v4-flash is ready.',
+        required: true,
+      },
+    ],
+  },
   kie: {
     group: 'kie',
     fields: [

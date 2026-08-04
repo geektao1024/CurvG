@@ -12,6 +12,13 @@ export interface ChatCompletionInput {
   reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   /** Shared absolute deadline used by retry/failover chains. */
   deadlineAt?: number;
+  /**
+   * Per-target time cap inside ProviderFailoverChatProvider, overriding the
+   * constructor default for this call. Stage-aware callers use it to give a
+   * large-output stage (scene, code composition) a wider single-provider
+   * window without widening every small stage.
+   */
+  perTargetTimeoutMs?: number;
   signal?: AbortSignal;
   /**
    * Per-target attempt telemetry. ProviderFailoverChatProvider reports every
@@ -850,6 +857,30 @@ export interface ChatProviderTarget {
   reasoningEffort?: ChatCompletionInput['reasoningEffort'];
 }
 
+const REASONING_EFFORT_RANK: Record<
+  NonNullable<ChatCompletionInput['reasoningEffort']>,
+  number
+> = { low: 0, medium: 1, high: 2, xhigh: 3, max: 4 };
+
+/**
+ * A call site may deliberately lower the effort for a large, deterministic
+ * synthesis stage, but it must never raise a target above its configured
+ * ceiling: fallback legs (Kuaipao, DeepSeek, backup) are pinned to the tier
+ * their upstream is known to accept, and an inherited 'max' from a Pro
+ * primary would turn a recoverable failover into a hard 4xx on the leg that
+ * exists to recover it.
+ */
+function cappedReasoningEffort(
+  requested: ChatCompletionInput['reasoningEffort'],
+  ceiling: ChatCompletionInput['reasoningEffort']
+): ChatCompletionInput['reasoningEffort'] {
+  if (!requested) return ceiling;
+  if (!ceiling) return requested;
+  return REASONING_EFFORT_RANK[requested] <= REASONING_EFFORT_RANK[ceiling]
+    ? requested
+    : ceiling;
+}
+
 /**
  * Bounded failover across provider/model targets. This is deliberately
  * separate from FailoverChatProvider: retryable model failures may advance to
@@ -904,10 +935,12 @@ export class ProviderFailoverChatProvider implements ChatProvider {
       ...input,
       model: target.model,
       deadlineAt,
-      // A call site may deliberately lower the effort for a large,
-      // deterministic synthesis stage. The target value remains the default
-      // when the call does not provide stage-specific tuning.
-      reasoningEffort: input.reasoningEffort ?? target.reasoningEffort,
+      // Lower of the caller's stage-specific effort and the target's
+      // configured ceiling; see cappedReasoningEffort.
+      reasoningEffort: cappedReasoningEffort(
+        input.reasoningEffort,
+        target.reasoningEffort
+      ),
     };
   }
 
@@ -979,7 +1012,7 @@ export class ProviderFailoverChatProvider implements ChatProvider {
       try {
         const targetDeadlineAt = Math.min(
           deadlineAt,
-          this.now() + this.perTargetTimeoutMs
+          this.now() + (input.perTargetTimeoutMs ?? this.perTargetTimeoutMs)
         );
         const result = await target.provider.complete(
           this.inputForTarget(input, target, targetDeadlineAt)
@@ -1041,7 +1074,7 @@ export class ProviderFailoverChatProvider implements ChatProvider {
       try {
         const targetDeadlineAt = Math.min(
           deadlineAt,
-          this.now() + this.perTargetTimeoutMs
+          this.now() + (input.perTargetTimeoutMs ?? this.perTargetTimeoutMs)
         );
         const targetInput = this.inputForTarget(
           input,

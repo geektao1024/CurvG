@@ -199,6 +199,14 @@ export function CreatorWorkspace({
     modelUnavailableShort: m['creator.model.unavailable_short'](),
     modelDeterministicFallback: m['creator.model.deterministic_fallback'](),
     curatedModels: {
+      curvgLite: {
+        label: m['creator.model.curvg_lite.label'](),
+        description: m['creator.model.curvg_lite.description'](),
+      },
+      curvgPro: {
+        label: m['creator.model.curvg_pro.label'](),
+        description: m['creator.model.curvg_pro.description'](),
+      },
       kieGpt56Sol: {
         label: m['creator.model.kie_gpt_56_sol.label'](),
         description: m['creator.model.kie_gpt_56_sol.description'](),

@@ -9,7 +9,7 @@ export type AnimationSubject =
 
 // Only server-curated chat platforms belong in this product contract. Generic
 // media providers remain available to unrelated modules.
-export type AnimationModelChoice = 'auto' | 'kie';
+export type AnimationModelChoice = 'auto' | 'kie' | 'deepseek';
 
 export type AnimationModelProvider = Exclude<AnimationModelChoice, 'auto'>;
 
@@ -58,7 +58,7 @@ export function parseAnimationModelValue(value: string): {
   if (separator <= 0) return { modelChoice: 'auto' };
   const provider = value.slice(0, separator);
   const model = value.slice(separator + 1).trim();
-  if (!model || provider !== 'kie') {
+  if (!model || (provider !== 'kie' && provider !== 'deepseek')) {
     return { modelChoice: 'auto' };
   }
   return {

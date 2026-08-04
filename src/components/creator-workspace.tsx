@@ -144,27 +144,49 @@ interface CreatorGenerationRequest {
   model?: string;
 }
 
-export type CreatorCuratedModelKey = 'kieGpt56Sol' | 'kieGemini36Flash';
+export type CreatorCuratedModelKey =
+  | 'curvgLite'
+  | 'curvgPro'
+  | 'kieGpt56Sol'
+  | 'kieGemini36Flash';
 
 interface CreatorCuratedModelPreset {
   key: CreatorCuratedModelKey;
   provider: AnimationModelProvider;
   models: string[];
   tier: 'free' | 'starter' | 'pro';
+  /** Kept for historical labels only; never rendered as a picker row. */
+  retired?: boolean;
 }
 
 const CURATED_MODEL_PRESETS: CreatorCuratedModelPreset[] = [
+  {
+    key: 'curvgLite',
+    provider: 'deepseek',
+    models: ['deepseek-v4-flash'],
+    tier: 'free',
+  },
+  {
+    key: 'curvgPro',
+    provider: 'kie',
+    models: ['gpt-5-6-luna'],
+    tier: 'free',
+  },
+  // Retired public entries: kept so historical conversations that recorded
+  // them still label correctly; the server no longer lists them.
   {
     key: 'kieGpt56Sol',
     provider: 'kie',
     models: ['gpt-5-6-sol'],
     tier: 'free',
+    retired: true,
   },
   {
     key: 'kieGemini36Flash',
     provider: 'kie',
     models: ['gemini-3.6-flash'],
     tier: 'free',
+    retired: true,
   },
 ];
 
@@ -4351,33 +4373,38 @@ export function CreatorWorkspace({
     creditsQuery.data.balance < catalog.renderCredits
       ? copy.creditShortfall(catalog.renderCredits, creditsQuery.data.balance)
       : undefined;
-  const curatedModelOptions: CreatorModelOption[] = CURATED_MODEL_PRESETS.map(
-    (preset) => {
+  const curatedModelOptions: CreatorModelOption[] =
+    CURATED_MODEL_PRESETS.flatMap((preset) => {
       const match = catalog?.options.find(
         (option) =>
           option.provider === preset.provider &&
           preset.models.includes(option.model)
       );
+      // Retired presets exist only to label historical conversations; a
+      // preset the server no longer lists must not become a permanently
+      // disabled picker row.
+      if (!match && preset.retired) return [];
       const content = copy.curatedModels[preset.key];
-      return {
-        value: match
-          ? animationModelValue(match.provider, match.model)
-          : `unavailable:${preset.key}`,
-        label: content.label,
-        description: content.description,
-        presetKey: preset.key,
-        badge:
-          preset.tier === 'free'
-            ? copy.modelFree
-            : preset.tier === 'starter'
-              ? copy.modelStarter
-              : copy.modelPro,
-        requiredTier: match?.requiredTier || preset.tier,
-        locked: !!match && !match.entitled,
-        disabled: !match,
-      };
-    }
-  );
+      return [
+        {
+          value: match
+            ? animationModelValue(match.provider, match.model)
+            : `unavailable:${preset.key}`,
+          label: content.label,
+          description: content.description,
+          presetKey: preset.key,
+          badge:
+            preset.tier === 'free'
+              ? copy.modelFree
+              : preset.tier === 'starter'
+                ? copy.modelStarter
+                : copy.modelPro,
+          requiredTier: match?.requiredTier || preset.tier,
+          locked: !!match && !match.entitled,
+          disabled: !match,
+        },
+      ];
+    });
   const autoAvailable = catalog?.options.some(
     (option) => option.isDefault && option.entitled
   );
