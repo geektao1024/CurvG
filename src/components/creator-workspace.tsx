@@ -123,7 +123,6 @@ interface CreatorOption<T extends string> {
 interface CreatorModelOption {
   value: string;
   label: string;
-  description: string;
   presetKey?: CreatorCuratedModelKey;
   badge?: string;
   requiredTier?: 'free' | 'starter' | 'pro';
@@ -305,8 +304,6 @@ export interface CreatorWorkspaceCopy {
   versions: string;
   loading: string;
   loadFailed: string;
-  modelAuto: string;
-  modelAutoDescription: string;
   modelFree: string;
   modelStarter: string;
   modelPro: string;
@@ -319,10 +316,7 @@ export interface CreatorWorkspaceCopy {
   modelUnavailable: string;
   modelUnavailableShort: string;
   modelDeterministicFallback: string;
-  curatedModels: Record<
-    CreatorCuratedModelKey,
-    { label: string; description: string }
-  >;
+  curatedModels: Record<CreatorCuratedModelKey, { label: string }>;
   failureMessages: Record<AnimationFailureCode, string>;
   /** "本次失败未消耗积分" — shown on every terminal failure card. */
   failureNoCharge: string;
@@ -1477,11 +1471,6 @@ function PromptComposer({
                             </span>
                           )}
                       </span>
-                      {option.value === modelValue && (
-                        <span className="text-muted-foreground line-clamp-1 block text-[11px] leading-4">
-                          {option.description}
-                        </span>
-                      )}
                     </span>
                   </span>
                 </SelectItem>
@@ -4399,7 +4388,6 @@ export function CreatorWorkspace({
             match?.model || preset.models[0]
           ),
           label: content.label,
-          description: content.description,
           presetKey: preset.key,
           badge:
             preset.tier === 'free'

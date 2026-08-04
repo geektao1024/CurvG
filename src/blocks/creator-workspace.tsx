@@ -184,8 +184,6 @@ export function CreatorWorkspace({
     versions: m['creator.versions'](),
     loading: m['creator.loading'](),
     loadFailed: m['creator.load_failed'](),
-    modelAuto: m['creator.model.auto'](),
-    modelAutoDescription: m['creator.model.auto_description'](),
     modelFree: m['creator.model.free'](),
     modelStarter: m['creator.model.starter'](),
     modelPro: m['creator.model.pro'](),
@@ -201,19 +199,15 @@ export function CreatorWorkspace({
     curatedModels: {
       curvgLite: {
         label: m['creator.model.curvg_lite.label'](),
-        description: m['creator.model.curvg_lite.description'](),
       },
       curvgPro: {
         label: m['creator.model.curvg_pro.label'](),
-        description: m['creator.model.curvg_pro.description'](),
       },
       kieGpt56Sol: {
         label: m['creator.model.kie_gpt_56_sol.label'](),
-        description: m['creator.model.kie_gpt_56_sol.description'](),
       },
       kieGemini36Flash: {
         label: m['creator.model.kie_gemini_36_flash.label'](),
-        description: m['creator.model.kie_gemini_36_flash.description'](),
       },
     },
     failureMessages: {
