@@ -195,6 +195,12 @@ export function getSettingGroups(): SettingGroup[] {
       tab: 'ai',
     },
     {
+      name: 'animation_backup',
+      title: 'Animation Backup Route',
+      description: 'Optional OpenAI-compatible failover for animation planning',
+      tab: 'ai',
+    },
+    {
       name: 'replicate',
       title: 'Replicate',
       description: 'Replicate AI API',

@@ -190,6 +190,11 @@ const CURATED_MODEL_PRESETS: CreatorCuratedModelPreset[] = [
   },
 ];
 
+const DEFAULT_CREATOR_MODEL_VALUE = animationModelValue(
+  'deepseek',
+  'deepseek-v4-flash'
+);
+
 interface CreatorSuggestionGroup {
   value: string;
   label: string;
@@ -1397,7 +1402,9 @@ function PromptComposer({
           <span aria-hidden className="bg-border/80 h-4 w-px shrink-0" />
           <Select
             value={modelValue}
-            onValueChange={(value) => onModelChange(value || 'auto')}
+            onValueChange={(value) =>
+              onModelChange(value || DEFAULT_CREATOR_MODEL_VALUE)
+            }
             disabled={processing}
           >
             <SelectTrigger
@@ -4229,7 +4236,7 @@ export function CreatorWorkspace({
     {}
   );
   const [subject, setSubject] = useState<AnimationSubject>('general');
-  const [modelValue, setModelValue] = useState('auto');
+  const [modelValue, setModelValue] = useState(DEFAULT_CREATOR_MODEL_VALUE);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -4387,9 +4394,10 @@ export function CreatorWorkspace({
       const content = copy.curatedModels[preset.key];
       return [
         {
-          value: match
-            ? animationModelValue(match.provider, match.model)
-            : `unavailable:${preset.key}`,
+          value: animationModelValue(
+            match?.provider || preset.provider,
+            match?.model || preset.models[0]
+          ),
           label: content.label,
           description: content.description,
           presetKey: preset.key,
@@ -4405,18 +4413,7 @@ export function CreatorWorkspace({
         },
       ];
     });
-  const autoAvailable = catalog?.options.some(
-    (option) => option.isDefault && option.entitled
-  );
-  const modelOptions: CreatorModelOption[] = [
-    {
-      value: 'auto',
-      label: copy.modelAuto,
-      description: copy.modelAutoDescription,
-      disabled: !modelsQuery.isLoading && !autoAvailable,
-    },
-    ...curatedModelOptions,
-  ];
+  const modelOptions: CreatorModelOption[] = [...curatedModelOptions];
   const handleModelChange = (value: string) => {
     const option = modelOptions.find((candidate) => candidate.value === value);
     if (option?.locked) {
@@ -4428,7 +4425,9 @@ export function CreatorWorkspace({
   const persistedSelection = detail?.parts.modelSelection;
   const detailModelValue =
     persistedSelection?.choice === 'auto'
-      ? 'auto'
+      ? detail && isModelProvider(detail.provider)
+        ? animationModelValue(detail.provider, detail.model)
+        : DEFAULT_CREATOR_MODEL_VALUE
       : persistedSelection &&
           isModelProvider(persistedSelection.choice) &&
           persistedSelection.model
@@ -4572,7 +4571,9 @@ export function CreatorWorkspace({
     if (!detail) return;
     setModelValue(
       resolvedDetailModelValue ||
-        (persistedSelectionUnavailable ? persistedUnavailableValue : 'auto')
+        (persistedSelectionUnavailable
+          ? persistedUnavailableValue
+          : DEFAULT_CREATOR_MODEL_VALUE)
     );
   }, [detail?.id, resolvedDetailModelValue, persistedSelectionUnavailable]);
 
@@ -4580,7 +4581,9 @@ export function CreatorWorkspace({
     if (!catalog) return;
     if (persistedSelectionUnavailable) return;
     const selected = modelOptions.find((option) => option.value === modelValue);
-    if (!selected || selected.disabled) setModelValue('auto');
+    if (!selected || selected.disabled) {
+      setModelValue(DEFAULT_CREATOR_MODEL_VALUE);
+    }
   }, [catalog, modelValue, persistedSelectionUnavailable]);
 
   useEffect(() => {
@@ -4788,7 +4791,7 @@ export function CreatorWorkspace({
       id,
       title: request.prompt.slice(0, 80),
       status: 'generating_spec',
-      model: request.model || copy.modelAuto,
+      model: request.model || copy.curatedModels.curvgLite.label,
       provider: request.modelChoice,
       subject: request.subject,
       prompt: request.prompt,
@@ -4983,7 +4986,7 @@ export function CreatorWorkspace({
     setMathObjectType(detectMathObjectType(formula));
     setMathTypeOverridden(false);
     setSubject('general');
-    setModelValue('auto');
+    setModelValue(DEFAULT_CREATOR_MODEL_VALUE);
     setStreamingAnimationId(undefined);
     setStreamingText('');
     setPlanningPhase('understanding');
@@ -5051,7 +5054,7 @@ export function CreatorWorkspace({
             (template) => template.id === selectedTemplateId
           )?.title || copy.entryTemplate,
         subject: 'math',
-        modelChoice: 'auto',
+        ...selectedModelRequest(),
       });
       return;
     }
