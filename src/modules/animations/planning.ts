@@ -173,7 +173,7 @@ const STAGE_CONTRACTS: Record<AnimationPlanningStageName, string> = {
 
 const STAGE_ROLES: Record<AnimationPlanningStageName, string> = {
   intent:
-    'Clarify the exact learning goal, scope, assumptions, hook, takeaway, duration, title, and concise summary.',
+    'Clarify the exact learning goal, scope, assumptions, hook, takeaway, duration, title, and concise summary. If the request is ambiguous, underspecified, or contains a likely typo, choose the smallest mathematically coherent interpretation and record that choice in assumptions and summary; do not silently change the subject.',
   knowledge:
     'Build a dependency-aware concept map. Every dependsOn id must exist in this artifact, ids must be unique, and no node may depend on itself. Set depth 0 only on the target concept, increasing toward foundations. Mark concepts the audience already owns with assumed true — they get a nod, not a lesson. Give every node a visualSeed: the most filmable mental image of that concept, which the storyboard will harvest. Emit spine as the shortest honest path from foundations to the depth-0 target; the film walks the spine and everything else is texture.',
   curriculum:
@@ -213,7 +213,10 @@ class AnimationPlanningStageError extends Error {
     readonly stage: AnimationPlanningStageName,
     cause: unknown
   ) {
-    super(`Animation planning stage failed: ${stage}`, { cause });
+    super(
+      `Animation planning stage failed: ${stage}: ${planningFailureSummary(cause)}`,
+      { cause }
+    );
     this.name = 'AnimationPlanningStageError';
   }
 }
@@ -518,6 +521,8 @@ Rules:
 - Use stable ASCII ids matching ^[A-Za-z][A-Za-z0-9_-]{0,79}$.
 - Do not return Markdown, Python, commentary, or private reasoning.
 - Keep prose concise; visual evidence must be observable rather than aspirational.
+- Never ask the user a follow-up question inside an artifact. When the request is incomplete, make the smallest reasonable assumption and let the intent stage state it explicitly; every later stage must follow that approved interpretation instead of reinterpreting the original wording.
+- Keep the artifact compact enough for the stated output budget. Prefer the minimum complete set of nodes, beats, formulas, shots, objects, and timeline events; do not pad lists or repeat equivalent content.
 - In the scene stage, copy storyboard shot ids and focusRef ids character-for-character: every focusRef must be an objects[].id, every timeline shotId must be a shots[].id, events must stay inside their shot window, and non-concurrent event groups must not overlap.
 
 CONTEXT:
@@ -805,9 +810,14 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
       id: latestRow.id,
       errorCode: stageErrorCode(error),
       errorMessage: error instanceof Error ? error.message : String(error),
-      diagnostic: safeDiagnostic(
-        providerError?.diagnostic || result?.diagnostic
-      ),
+      diagnostic: {
+        ...(safeDiagnostic(providerError?.diagnostic || result?.diagnostic) ||
+          {}),
+        validationError: planningFailureSummary(error),
+        ...(result?.content
+          ? { outputPreview: result.content.slice(0, 2_000) }
+          : {}),
+      },
       requestId: providerError?.requestId,
     });
     planning.context.onStage?.(planningStageSummary(failed));

@@ -431,6 +431,12 @@ function localizedMessage(
   if (message.metadata?.kind === 'render_completed') {
     return copy.renderCompletedMessage;
   }
+  if (message.metadata?.kind === 'animation_failure') {
+    return localizedFailure(
+      copy,
+      thrownAnimationFailure(message.metadata) || undefined
+    );
+  }
   return message.content;
 }
 
@@ -2502,6 +2508,77 @@ function SceneBlueprintLoader({
   );
 }
 
+function PlanningFailureRecord({
+  copy,
+  pipeline,
+}: {
+  copy: CreatorWorkspaceCopy;
+  pipeline?: AnimationPlanningPipeline;
+}) {
+  if (!pipeline || !pipeline.stages.some((stage) => stage.attempt > 0)) {
+    return null;
+  }
+  return (
+    <div className="mt-5 border-t pt-5 text-left">
+      <p className="text-muted-foreground font-mono text-[9px] tracking-[0.14em] uppercase">
+        {copy.pipelineLabel} · {copy.pipelineProcess}
+      </p>
+      <ol className="mt-3 grid gap-2 sm:grid-cols-2">
+        {pipeline.stages.map((stage) => {
+          const completed =
+            stage.status === 'completed' || stage.status === 'cached';
+          const active = stage.status === 'running';
+          const failed = stage.status === 'failed';
+          return (
+            <li
+              key={stage.name}
+              className={cn(
+                'flex min-h-9 items-center gap-2 rounded-lg border px-2.5 py-2 text-xs',
+                completed && 'border-primary/12 bg-primary/[0.035]',
+                active && 'border-primary/30 bg-primary/[0.07]',
+                failed && 'border-destructive/30 bg-destructive/[0.06]',
+                !completed &&
+                  !active &&
+                  !failed &&
+                  'border-border/70 text-muted-foreground'
+              )}
+            >
+              <span
+                className={cn(
+                  'flex size-5 shrink-0 items-center justify-center rounded-md border',
+                  completed &&
+                    'border-primary bg-primary text-primary-foreground',
+                  active && 'border-primary/50 text-primary',
+                  failed && 'border-destructive/50 text-destructive',
+                  !completed && !active && !failed && 'border-border'
+                )}
+              >
+                {completed ? (
+                  <Check className="size-3" />
+                ) : failed ? (
+                  <AlertCircle className="size-3" />
+                ) : active ? (
+                  <LoaderCircle className="size-3 animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <span className="size-1 rounded-full bg-current opacity-35" />
+                )}
+              </span>
+              <span className={active ? 'font-medium' : undefined}>
+                {copy.planningStages[stage.name]}
+              </span>
+              {stage.attempt > 1 && (
+                <span className="text-muted-foreground ml-auto font-mono text-[9px]">
+                  ×{stage.attempt}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
 function SceneBlueprintFailure({
   detail,
   copy,
@@ -2531,6 +2608,7 @@ function SceneBlueprintFailure({
         <p className="text-muted-foreground mt-2 text-xs">
           {copy.failureNoCharge}
         </p>
+        <PlanningFailureRecord copy={copy} pipeline={detail.parts.pipeline} />
         {detail.parts.failure?.retryable && onRetry && (
           <Button
             type="button"
@@ -4244,6 +4322,7 @@ export function CreatorWorkspace({
   const previousMessageCountRef = useRef<number | undefined>(undefined);
   const generationStartedRef = useRef(false);
   const streamAbortRef = useRef<AbortController | null>(null);
+  const activeAnimationIdRef = useRef<string | undefined>(undefined);
   const animationsQueryKey = ['animations', user?.id] as const;
   const modelsQueryKey = ['animation-models', user?.id] as const;
   const detailQueryKey = ['animation', user?.id, selectedId] as const;
@@ -4702,6 +4781,7 @@ export function CreatorWorkspace({
           if (event.type === 'started') {
             generationStartedRef.current = true;
             activeAnimationId = event.animation.id;
+            activeAnimationIdRef.current = event.animation.id;
             setStreamingAnimationId(event.animation.id);
             setStreamingText('');
             setPlanningPhase('understanding');
@@ -4709,6 +4789,7 @@ export function CreatorWorkspace({
           } else if (event.type === 'accepted') {
             completed = event.animation;
             acceptDetail(event.animation);
+            activeAnimationIdRef.current = undefined;
             setStreamingAnimationId(undefined);
             setStreamingText('');
             setPlanningPhase('understanding');
@@ -4747,6 +4828,7 @@ export function CreatorWorkspace({
           } else if (event.type === 'completed') {
             completed = event.animation;
             acceptDetail(event.animation);
+            activeAnimationIdRef.current = undefined;
             setStreamingAnimationId(undefined);
             setStreamingText('');
             setPlanningPhase('understanding');
@@ -4754,6 +4836,11 @@ export function CreatorWorkspace({
             streamError = new Error(event.message);
             if (event.failure) {
               Object.assign(streamError, { failure: event.failure });
+            }
+            if (activeAnimationId) {
+              void queryClient.invalidateQueries({
+                queryKey: ['animation', user?.id, activeAnimationId],
+              });
             }
             setStreamingAnimationId(undefined);
             setStreamingText('');
@@ -4874,9 +4961,18 @@ export function CreatorWorkspace({
         ...request,
       });
     },
-    onSuccess: acceptDetail,
+    onSuccess: (animation) => {
+      activeAnimationIdRef.current = undefined;
+      acceptDetail(animation);
+    },
     onError: (error: Error, request) => {
       if (isAbortError(error)) return;
+      const failedAnimationId = activeAnimationIdRef.current;
+      if (failedAnimationId) {
+        void queryClient.invalidateQueries({
+          queryKey: ['animation', user?.id, failedAnimationId],
+        });
+      }
       if (!generationStartedRef.current) {
         setSelectedId(undefined);
         router.replace('/creator');
@@ -4888,6 +4984,7 @@ export function CreatorWorkspace({
       setStreamingText('');
       setPlanningPhase('understanding');
       generationStartedRef.current = false;
+      activeAnimationIdRef.current = undefined;
       queryClient.invalidateQueries({ queryKey: animationsQueryKey });
       toast.error(requestFailureMessage(copy, error));
     },
@@ -4910,6 +5007,12 @@ export function CreatorWorkspace({
       setStreamingText('');
       setPlanningPhase('understanding');
       generationStartedRef.current = false;
+      if (activeAnimationIdRef.current) {
+        void queryClient.invalidateQueries({
+          queryKey: ['animation', user?.id, activeAnimationIdRef.current],
+        });
+      }
+      activeAnimationIdRef.current = undefined;
       queryClient.invalidateQueries({ queryKey: detailQueryKey });
       queryClient.invalidateQueries({ queryKey: animationsQueryKey });
       toast.error(requestFailureMessage(copy, error));
@@ -4966,6 +5069,7 @@ export function CreatorWorkspace({
 
   function startNew() {
     streamAbortRef.current?.abort();
+    activeAnimationIdRef.current = undefined;
     setPendingAnimation(undefined);
     setSelectedId(undefined);
     setPrompt('');
@@ -4985,6 +5089,7 @@ export function CreatorWorkspace({
 
   function selectAnimation(id: string) {
     streamAbortRef.current?.abort();
+    activeAnimationIdRef.current = undefined;
     setPendingAnimation(undefined);
     setSelectedId(id);
     setStreamingAnimationId(undefined);

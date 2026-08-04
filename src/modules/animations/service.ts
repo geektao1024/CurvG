@@ -1143,7 +1143,35 @@ async function reclaimStaleAnimation(row: Chat): Promise<Chat> {
     .from(chat)
     .where(eq(chat.id, row.id))
     .limit(1);
-  return fresh && fresh.status !== 'deleted' ? fresh : row;
+  const recovered = fresh && fresh.status !== 'deleted' ? fresh : row;
+  const recoveredParts = animationParts(recovered);
+  if (
+    recovered.status === 'failed' &&
+    recoveredParts.failure?.code === failure.code
+  ) {
+    if (stage === 'spec' && recoveredParts.planningRunId) {
+      try {
+        await failRunningPlanningStages({
+          userId: recovered.userId,
+          chatId: recovered.id,
+          runId: recoveredParts.planningRunId,
+          errorCode: 'stale_worker',
+          errorMessage: failure.message,
+        });
+      } catch (stageError) {
+        console.warn(
+          '[animation-generation] failed to close stale planning stage',
+          { animationId: recovered.id, error: stageError }
+        );
+      }
+    }
+    await ensureAnimationFailureMessage({
+      row: recovered,
+      failure,
+      key: `${recoveredParts.planningRunId || 'animation'}:${stage}`,
+    });
+  }
+  return recovered;
 }
 
 async function insertMessage(params: {
@@ -1351,6 +1379,63 @@ export function renderFailureRequiresCodeRegeneration(error?: string) {
   );
 }
 
+/**
+ * A failed generation is still a conversation event. Keep one idempotent
+ * assistant message for each terminal failure so a dropped workflow/SSE
+ * stream cannot erase the fact that the user submitted a request.
+ *
+ * Raw provider/validation diagnostics stay in server-side planning telemetry;
+ * this message only carries the normalized failure that the client localizes.
+ */
+async function ensureAnimationFailureMessage(params: {
+  row: Chat;
+  failure: AnimationFailure;
+  key: string;
+}) {
+  const id = `AFMSG_${md5(
+    `${params.row.id}:${params.key}:${params.failure.code}`
+  )}`;
+  try {
+    await db()
+      .insert(chatMessage)
+      .values({
+        id,
+        userId: params.row.userId,
+        chatId: params.row.id,
+        status: 'completed',
+        role: 'assistant',
+        parts: JSON.stringify({
+          type: 'text',
+          content: params.failure.message,
+        }),
+        metadata: JSON.stringify({
+          kind: 'animation_failure',
+          failure: params.failure,
+        }),
+        model: params.row.model,
+        provider: params.row.provider,
+      });
+  } catch (error) {
+    try {
+      const [existing] = await db()
+        .select({ id: chatMessage.id })
+        .from(chatMessage)
+        .where(eq(chatMessage.id, id))
+        .limit(1);
+      if (existing) return;
+    } catch (lookupError) {
+      console.warn('[animation-generation] failure message lookup failed', {
+        animationId: params.row.id,
+        error: lookupError,
+      });
+    }
+    console.warn('[animation-generation] failure message insert failed', {
+      animationId: params.row.id,
+      error,
+    });
+  }
+}
+
 async function setFailure(
   row: Chat,
   parts: StoredAnimationParts,
@@ -1399,6 +1484,29 @@ async function setFailure(
       }),
     })
     .where(and(eq(chat.id, row.id), eq(chat.status, expectedStatus)));
+  if (stage === 'spec' && parts.planningRunId) {
+    try {
+      await failRunningPlanningStages({
+        userId: row.userId,
+        chatId: row.id,
+        runId: parts.planningRunId,
+        errorCode: failure.code.toLowerCase(),
+        errorMessage: diagnostic,
+      });
+    } catch (stageError) {
+      // A checkpoint failure must not turn an already durable parent failure
+      // into a 500 response.
+      console.warn('[animation-generation] failed to close planning stages', {
+        animationId: row.id,
+        error: stageError,
+      });
+    }
+  }
+  await ensureAnimationFailureMessage({
+    row,
+    failure,
+    key: `${parts.planningRunId || parts.operation?.id || 'animation'}:${stage}`,
+  });
   return failure;
 }
 
@@ -1440,6 +1548,11 @@ export async function markAnimationProductionFailure(params: {
       }),
     })
     .where(and(eq(chat.id, row.id), eq(chat.status, 'awaiting_approval')));
+  await ensureAnimationFailureMessage({
+    row,
+    failure,
+    key: `${parts.operation?.id || parts.planningRunId || 'render'}:render`,
+  });
 }
 
 async function conversation(chatId: string): Promise<ChatTurn[]> {
