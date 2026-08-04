@@ -2,7 +2,6 @@ import { startSilentAnimationProduction } from '@/routes/api/animations/-product
 /// <reference types="@cloudflare/workers-types" />
 
 import {
-  resolveAnimationOrchestrator,
   resolveChatProvider,
   withAnimationGenerationCapacity,
 } from '@/routes/api/animations/-shared';
@@ -14,13 +13,11 @@ import {
 import { NonRetryableError } from 'cloudflare:workflows';
 
 import type { ChatProvider } from '@/core/ai/chat';
-import type { AnimationOrchestrationPlan } from '@/core/animation-orchestrator';
 import {
   AnimationGenerationError,
   finalizeAnimationPlanningFailure,
   getAnimation,
   planAnimation,
-  prepareAnimationOrchestration,
   recordAnimationQueueState,
 } from '@/modules/animations/service';
 import { getAllConfigs } from '@/modules/config/service';
@@ -31,13 +28,12 @@ type AnimationWorkflowEnv = Record<string, unknown>;
 
 // Saturated upstreams recover on their own schedule, not on a five-second
 // timer. Instead of failing after two quick tries, the workflow queues: each
-// planning stage still runs its own KIE -> Kuaipao failover, and when a whole
+// planning stage still runs its configured provider failover, and when a whole
 // attempt fails retryably the workflow waits out this widening ladder
 // (~17 minutes end to end), recording the queue state so the client shows an
-// honest "retrying automatically" instead of a dead error. Substituted
-// content is not an outcome here — the 2026-08-02 product decision is
-// queue-then-succeed or fail visibly, never deliver a scene that ignores the
-// request.
+// honest "retrying automatically" instead of a dead error. A scene-only
+// failure can recover from the five approved upstream artifacts; unrelated
+// earlier-stage failures remain queue-then-succeed or fail visibly.
 const PLANNING_RETRY_DELAY_SECONDS = [5, 30, 60, 120, 240, 300, 300] as const;
 const MAX_PLANNING_ATTEMPTS = PLANNING_RETRY_DELAY_SECONDS.length + 1;
 
@@ -267,57 +263,6 @@ export class AnimationWorkflow extends WorkflowEntrypoint<
       );
     }
 
-    let orchestrationPlan: AnimationOrchestrationPlan | null | undefined;
-    try {
-      const orchestration = await step.do(
-        'prepare-python-orchestrator',
-        {
-          retries: { limit: 2, delay: '15 seconds', backoff: 'exponential' },
-          timeout: '3 minutes',
-        },
-        async () => {
-          exposeRuntimeEnv(this.env);
-          const configs = await getAllConfigs();
-          const orchestrator = resolveAnimationOrchestrator(configs);
-          if (!orchestrator) return { configured: false, plan: null };
-          const animation = await getAnimation(
-            payload.userId,
-            payload.animationId
-          );
-          if (!animation.parts.spec) {
-            throw new NonRetryableError(
-              'Animation specification is missing after planning'
-            );
-          }
-          return {
-            configured: true,
-            plan: await prepareAnimationOrchestration({
-              orchestrator,
-              animationId: animation.id,
-              prompt: animation.parts.prompt,
-              spec: animation.parts.spec,
-            }),
-          };
-        }
-      );
-      orchestrationPlan = orchestration.configured
-        ? orchestration.plan
-        : undefined;
-    } catch (error) {
-      // Workflow retries the external service first. Once its durable retry
-      // budget is exhausted, fall back to the existing in-Worker compiler so
-      // optional infrastructure cannot make the product less reliable.
-      console.error('[animation-workflow] orchestrator degraded', {
-        animationId: payload.animationId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      orchestrationPlan = null;
-      await step.do('record-orchestrator-degradation', async () => ({
-        animationId: payload.animationId,
-        status: 'degraded',
-      }));
-    }
-
     await step.do(
       'compile-and-render-animation',
       {
@@ -345,7 +290,6 @@ export class AnimationWorkflow extends WorkflowEntrypoint<
           animation,
           provider: resolved.provider,
           model: resolved.model,
-          orchestrationPlan,
           capacityOwnerToken: `ANWF_${payload.animationId}`,
         });
         return { animationId: produced.id, status: produced.status };

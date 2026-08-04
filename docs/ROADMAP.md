@@ -70,15 +70,17 @@
 Phase 2 与 Phase 3 已实现并部署，生产跑出 46 条 completed 阶段与 30 条动画记录。
 风险敞口从「未验证」转移到「交付质量」：
 
-1. **P0：降低确定性兜底占比。** 2026-07-31 有 71% 的 completed 阶段由
-   `provider=curvg` 的预置场景替代产出（前一天 32%），用户看到成功但拿到与
-   prompt 无关的内容。这是当前最大的产品风险，且完成率指标看不出来。
-2. **P0：修复主模型可用性。** 阶段表记录 `kuaipao` 89 次对 `kie` 12 次，指定主
-   模型 KIE 实际在大部分时候失败，由恢复路由静默承担。需要补按次尝试的埋点，
-   否则无法度量。
-3. **P0：把 Python 产出收归编译器。** `composeAnimationCode` 当前让模型写 14k
-   token 的 Python，编译器只是兜底——与 `CREATOR_REQUIREMENTS.md` 五节的决策
-   相反。这一处同时是超时、workflow 预算耗尽和质量波动的共同来源。
+1. **P0：验证 scene-only 恢复的交付质量。** 2026-07-31 有 71% 的 completed
+   阶段由旧的 `provider=curvg` 预置场景替代产出，用户看到成功但拿到与 prompt
+   无关的内容。当前实现只允许 scene 阶段在前五个 artifacts 已批准后做基于谱系
+   的保守恢复；需要用 `diagnostic.kind=deterministic_scene_fallback` 单独统计
+   它的成功率、渲染质量和用户重试率。
+2. **P0：用按次尝试数据判断 provider 健康。** `animation_planning_attempt` 已
+   记录每个 failover leg 的结果。不要从最终 stage 行数推断某个 provider 是否
+   失败；应按 stage、模型、错误码、延迟和恢复率持续观测。
+3. **P0：把 Python 产出收归编译器（本地已修复，待部署验证）。** 初次出片现在
+   由 `compileAnimationSpec` 生成 Python，`composeAnimationCode` 只在有渲染证据
+   的定向修复中使用。这是降低超时、Workflow 预算消耗和输出方差的关键改动。
 4. **P1：采集真实成本数据**——记录 10–50 个场景的渲染成本，作为定价前提。
 5. **P1（部分完成 2026-08-04）：`/curves` 曲线百科已建成**（30 条，含内页矩阵
    与首页 SEO 重定位，见 `docs/CURVE_ENCYCLOPEDIA.md` 与

@@ -18,7 +18,7 @@ Implemented and running in production:
 - Three creation entry points: template, formula, and natural-language description.
 - Six-stage planning pipeline: intent, knowledge, curriculum, mathematics, storyboard, scene.
 - Structured three-layer IR (objects, timeline, layout) with an editable spec and a drag-adjustable timeline.
-- Deterministic `spec → Manim` compiler, currently used as the fallback when model code composition fails.
+- Deterministic `spec → Manim` compiler and renderer QA foundation.
 - Cloudflare Workflow durable execution with per-stage checkpoints in D1.
 - Python orchestrator for visual-contract and math-contract preflight.
 - Cloudflare Sandbox render jobs through Queue, with R2 artifact persistence.
@@ -40,6 +40,10 @@ Implemented and build-verified, awaiting deployment (2026-08-04):
   one target keyword per page, en/zh, FAQ structured data.
 - Sitemap (84 URLs), llms.txt/llms-full.txt, and header/footer internal links
   updated accordingly.
+- Animation reliability correction: initial delivery now compiles approved IR
+  locally, and a scene-only failure can recover from the five approved planning
+  artifacts; model-written Python remains limited to targeted repair. Pending
+  production deployment.
 
 Not implemented yet:
 
@@ -52,16 +56,25 @@ Not implemented yet:
 
 ### Reliability model
 
-Delivery is honest by construction (decided 2026-08-02, shipped 2026-08-03):
+Delivery is designed around a valid artifact rather than a successful provider call:
 
 - When upstream models are saturated, the Workflow queues and retries on a
   widening ladder (~17 minutes) with a live "retrying automatically" banner,
   instead of hard-failing in seconds. A third admin-configured
   OpenAI-compatible failover route can be added behind KIE and Kuaipao.
-- Failure-triggered scene substitution is retired: a run either delivers
-  model-planned content (or a pre-matched, hand-verified topic profile) or
-  fails visibly. On 2026-07-31, 71% of one day's "successful" stages had been
-  silent substitutions; that mechanism is gone.
+- Initial code delivery is deterministic: the approved spec is compiled locally,
+  so a successful planning response does not depend on a second model response
+  containing 14k tokens of Python.
+- If the scene provider fails after intent, knowledge, curriculum, mathematics,
+  and storyboard have all passed validation, the pipeline assembles a
+  conservative scene from those approved artifacts. It preserves the request's
+  formulas and shot order, records `diagnostic.kind=deterministic_scene_fallback`,
+  and is not used when upstream artifacts are missing. Earlier-stage failures
+  still queue and retry, then fail visibly when the retry budget is exhausted.
+- Historical data still contains the retired silent substitutions: on
+  2026-07-31, 71% of one day's "successful" stages used that mechanism. New
+  recovery rows are explicitly diagnosable rather than indistinguishable from
+  provider-produced scenes.
 - Credits settle only on success: planning never charges, and the render
   reservation is revoked on failure, cancellation, and callback errors. A
   short balance is flagged before planning starts, not after the wait.
@@ -75,10 +88,8 @@ Delivery is honest by construction (decided 2026-08-02, shipped 2026-08-03):
   (knowledge spine, curriculum beats, formulas, shot list), a cancel button,
   and a completion toast.
 
-See
-[Deterministic fallback](docs/ANIMATION_ORCHESTRATION.md#deterministic-fallback)
-for the retirement record and the query that separates substituted from
-model-delivered stages in historical data.
+See [deterministic scene recovery](docs/ANIMATION_ORCHESTRATION.md#deterministic-fallback)
+for the recovery boundary, its lineage guarantees, and historical telemetry.
 
 ## Workflow
 
@@ -87,7 +98,8 @@ Template, formula, or teaching goal
   → six-stage planning (intent, knowledge, curriculum, mathematics, storyboard, scene)
   → inspectable three-layer IR: objects, timeline, layout
   → editable spec and drag-adjustable timeline
-  → Python: model composition, with deterministic compilation as fallback
+  → deterministic IR → Manim compilation
+  → optional model/Python repair only when render evidence requires it
   → isolated sandbox render
   → preview and export artifacts
 ```
@@ -95,13 +107,12 @@ Template, formula, or teaching goal
 Code is read-only in the product — edits belong in the spec. It can be read,
 copied, and exported as `.py`.
 
-Note that the intended design (`docs/CREATOR_REQUIREMENTS.md` §5) is for the
-compiler to own all Python and the model to emit only IR. The IR landed; the
-ownership inversion did not. `composeAnimationCode`
-(`src/modules/animations/service.ts:686`) still asks the model for Python first
-and falls back to `compileAnimationSpec` only after two failures. This is
-tracked as a P0 in the roadmap — it is a shared root cause of timeouts,
-exhausted Workflow budgets, and output variance.
+The intended design (`docs/CREATOR_REQUIREMENTS.md` §5) is now the initial
+delivery path: the model emits IR, and `compileAnimationSpec` owns the Python
+source. `composeAnimationCode` remains available for targeted repair after a
+renderer or visual-quality diagnostic; it is no longer a prerequisite for the
+first render. This removes a major source of model-output variance and long
+planning-to-render waits.
 
 Editing the spec by hand recompiles directly without a model call. Sending a
 natural-language revision goes through the model using the current spec,

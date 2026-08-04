@@ -2052,7 +2052,11 @@ export async function approveAnimation(params: {
       code = composed.code;
       generatedOrchestration = composed.orchestrationState;
     } else {
-      code = parts.code || compileAnimationSpec(parts.spec);
+      // Recompile even when an older code artifact exists. Retried or legacy
+      // approvals must not silently reuse model-written Python; only an
+      // explicit render-repair request is allowed to enter the model-code
+      // branch above.
+      code = compileAnimationSpec(parts.spec);
     }
     if (!params.renderer) {
       const {
@@ -2155,15 +2159,12 @@ export function shouldUseAnimationCodeComposer(params: {
   modelName: string | null;
 }) {
   if (!params.hasProvider || !params.hasModel) return false;
-  const deterministicDelivery =
-    params.providerName === 'curvg' &&
-    params.modelName?.startsWith('deterministic-');
-  if (deterministicDelivery && !params.regenerateCode) return false;
-  return (
-    params.status === 'awaiting_approval' ||
-    !params.hasCode ||
-    params.regenerateCode
-  );
+  // The approved specification is the product contract. Initial delivery
+  // must compile that contract locally instead of asking a provider to write
+  // an entire Manim module and making a transient code response a hard
+  // dependency of the render pipeline. Model-written Python remains useful
+  // only for an evidenced, targeted repair after a render or visual review.
+  return params.regenerateCode === true;
 }
 
 function appendVersion(

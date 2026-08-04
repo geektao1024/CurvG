@@ -678,7 +678,7 @@ test('heart requests use a verified provider-independent parametric profile', ()
   );
 });
 
-test('deterministic proof profiles compile locally until the renderer requests repair', () => {
+test('initial delivery compiles the approved spec until the renderer requests repair', () => {
   const base = {
     hasProvider: true,
     hasModel: true,
@@ -702,7 +702,7 @@ test('deterministic proof profiles compile locally until the renderer requests r
       modelName: 'gpt-5.6-sol',
       regenerateCode: false,
     }),
-    true
+    false
   );
 });
 

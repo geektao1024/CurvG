@@ -208,6 +208,45 @@ interface PlanningParams {
   audit?: (spec: AnimationSpec) => Promise<AnimationMathReview>;
 }
 
+class AnimationPlanningStageError extends Error {
+  constructor(
+    readonly stage: AnimationPlanningStageName,
+    cause: unknown
+  ) {
+    super(`Animation planning stage failed: ${stage}`, { cause });
+    this.name = 'AnimationPlanningStageError';
+  }
+}
+
+type ApprovedPlanningArtifacts = Omit<AnimationPlanningArtifacts, 'scene'>;
+
+function approvedPlanningArtifacts(
+  artifacts: Partial<AnimationPlanningArtifacts>
+): ApprovedPlanningArtifacts | undefined {
+  if (
+    !artifacts.intent ||
+    !artifacts.knowledge ||
+    !artifacts.curriculum ||
+    !artifacts.mathematics ||
+    !artifacts.storyboard
+  ) {
+    return undefined;
+  }
+  return {
+    intent: artifacts.intent,
+    knowledge: artifacts.knowledge,
+    curriculum: artifacts.curriculum,
+    mathematics: artifacts.mathematics,
+    storyboard: artifacts.storyboard,
+  };
+}
+
+function planningFailureSummary(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error))
+    .replace(/[\r\n]+/g, ' ')
+    .slice(0, 1_000);
+}
+
 function compactHistory(history: ChatTurn[] | undefined): ChatTurn[] {
   return (history || []).slice(-8).map((turn) => ({
     role: turn.role,
@@ -658,12 +697,21 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
   // Durable retries resume from completed checkpoints instead of letting one
   // slow upstream request terminate the whole Workflow invocation.
   // All six stages and their audits share the plan's absolute deadline.
-  // Recomputed per repair round: a round that follows a slow failed round
-  // still gets its own provider window, bounded only by the plan deadline.
+  // Scene has a deterministic recovery boundary, so its model/format-repair
+  // loop gets one total provider window instead of being allowed to consume
+  // the entire plan budget. The remaining absolute budget is left for the
+  // independent mathematics audit and the final state transition.
+  const sceneStageDeadlineAt =
+    definition.name === 'scene'
+      ? Math.min(
+          planning.deadlineAt ?? Number.POSITIVE_INFINITY,
+          Date.now() + SCENE_STAGE_PROVIDER_TIMEOUT_MS
+        )
+      : planning.deadlineAt;
   const roundDeadlineAt = () =>
     Math.min(
       Date.now() + stageProviderWindowMs(definition.name),
-      planning.deadlineAt ?? Number.POSITIVE_INFINITY
+      sceneStageDeadlineAt ?? Number.POSITIVE_INFINITY
     );
   let latestRow = await startPlanningStage({
     userId: planning.context.userId,
@@ -745,13 +793,12 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
     }
     throw lastError;
   } catch (error) {
-    // 2026-08-02 product decision: a stage that fails after its provider
-    // failover no longer substitutes a deterministic scene. Substitution made
-    // the run look successful while delivering content that could ignore the
-    // request (71% of one day's completions). The error propagates with its
-    // retryable classification instead, and the Workflow queues patient
-    // retries; the only deterministic scene left is the pre-matched verified
-    // profile above, which the schema-6 dossier gate keeps honest.
+    // Do not recover here: this row must retain the provider failure and its
+    // retryable classification. The caller may recover only from a scene
+    // failure after all five upstream artifacts have passed validation, using
+    // the lineage-preserving deterministic builder below. Earlier-stage
+    // failures must reach the Workflow queue rather than becoming unrelated
+    // content.
     const providerError =
       error instanceof ChatProviderError ? error : undefined;
     const failed = await failPlanningStage({
@@ -909,23 +956,124 @@ async function runFromStage(params: {
   for (const item of ANIMATION_PLANNING_STAGES) {
     if (item.sequence < startSequence) continue;
     params.planning.onPhase?.(item.phase);
-    const completed = await runStage({
-      definition: item,
-      planning: params.planning,
-      artifacts: params.artifacts,
-      feedback: item.name === params.startAt ? params.feedback : undefined,
-      disableReuse: params.disableReuse,
-    });
-    (params.artifacts as Record<string, unknown>)[item.name] =
-      completed.artifact;
-    lastResult = completed.result;
-    if (item.name === 'intent') {
-      params.planning.onSummaryDelta?.(
-        (completed.artifact as AnimationPlanningArtifacts['intent']).summary
-      );
+    try {
+      const completed = await runStage({
+        definition: item,
+        planning: params.planning,
+        artifacts: params.artifacts,
+        feedback: item.name === params.startAt ? params.feedback : undefined,
+        disableReuse: params.disableReuse,
+      });
+      (params.artifacts as Record<string, unknown>)[item.name] =
+        completed.artifact;
+      lastResult = completed.result;
+      if (item.name === 'intent') {
+        params.planning.onSummaryDelta?.(
+          (completed.artifact as AnimationPlanningArtifacts['intent']).summary
+        );
+      }
+    } catch (error) {
+      throw new AnimationPlanningStageError(item.name, error);
     }
   }
-  return lastResult;
+  return lastResult!;
+}
+
+async function persistDeterministicSceneFallback(params: {
+  planning: PlanningParams;
+  artifacts: ApprovedPlanningArtifacts;
+  reason: unknown;
+}): Promise<{
+  artifact: AnimationPlanningArtifacts['scene'];
+  result: ChatCompletionResult;
+}> {
+  const prompt = stagePrompt({
+    name: 'scene',
+    prompt: params.planning.prompt,
+    subject: params.planning.subject,
+    currentSpec: params.planning.currentSpec,
+    history: params.planning.history,
+    artifacts: params.artifacts,
+  });
+  // Keep the same input hash as the model scene stage. A later Workflow
+  // attempt can therefore reuse this deterministic result instead of calling
+  // the provider again for a scene that has already been safely assembled.
+  const inputHash = md5(
+    JSON.stringify({
+      pipelineVersion: PIPELINE_VERSION,
+      stage: 'scene',
+      model: params.planning.model,
+      prompt,
+    })
+  );
+  const started = await startPlanningStage({
+    userId: params.planning.context.userId,
+    chatId: params.planning.context.chatId,
+    runId: params.planning.context.runId,
+    stage: 'scene',
+    sequence: definition('scene').sequence,
+    inputHash,
+    provider: 'curvg',
+    model: 'deterministic-scene-v1',
+  });
+  params.planning.context.onStage?.(planningStageSummary(started));
+
+  const artifact = buildDeterministicSceneArtifact(params.artifacts);
+  validateAnimationPlanningStageSemantics('scene', artifact, params.artifacts);
+  const reason = planningFailureSummary(params.reason);
+  const completed = await completePlanningStage({
+    id: started.id,
+    artifact,
+    outputHash: md5(JSON.stringify(artifact)),
+    diagnostic: {
+      kind: 'deterministic_scene_fallback',
+      source: 'approved_planning_artifacts',
+      reason,
+    },
+    provider: 'curvg',
+    model: 'deterministic-scene-v1',
+  });
+  params.planning.context.onStage?.(planningStageSummary(completed));
+  console.warn(
+    '[animation-planning] scene model failed; used deterministic fallback',
+    {
+      chatId: params.planning.context.chatId,
+      runId: params.planning.context.runId,
+      reason,
+    }
+  );
+  return {
+    artifact,
+    result: {
+      content: JSON.stringify(artifact),
+      provider: 'curvg',
+      model: 'deterministic-scene-v1',
+    },
+  };
+}
+
+async function runFromStageWithSceneFallback(
+  params: Parameters<typeof runFromStage>[0]
+) {
+  try {
+    return await runFromStage(params);
+  } catch (error) {
+    if (
+      !(error instanceof AnimationPlanningStageError) ||
+      error.stage !== 'scene'
+    ) {
+      throw error;
+    }
+    const approved = approvedPlanningArtifacts(params.artifacts);
+    if (!approved) throw error;
+    const fallback = await persistDeterministicSceneFallback({
+      planning: params.planning,
+      artifacts: approved,
+      reason: error.cause,
+    });
+    (params.artifacts as Record<string, unknown>).scene = fallback.artifact;
+    return fallback.result;
+  }
 }
 
 interface PersistentPlanningResult {
@@ -1019,7 +1167,7 @@ async function generatePersistentAnimationSpecStrict(
   }
 
   const artifacts: Partial<AnimationPlanningArtifacts> = {};
-  let result = await runFromStage({
+  let result = await runFromStageWithSceneFallback({
     planning,
     artifacts,
     startAt: 'intent',
@@ -1044,7 +1192,7 @@ async function generatePersistentAnimationSpecStrict(
             ? error.message.replace(/[\r\n]+/g, ' ').slice(0, 1_000)
             : String(error).slice(0, 1_000),
       });
-      result = await runFromStage({
+      result = await runFromStageWithSceneFallback({
         planning,
         artifacts,
         startAt: 'storyboard',
@@ -1071,7 +1219,7 @@ async function generatePersistentAnimationSpecStrict(
     revision < MAX_MATH_REVISIONS;
     revision += 1
   ) {
-    result = await runFromStage({
+    result = await runFromStageWithSceneFallback({
       planning,
       artifacts,
       startAt: 'mathematics',
@@ -1110,7 +1258,8 @@ export async function generatePersistentAnimationSpec(
   planning: PlanningParams
 ): Promise<PersistentPlanningResult> {
   // Completed stages remain durable and are reused by runStage on a Workflow
-  // retry. Do not replace them with a generic scene when a later stage or the
-  // upstream provider fails: an unrelated video is not a successful result.
+  // retry. Only the scene stage has a deterministic recovery boundary, and it
+  // can consume the already-approved upstream artifacts without inventing a
+  // new mathematical claim.
   return generatePersistentAnimationSpecStrict(planning);
 }

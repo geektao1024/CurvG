@@ -7,22 +7,22 @@ flowchart TD
   A[CurvG Worker] --> B[(D1 animation and stage state)]
   A --> C[Provider router: KIE then Kuaipao]
   A --> D[Cloudflare Workflow]
-  D --> E[Python Orchestrator]
-  E --> F[Visual contract and template retrieval]
-  E --> G[Pydantic, math-contract and AST preflight]
-  E --> H[Targeted generation or repair brief]
+  D --> E[Deterministic IR to Manim compiler]
   D --> I[Cloudflare Sandbox Renderer]
+  E --> I
   I --> J[Low-quality preview render]
   J --> K[Contact-sheet and temporal QA]
-  K -->|repair| E
+  K -->|targeted repair| N[Optional Python orchestrator and model repair]
+  N --> I
   K -->|approve| L[Formal 720p30 render]
   L --> M[(R2 versioned artifacts)]
 ```
 
 The Worker remains the owner of authentication, subscriptions, credits,
 provider credentials, model selection, D1 state, and renderer callbacks. The
-Python service receives one bounded animation specification at a time and owns
-only deterministic planning and preflight decisions.
+initial render is compiled from the approved specification inside the Worker.
+The optional Python service is used for visual-contract preflight and targeted
+repair, not as a prerequisite for the first render.
 
 ## Provider routing
 
@@ -69,7 +69,8 @@ provider precisely so they still report attempts.
 
 ## Durable execution
 
-The Workflow has three durable boundaries:
+The Workflow has two durable boundaries, with optional repair assistance inside
+the render boundary:
 
 1. `plan-animation` runs the six persisted planning specialists. Every stage
    writes its input hash, artifact, attempt, provider diagnostic, and status to
@@ -82,13 +83,11 @@ The Workflow has three durable boundaries:
    countdown, and it honors cancellation before spending another provider
    call. Only an exhausted ladder or a non-retryable failure becomes a
    visible terminal failure — and planning never charges credits.
-2. `prepare-python-orchestrator` derives the visual contract, retrieves visual
-   templates, and produces the code-generation brief. Cloudflare retries this
-   external step with exponential delay. After the retry budget is exhausted,
-   the Workflow records a degraded checkpoint and uses the in-Worker compiler.
-3. `compile-and-render-animation` generates code, runs Python AST preflight,
-   performs at most one targeted pre-render repair, reserves credits, and
-   dispatches the renderer.
+2. `compile-and-render-animation` compiles the approved IR locally, reserves
+   credits, and dispatches the renderer. If a render or visual-quality
+   diagnostic explicitly requests code repair, the optional Python orchestrator
+   can prepare and validate that repair; its outage must not block the initial
+   deterministic source.
 
 The Python service is intentionally optional. A network outage must reduce
 quality assistance, not make an otherwise valid animation impossible to
@@ -131,25 +130,35 @@ the disposable Sandbox; preflight is not a replacement for isolation.
 
 ## Deterministic fallback
 
-**The failure-triggered substitution described below was retired on
-2026-08-03.** A scene stage that fails after its provider failover now
-propagates the error to the Workflow queue (see Durable execution) instead of
-substituting a deterministic scene. The 2026-08-02 product decision:
-queue-then-succeed or fail visibly — never deliver a scene that ignores the
-request. The only deterministic scene left is the _pre-matched_ verified
-profile (quadratic tangent, cycloid, heart), which runs before any provider
-call, only when the prompt matches a hand-verified topic, and only when the
-schema-6 dossier gate confirms the dossier actually authors those formulas.
+CurvG has two deliberately different deterministic paths:
 
-Historical context — why it was retired: when a planning stage exhausted both
-providers, the Workflow recorded the stage as `completed` with
-`provider=curvg` and a `deterministic-*` model id, and delivery continued from
-a pre-authored scene rather than from the user's request.
+1. A _pre-matched_ verified profile (quadratic tangent, cycloid, heart) can
+   run before provider calls. It is narrow and only runs when the schema-6
+   mathematics dossier authors the exact formulas required by that profile.
+2. If the scene provider and its failover targets all fail **after** intent,
+   knowledge, curriculum, mathematics, and storyboard have completed and
+   passed validation, `runFromStageWithSceneFallback` rebuilds only the scene
+   from those approved artifacts. Known profiles receive verified geometry;
+   unknown topics receive a conservative scene using the dossier's own
+   formulas and distinct step cards. It never invents a new mathematical claim
+   or silently replaces an earlier approved artifact.
 
-| Model id                    | Meaning                                      |
-| --------------------------- | -------------------------------------------- |
-| `deterministic-scene-v1`    | Verified template matched to the request     |
-| `deterministic-fallback-v1` | Generic scene; carries little of the request |
+The recovery row is completed with `provider=curvg`,
+`model=deterministic-scene-v1`, and
+`diagnostic.kind=deterministic_scene_fallback`, including the original failure
+summary. This makes it possible to measure recovery separately from both
+provider-produced scenes and the old silent substitutions. If any upstream
+artifact is missing or invalid, the error propagates to the Workflow queue.
+
+Historical context — before this boundary existed, a failed stage could be
+marked completed from a generic pre-authored scene. On 2026-07-31, 71% of one
+day's completed stages were produced that way, even when they did not match the
+prompt. That old behavior is not reused for current recovery.
+
+| Model id                    | Meaning                                              |
+| --------------------------- | ---------------------------------------------------- |
+| `deterministic-scene-v1`    | Verified profile or approved-artifact scene recovery |
+| `deterministic-fallback-v1` | Historical generic substitution; legacy data only    |
 
 This traded a visible error for a silent quality loss: on 2026-07-31, 71% of
 completed stages were substituted rather than generated. Because the fallback
@@ -165,10 +174,11 @@ where status='completed'
 group by d, kind order by d;
 ```
 
-Rows with `provider='curvg'` after 2026-08-03 can only come from the
-pre-matched verified profiles, which are honest matches, not substitutions.
+Rows with `provider='curvg'` after the new recovery code can be either a
+pre-matched verified profile or a scene-only recovery. Use the diagnostic kind
+to distinguish them; neither should be counted as a provider health result.
 
-## Lineage and the ownership gap
+## Lineage and compiler ownership
 
 The six planning stages derive from the Mythos chain in
 [Math-To-Manim](https://github.com/HarleyCoops/Math-To-Manim), which maps
@@ -183,7 +193,10 @@ one-to-one:
 | cinematographer + scene-composer      | `storyboard` + `scene` |
 
 Two of the three ideas that were originally left behind are now carried over
-in schema version 6; the third remains open.
+in schema version 6. The compiler ownership decision is also active: the model
+emits planning IR, and the deterministic compiler owns initial Python source.
+Model-written Python remains an exception only for a targeted repair supported
+by render evidence.
 
 **1. The mathematics stage owns the LaTeX** (schema 6). `mathDossier` carries
 `formulas` — id'd entries with ordered `latexParts` — and a scene formula

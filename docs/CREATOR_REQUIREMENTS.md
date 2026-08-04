@@ -1,7 +1,7 @@
 # CurvG 创作页需求规格
 
 制定时间：2026-07-29
-状态核对：2026-08-01
+状态核对：2026-08-04
 
 本文档记录创作页（Creator）功能与业务流的需求决策，重点是数学公式生成环节的用户体验与交互。**本期需求已基本交付**，文档保留为决策记录——它解释了「为什么模型只出 IR、编译器出代码」这一中枢决策的由来，这个理由在代码里读不出来。
 
@@ -32,11 +32,11 @@
 
 ## 二、本期之后暴露的新问题
 
-确定性编译器解决了「模型写错 Python」，但引入了一个需求阶段没有预见的失败模式：**当模型不可用时，系统用预置场景替代并标记为成功**。
+历史上，确定性编译器解决了「模型写错 Python」，但旧实现仍把模型写 Python 放在初次出片主路径；模型失败时还可能用预置场景替代并标记为成功。
 
 2026-07-31 生产数据：21 条 completed 阶段里 15 条由 `provider=curvg` 的确定性兜底产出（71%），前一天是 32%。用户看到「生成完成」，拿到的是与 prompt 无关的通用场景。
 
-这直接冲突于文档五节的原则——「spec 表达不了的动画就是做不了，**明确告知用户**」。当前实现没有告知，而是静默替换。需求层面待决策：兜底产出应当标注来源，还是应当降级为可见的失败。
+当前实现已修正这两个边界：初次出片直接由已审核 spec 确定性编译；仅当 scene 阶段失败且前五个阶段均已通过校验时，才从这些已批准 artifacts 组装保守 scene，并持久化 `deterministic_scene_fallback` 诊断。前置阶段缺失时仍排队重试或可见失败，不再用无关模板冒充成功。
 
 ## 三、原始目标业务流
 
@@ -157,23 +157,16 @@ spec 只声明语义区域（公式区 / 图形区 / 标题区），具体坐标
 
 这是本次需求的中枢决策，其他决策都依赖它。
 
-> **实现状态（2026-08-01 核对）：此决策未按原样落地，实际是反的。**
+> **实现状态（2026-08-04）：决策已切换为初次出片主路径。**
 >
-> 决策写的是「模型只出 IR，编译器出全部 Python」。代码里 `composeAnimationCode`
-> （`src/modules/animations/service.ts:686`）的实际顺序是：
+> `approveAnimation` 在没有渲染修复证据时直接调用
+> `compileAnimationSpec(params.spec)`。`composeAnimationCode` 与
+> `parseManimCode` 仍保留，但只用于有明确 render/quality evidence 的定向
+> Python 修复，不再是首次渲染的硬依赖。
 >
-> 1. 模型按 `codeCompositionPrompt` 直接写 Python（`maxTokens: 14_000`）
-> 2. `parseManimCode` 校验失败 → 带着错误原因再问模型改一次
-> 3. 两次都失败 → 才降级到 `compileAnimationSpec(params.spec)`
->
-> 即：**模型写 Python 是主路径，确定性编译器是兜底。** 另有 1780 / 2143 / 2206
-> 三处直接调编译器的旁路。
->
-> 三层 IR 本身已按决策落地（`animation-schema.ts:99-110` 的
-> `objects` / `layout` / `timeline`，散文字段 `visuals` / `actions` 已移除）。
-> 没落地的是「谁产出 Python」。
->
-> 这个偏差有实际代价，见下方 6.1 与 6.2 的状态注记。
+> 三层 IR 已按决策落地（`animation-schema.ts` 的 `objects` / `layout` /
+> `timeline`），现在由编译器拥有初次 Python 产出；相同 spec 可以复现相同
+> 源码。
 
 **模型不再写 Python。** 模型只输出 spec（JSON），编译器负责全部 Python。spec 表达不了的动画就是做不了，明确告知用户。
 
@@ -197,11 +190,10 @@ layout:   { regions: 'left|right' }
 
 > 已落地。`animation-schema.ts:99-110` 是三层 IR，散文字段已移除。
 
-**`approveAnimation`（`src/modules/animations/service.ts:969`）不再调 `parseManimCode`。** `parseManimCode` 中针对模型输出的防御——`CurvGScene` 自动改名、blocked 正则、长度检查——大部分可以退休，因为代码不再来自模型。
+**`approveAnimation`（`src/modules/animations/service.ts`）初次出片不再调 `parseManimCode`。**
 
-> **未落地。** `parseManimCode` 仍在 `service.ts:715` 与 `730` 被调用，且仍导出于
-> `animation-schema.ts:850`。因为模型仍在写 Python（见五节状态注记），这些防御
-> 不但不能退休，还是主路径上的必需品。
+> 已落地。`parseManimCode` 仍保留给定向模型修复与旧代码边界；初次渲染的
+> Python 来自 `compileAnimationSpec`，renderer 的 AST 检查继续作为纵深防御。
 
 **状态机新增 `canceled` 过渡**，且渲染链路需先接上积分（Roadmap Phase 2 列的「积分预扣/撤销」尚未实现）。Cloudflare Queue 无法杀掉已入队消息，取消需由 app 写标志、consumer 在阶段之间检查。
 
@@ -214,14 +206,12 @@ layout:   { regions: 'left|right' }
 
 这是「编译器完全接管布局」最大的收益。
 
-> **这项收益尚未兑现。** 它的前提是编译器独占 Python 产出，而当前模型仍是主
-> 产出方，所以上述每一条 prompt 防御都仍然有效且必要。要拿到这份收益，需要把
-> `composeAnimationCode` 的主备关系调过来——让 `compileAnimationSpec` 成为主
-> 路径，模型写码退为可选增强或直接删除。
+> 已兑现于初次出片路径。模型代码修复仍保留必要的输入校验，但不会影响
+> 没有修复证据的首次编译。
 
 `renderer/validate_scene.py` 的 AST 门建议保留作纵深防御，但它不再是主要正确性来源。
 
-> 当前它仍是主要正确性来源之一，理由同上。
+> 仍保留。它是 Sandbox 内的纵深防御，以及模型定向修复路径的最后边界。
 
 ### 6.3 旧数据
 
@@ -249,10 +239,11 @@ Roadmap P1 的「SymPy 数学验证」不在本期范围。
 
 「每次都能生成」由零成本层兑现：过程产物随阶段流式可见（9.3），AI 视频是异步升级。预览 ≠ 成片，界面如实区分。
 
-### 9.2 全挂兜底 = 排队自动重试 + 第三模型路（不选模板兜底）
+### 9.2 全挂兜底 = 排队自动重试 + 第三模型路 + scene-only 恢复
 
 - Workflow 重试从 2 次 × 5 秒改为退避阶梯 5s/30s/1m/2m/4m/5m/5m（8 次，约 17 分钟），每次失败持久化 `parts.queue`（attempt/nextRetryAt/since/reason），UI 显示排队横幅 + 倒计时；阶梯耗尽才落可见失败。排队期间可取消。
-- **失败触发的 deterministic-scene 替换退役**（planning.ts 原 703 块删除）。唯一保留的确定性场景是提交前预匹配的 verified profile（quadratic/cycloid/heart），且受 schema 6 dossier 门约束。
+- 初次代码生成不再等待模型写 Python，直接由 `compileAnimationSpec` 编译。
+- scene 阶段在前五个 artifacts 均已通过校验时允许 deterministic scene-only 恢复：已知 profile 使用验证过的几何；未知主题使用数学 dossier 自有公式与分镜顺序生成保守场景，并记录 `diagnostic.kind=deterministic_scene_fallback`。缺少前置 artifacts 时仍排队，不做无关模板替换。
 - 第三模型路：`animation_backup_base_url/api_key/model` 三项齐备时启用，OpenAI 兼容 `/chat/completions`（复用 `OpenAICompatibleChatProvider`，name='backup'），排在 KIE、Kuaipao 之后，不进公开模型目录。
 
 ### 9.3 等待体验 = 三项全选
