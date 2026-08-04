@@ -7,10 +7,14 @@ import { CreatorWorkspace } from '@/blocks/creator-workspace';
 
 function CreatorPage() {
   const { locale } = Route.useLoaderData();
-  const { animationId } = Route.useSearch();
+  const { animationId, prompt } = Route.useSearch();
   return (
     <div className="bg-background text-foreground min-h-screen">
-      <CreatorWorkspace locale={locale} initialAnimationId={animationId} />
+      <CreatorWorkspace
+        locale={locale}
+        initialAnimationId={animationId}
+        initialPrompt={prompt}
+      />
     </div>
   );
 }
@@ -20,6 +24,12 @@ export const Route = createFileRoute('/creator')({
     animationId:
       typeof search.animationId === 'string' && search.animationId.length <= 80
         ? search.animationId
+        : undefined,
+    prompt:
+      typeof search.prompt === 'string' &&
+      search.prompt.length > 0 &&
+      search.prompt.length <= 600
+        ? search.prompt
         : undefined,
   }),
   loader: () => ({ locale: getLocale() }),

@@ -2755,6 +2755,11 @@ export async function updateRender(params: {
     throw new Error('Animation is not awaiting a render update');
   }
   if (params.status === 'completed') {
+    if (!params.videoUrl && !parts.videoUrl) {
+      throw new Error(
+        'Completed render callback is missing the video artifact'
+      );
+    }
     const finalApproval = parts.qualityControl?.attempts.some(
       (entry) => entry.kind === 'final_review' && entry.action === 'approve'
     );

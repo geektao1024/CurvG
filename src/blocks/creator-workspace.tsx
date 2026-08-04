@@ -8,9 +8,11 @@ import {
 export function CreatorWorkspace({
   locale,
   initialAnimationId,
+  initialPrompt,
 }: {
   locale: string;
   initialAnimationId?: string;
+  initialPrompt?: string;
 }) {
   const statuses: Record<AnimationStatus, string> = {
     draft: m['creator.status.draft'](),
@@ -316,6 +318,7 @@ export function CreatorWorkspace({
       copy={copy}
       locale={locale}
       initialAnimationId={initialAnimationId}
+      initialPrompt={initialPrompt}
     />
   );
 }

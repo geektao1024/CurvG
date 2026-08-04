@@ -1,7 +1,9 @@
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 
+import type { ChatAttemptReport } from '@/core/ai/chat';
 import { db } from '@/core/db';
 import {
+  animationPlanningAttempt,
   animationPlanningStage,
   chat,
   type AnimationPlanningStage,
@@ -11,10 +13,45 @@ import type {
   AnimationPlanningStageSummary,
 } from '@/lib/animation';
 import { ANIMATION_PLANNING_STAGES } from '@/lib/animation-pipeline';
-import { md5 } from '@/lib/hash';
+import { getUuid, md5 } from '@/lib/hash';
 
 function rowId(runId: string, stage: AnimationPlanningStageName) {
   return `APS_${md5(`${runId}:${stage}`)}`;
+}
+
+/**
+ * Persist one provider attempt (path D observability). Never throws: losing a
+ * telemetry row must not affect the planning attempt it describes.
+ */
+export async function recordPlanningAttempt(params: {
+  userId: string;
+  chatId: string;
+  runId: string;
+  stage: AnimationPlanningStageName;
+  repairAttempt: number;
+  report: ChatAttemptReport;
+}): Promise<void> {
+  try {
+    await db()
+      .insert(animationPlanningAttempt)
+      .values({
+        id: `APA_${getUuid()}`,
+        chatId: params.chatId,
+        userId: params.userId,
+        runId: params.runId,
+        stage: params.stage,
+        repairAttempt: params.repairAttempt,
+        attemptNo: params.report.attemptNo,
+        provider: params.report.provider,
+        model: params.report.model,
+        status: params.report.ok ? 'ok' : 'failed',
+        errorCode: params.report.errorCode || null,
+        errorMessage: params.report.errorMessage?.slice(0, 500) || null,
+        latencyMs: Math.max(0, Math.round(params.report.latencyMs)),
+      });
+  } catch (error) {
+    console.warn('animation attempt telemetry insert failed', error);
+  }
 }
 
 function isoDate(value: Date | string | number | null): string | undefined {

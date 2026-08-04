@@ -4,6 +4,7 @@ import { SiteHeader } from '@/components/site-header';
 export function Header() {
   const navLinks = [
     { href: '/#gallery', label: m['landing.nav.gallery']() },
+    { href: '/curves', label: m['landing.nav.curves']() },
     { href: '/pricing', label: m['landing.nav.pricing']() },
     { href: '/blog', label: m['landing.nav.blog']() },
     { href: '/creator', label: m['landing.nav.playground']() },

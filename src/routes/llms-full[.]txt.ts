@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { envConfigs } from '@/config';
 import { baseLocale } from '@/paraglide/runtime.js';
+import { CURVES } from '@/content/curves';
 import { getLocalPosts, mergePosts } from '@/content/posts';
 
 const STATIC_PAGES: { path: string; title: string; description: string }[] = [
@@ -22,6 +23,30 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
     title: 'Pricing',
     description:
       'Free, Starter ($9.90), and Pro ($18.90) plans with curated AI models and cloud render credits.',
+  },
+  {
+    path: '/math-animation-tool',
+    title: 'Online Math Animation Tool',
+    description:
+      'How the browser-based workflow covers functions, geometry, calculus, and linear algebra animations.',
+  },
+  {
+    path: '/free-math-video-creator',
+    title: 'Free Math Video Creator',
+    description:
+      'What the free tier includes: starter credits, free scene planning, Manim code export, and refund rules.',
+  },
+  {
+    path: '/manim-alternative',
+    title: 'Manim Alternative Without Coding',
+    description:
+      'An honest comparison of CurvG and raw Manim CE, including when raw Manim is the better choice.',
+  },
+  {
+    path: '/curves',
+    title: 'Math Curve Encyclopedia',
+    description:
+      '30 classic curves with interactive graphs, LaTeX equations, key properties, and one-click Manim animation briefs.',
   },
   {
     path: '/privacy-policy',
@@ -65,6 +90,13 @@ export const Route = createFileRoute('/llms-full.txt')({
           '',
           ...STATIC_PAGES.map(
             (p) => `- [${p.title}](${app_url}${p.path}): ${p.description}`
+          ),
+          '',
+          '## Curve Encyclopedia',
+          '',
+          ...CURVES.map(
+            (curve) =>
+              `- [${curve.name.en}](${app_url}/curves/${curve.slug}): ${curve.short.en}`
           ),
         ];
 

@@ -7,24 +7,27 @@ export function Footer() {
       title: m['landing.footer.product'](),
       links: [
         { label: m['landing.footer.early_access'](), href: '/creator' },
+        { label: m['landing.footer.tool'](), href: '/math-animation-tool' },
         {
-          label: m['landing.footer.prompt_examples'](),
-          href: '/#prompt-examples',
+          label: m['landing.footer.free_creator'](),
+          href: '/free-math-video-creator',
         },
-        { label: m['landing.footer.workflow'](), href: '/#workflow' },
         { label: m['landing.footer.pricing'](), href: '/pricing' },
       ],
     },
     {
       title: m['landing.footer.resources'](),
       links: [
-        { label: m['landing.footer.gallery'](), href: '/#gallery' },
+        { label: m['landing.footer.curves'](), href: '/curves' },
+        {
+          label: m['landing.footer.manim_alternative'](),
+          href: '/manim-alternative',
+        },
         {
           label: m['landing.footer.workflow_guide'](),
           href: '/blog/ai-manim-animation-workflow',
         },
         { label: m['landing.footer.blog'](), href: '/blog' },
-        { label: m['landing.footer.faq'](), href: '/#faq' },
       ],
     },
     {

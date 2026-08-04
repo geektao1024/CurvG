@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { localizedUrl } from '@/lib/seo';
 import { baseLocale, locales } from '@/paraglide/runtime.js';
+import { CURVES } from '@/content/curves';
 import {
   getLocalPostLocales,
   getLocalPosts,
@@ -31,6 +32,38 @@ const STATIC_ENTRIES: Entry[] = [
     changeFrequency: 'weekly',
     priority: 0.9,
   },
+  {
+    path: '/math-animation-tool',
+    availableLocales: ALL_LOCALES,
+    changeFrequency: 'monthly',
+    priority: 0.8,
+  },
+  {
+    path: '/free-math-video-creator',
+    availableLocales: ALL_LOCALES,
+    changeFrequency: 'monthly',
+    priority: 0.8,
+  },
+  {
+    path: '/manim-alternative',
+    availableLocales: ALL_LOCALES,
+    changeFrequency: 'monthly',
+    priority: 0.7,
+  },
+  {
+    path: '/curves',
+    availableLocales: ALL_LOCALES,
+    changeFrequency: 'weekly',
+    priority: 0.8,
+  },
+  ...CURVES.map(
+    (curve): Entry => ({
+      path: `/curves/${curve.slug}`,
+      availableLocales: ALL_LOCALES,
+      changeFrequency: 'monthly',
+      priority: 0.6,
+    })
+  ),
   {
     path: '/pricing',
     availableLocales: ALL_LOCALES,

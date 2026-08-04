@@ -501,6 +501,44 @@ export const animationPlanningStage = table(
   ]
 );
 
+// Per-attempt provider telemetry for animation planning. The stage table
+// records only the target that finally delivered; this table records every
+// failover attempt (including recovered failures), so real provider health is
+// measurable. Telemetry rows deliberately carry no foreign keys: an insert
+// must never fail or cascade with the entity it observes.
+export const animationPlanningAttempt = table(
+  'animation_planning_attempt',
+  {
+    id: varchar191('id').primaryKey(),
+    chatId: varchar191('chat_id').notNull(),
+    userId: varchar191('user_id').notNull(),
+    runId: varchar191('run_id').notNull(),
+    stage: varchar('stage', { length: 32 }).notNull(),
+    repairAttempt: int('repair_attempt').notNull().default(0),
+    attemptNo: int('attempt_no').notNull(),
+    provider: varchar('provider', { length: 32 }).notNull(),
+    model: varchar('model', { length: 191 }).notNull(),
+    status: varchar('status', { length: 16 }).notNull(),
+    errorCode: varchar('error_code', { length: 64 }),
+    errorMessage: text('error_message'),
+    latencyMs: int('latency_ms').notNull().default(0),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('idx_animation_attempt_run').on(table.runId, table.stage),
+    index('idx_animation_attempt_provider').on(
+      table.provider,
+      table.model,
+      table.createdAt
+    ),
+  ]
+);
+
+export type AnimationPlanningAttempt =
+  typeof animationPlanningAttempt.$inferSelect;
+export type NewAnimationPlanningAttempt =
+  typeof animationPlanningAttempt.$inferInsert;
+
 // Parameterized, human-verified scenes. Kept separate from AI animation chats.
 export const animationTemplate = table(
   'animation_template',

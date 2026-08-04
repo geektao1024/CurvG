@@ -49,6 +49,12 @@ Delivery is honest by construction (decided 2026-08-02, shipped 2026-08-03):
 - Credits settle only on success: planning never charges, and the render
   reservation is revoked on failure, cancellation, and callback errors. A
   short balance is flagged before planning starts, not after the wait.
+- Every provider attempt — including failures a later target recovers from —
+  is persisted to `animation_planning_attempt` (2026-08-04), so provider
+  health is measured from attempts, not delivery counts. Format repair gets
+  three bounded rounds on the scene stage (two elsewhere), each with its own
+  provider time window, and a completed render must carry a plausible MP4
+  artifact.
 - The wait itself shows the six-stage pipeline with per-stage artifacts
   (knowledge spine, curriculum beats, formulas, shot list), a cancel button,
   and a completion toast.

@@ -9,10 +9,15 @@
 online free）无任何专业玩家的专门页面经营（animg.app 首页自身定位是 "Manim AI Generator"，
 排名属被动获得）。因此：
 
-| 页面       | 主词簇                                                     | 说明                                      |
-| ---------- | ---------------------------------------------------------- | ----------------------------------------- |
-| `/`        | math animation maker、ai math animations、online free 变体 | 首页承接外圈大词；Manim 降级到副标题      |
-| `/creator` | manim ai generator、Manim AI 生成器                        | 功能页承接 Manim 词簇，与首页不再互相蚕食 |
+| 页面                         | 主词簇                                                     | 说明                                      |
+| ---------------------------- | ---------------------------------------------------------- | ----------------------------------------- |
+| `/`                          | math animation maker、ai math animations、online free 变体 | 首页承接外圈大词；Manim 降级到副标题      |
+| `/creator`                   | manim ai generator、Manim AI 生成器                        | 功能页承接 Manim 词簇，与首页不再互相蚕食 |
+| `/math-animation-tool`       | online math animation tool                                 | 功能展示内页（2026-08-04 上线）           |
+| `/free-math-video-creator`   | create animated math videos free                           | 免费入口内页（2026-08-04 上线）           |
+| `/manim-alternative`         | manim alternative no coding                                | 诚实对比页（2026-08-04 上线）             |
+| `/blog/best-math-video-apps` | best app for making math videos                            | Listicle 博文，自我收录含利益声明         |
+| `/curves` + 30 详情页        | {curve name} equation / graph / animation 长尾             | 曲线百科：交互预览 + LaTeX + 预填 Creator |
 
 生产环境已上线云端渲染与免费注册额度（2026-08 确认），"free"、"render online" 可以如实使用。
 文案角度红线：不使用内部运维口吻（"已配置""生产环境""故障切换""早期访问"等）；

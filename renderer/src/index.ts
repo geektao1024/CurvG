@@ -290,13 +290,14 @@ async function uploadBinaryFile(
   key: string,
   path: string,
   options: R2MultipartOptions
-) {
+): Promise<number> {
   const file = await sandbox.readFile(path, { encoding: 'none' });
   const reader = file.content.getReader();
   const upload = await bucket.createMultipartUpload(key, options);
   const parts: R2UploadedPart[] = [];
   let chunks: Uint8Array[] = [];
   let bufferedSize = 0;
+  let totalBytes = 0;
   let released = false;
 
   try {
@@ -309,6 +310,7 @@ async function uploadBinaryFile(
       }
       chunks.push(result.value);
       bufferedSize += result.value.byteLength;
+      totalBytes += result.value.byteLength;
       if (bufferedSize >= multipartPartSize) {
         parts.push(
           await upload.uploadPart(
@@ -330,6 +332,7 @@ async function uploadBinaryFile(
     }
     if (parts.length === 0) throw new Error('Rendered artifact is empty');
     await upload.complete(parts);
+    return totalBytes;
   } catch (error) {
     await upload.abort().catch(() => undefined);
     throw error;
@@ -342,6 +345,9 @@ async function uploadBinaryFile(
 }
 
 const MAX_QUALITY_REPAIRS = 2;
+// Floor for a plausible formal MP4. Deliberately far below any legitimate
+// 720p30 output so it only catches stub/truncated files, never short videos.
+const MIN_VIDEO_BYTES = 32_768;
 
 function attemptProgress(attempt: number, offset: number) {
   return Math.min(92, 10 + attempt * 28 + offset);
@@ -743,7 +749,7 @@ async function processJob(job: RenderJob, env: Env) {
       });
 
       await notifyStage(job, env, 'uploading', 96);
-      await uploadBinaryFile(
+      const videoBytes = await uploadBinaryFile(
         sandbox,
         env.ARTIFACTS,
         videoKey,
@@ -757,6 +763,14 @@ async function processJob(job: RenderJob, env: Env) {
           },
         }
       );
+      // A structurally broken render can still exit 0 with a stub file. Any
+      // real 720p30 deliverable is far above this floor; below it the MP4 is
+      // a shell and must not be reported as completed.
+      if (videoBytes < MIN_VIDEO_BYTES) {
+        throw new Error(
+          `Formal MP4 is implausibly small (${videoBytes} bytes)`
+        );
+      }
       await uploadBinaryFile(
         sandbox,
         env.ARTIFACTS,

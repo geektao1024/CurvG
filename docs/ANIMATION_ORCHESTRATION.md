@@ -47,8 +47,16 @@ KIE attempt that fails and then succeeds on Kuaipao is stored as
 own. Provider counts in `animation_planning_stage` therefore measure delivery,
 not attempt volume, and cannot be read as a KIE health metric.
 
-Measure KIE health from Worker logs or by adding per-attempt telemetry. The
-intended and the effective primary can diverge silently under this schema.
+Since 2026-08-04, `animation_planning_attempt` records every failover attempt
+— including failures a later target recovers from. `ProviderFailoverChatProvider`
+reports each attempt through `ChatCompletionInput.onAttempt` (fire-and-forget;
+telemetry can never delay or fail a completion), and the planning layer
+persists it with the stage and repair round. `scripts/stage-health.sql`
+aggregates provider success rate, per-stage failure codes, and how often the
+primary fails and a fallback recovers. Known blind spot: a target skipped by
+the circuit breaker produces no row, so `attempt_no` compresses during
+breaker-open windows. Single-target deployments are wrapped in the failover
+provider precisely so they still report attempts.
 
 ## Durable execution
 
@@ -227,7 +235,10 @@ highest-ranked preview when later repairs regress.
 
 After approval, the selected source is rendered again with `-qm`. Thumbnail,
 contact sheet, and QA JSON are regenerated from that formal MP4, then the
-formal video and evidence are uploaded to R2. Preview media is never delivered
+formal video and evidence are uploaded to R2. A formal MP4 below a 32 KiB
+floor is rejected as a stub before the renderer may report `completed`, and
+the Worker-side `updateRender` additionally refuses a completed callback that
+carries no video artifact. Preview media is never delivered
 as the final artifact.
 
 ## Configuration

@@ -1,6 +1,6 @@
 # 创作管线优化方案 — 上游模型合规性与出片率(2026-08-03)
 
-> **实施状态(2026-08-03)**:路径 A 已落地并通过全量测试(182 项),主模型定为 **`kie/gpt-5-6-sol`**(用户决策,取代原 luna 方案,探活取消);推理 `xhigh` + KIE 侧被拒自动钳到 `high`;预算矩阵按下文"建议值"生效(单目标 150s / 单阶段 300s / 总预算 1200s)。待部署线上检验。路径 B/C/D 未动工。
+> **实施状态(2026-08-04 更新)**:路径 A 已落地并通过全量测试(182 项),主模型定为 **`kie/gpt-5-6-sol`**(用户决策,取代原 luna 方案,探活取消);推理 `xhigh` + KIE 侧被拒自动钳到 `high`;预算矩阵按下文"建议值"生效(单目标 150s / 单阶段 300s / 总预算 1200s)。**D 的观测项与 B5 的修复轮次已于 2026-08-04 落地**(见文末"2026-08-04 增量"),B 其余条目与 C 未动工。
 
 结论先行:生产数据证实两类根因——**(1) 名义主力 `kie/gemini-3.6-flash` 几乎不产出**,绝大多数阶段产物由二级路由 `kuaipao/gpt-5.6-sol` 兜底交付(stage 行只记录最终成功方,KIE 的失败不留行,故 kuaipao 行占主导 = KIE 持续倒向 failover);**(2) scene 阶段是失败重灾区**,一半是可用性(超时/502/524/饱和/空响应),一半是合规(缺 kind 必填字段)。另有 Workflow 规划时间预算耗尽(`workflow_internal`)的硬伤,与"推理更强 → 响应更慢"的诉求直接冲突。
 
@@ -103,3 +103,13 @@ KIE_API_KEY=<你的key> node scripts/probe-kie-luna.mjs
 ```
 
 输出 (model × effort) 可用矩阵与延迟;`max`/`xhigh` 4xx 而 `high` 可用 ⇒ KieChatProvider 内 clamp 到 high。
+
+## 2026-08-04 增量(第一性原理审查后落地)
+
+已实施并通过 182 项测试与对抗式审查:
+
+1. **D 观测项**:新表 `animation_planning_attempt`(迁移 `drizzle/0004_giant_colleen_wing.sql`,纯新增)。`ChatCompletionInput.onAttempt` 回调由 `ProviderFailoverChatProvider` 在每次目标尝试后 fire-and-forget 上报(含被后备救回的失败),`recordPlanningAttempt`(`stages.ts`)落库,never-throw。聚合脚本 `scripts/stage-health.sql`(provider 成功率 / 阶段失败码 / 主力失败-后备救回趋势)。单 target 部署也强制走 failover 包装,避免遥测盲区。已知盲区:circuit-breaker 直接跳过的目标不产生行。
+2. **B5 修复轮次**:`maxStageFormatRepairs`——scene=3,其余阶段=2(原全局 1)。同时修复对抗审查发现的高危缺陷:`deadlineAt` 原在修复循环外冻结,慢首轮会饿死后续修复轮;现每轮重算(`roundDeadlineAt`),仍受 plan 总 deadline 约束。
+3. **渲染产物 sanity check**:renderer 上传后校验正式 MP4 ≥ 32KB(`MIN_VIDEO_BYTES`),不足即抛错、不得报 completed;`updateRender` 的 completed 分支要求 videoUrl 存在(路由层已有同款防线,双保险)。
+
+仍未动工:B1-B4/B6(LaTeX 派生、时间戳吸附、id 归一、targetRef 推断、增量定点修复合同)、路径 C(json_schema 结构化输出)、D 模板库扩展。另采纳的高优先待办:**真实提示词回归测试集**(代数/几何/微积分/物理/3D/中文公式/长视频),用于每次模型/预算/合同改动后的离线验收。

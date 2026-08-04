@@ -378,7 +378,9 @@ function resilientProvider(
       reasoningEffort: spec.reasoningEffort,
     };
   });
-  if (targets.length === 1) return targets[0].provider;
+  // A single target is still wrapped: the failover provider is also the only
+  // component that reports per-attempt telemetry (input.onAttempt), and a
+  // single-provider deployment must not become an observability blind spot.
   return new ProviderFailoverChatProvider(
     targets,
     targets.length * ANIMATION_PROVIDER_TIMEOUT_MS,

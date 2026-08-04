@@ -24,6 +24,30 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
       'Free, Starter ($9.90), and Pro ($18.90) plans with curated AI models and cloud render credits.',
   },
   {
+    path: '/math-animation-tool',
+    title: 'Online Math Animation Tool',
+    description:
+      'How the browser-based workflow covers functions, geometry, calculus, and linear algebra animations.',
+  },
+  {
+    path: '/free-math-video-creator',
+    title: 'Free Math Video Creator',
+    description:
+      'What the free tier includes: starter credits, free scene planning, Manim code export, and refund rules.',
+  },
+  {
+    path: '/manim-alternative',
+    title: 'Manim Alternative Without Coding',
+    description:
+      'An honest comparison of CurvG and raw Manim CE, including when raw Manim is the better choice.',
+  },
+  {
+    path: '/curves',
+    title: 'Math Curve Encyclopedia',
+    description:
+      '30 classic curves with interactive graphs, LaTeX equations, key properties, and one-click Manim animation briefs.',
+  },
+  {
     path: '/privacy-policy',
     title: 'Privacy Policy',
     description: 'How CurvG handles account, project, and service data.',

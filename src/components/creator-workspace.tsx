@@ -4182,10 +4182,12 @@ export function CreatorWorkspace({
   copy,
   locale,
   initialAnimationId,
+  initialPrompt,
 }: {
   copy: CreatorWorkspaceCopy;
   locale: string;
   initialAnimationId?: string;
+  initialPrompt?: string;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -4194,7 +4196,7 @@ export function CreatorWorkspace({
   const [selectedId, setSelectedId] = useState(initialAnimationId);
   const [creationMode, setCreationMode] =
     useState<AnimationCreationMode>('description');
-  const [prompt, setPrompt] = useState('');
+  const [prompt, setPrompt] = useState(initialPrompt ?? '');
   const [formula, setFormula] = useState('sin(x)');
   const [formulaIntent, setFormulaIntent] = useState('');
   const [mathObjectType, setMathObjectType] =

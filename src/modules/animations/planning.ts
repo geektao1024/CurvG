@@ -42,11 +42,17 @@ import {
   failPlanningStage,
   findReusablePlanningStage,
   planningStageSummary,
+  recordPlanningAttempt,
   startPlanningStage,
 } from './stages';
 
 const PIPELINE_VERSION = 1;
-const MAX_STAGE_FORMAT_REPAIRS = 1;
+// Format-repair budget per stage (2026-08 path B5): scene carries the most
+// required structure and is the schema_validation hotspot, so it gets more
+// bounded retries. The widened 1200s plan budget absorbs the extra rounds.
+function maxStageFormatRepairs(stage: AnimationPlanningStageName): number {
+  return stage === 'scene' ? 3 : 2;
+}
 const MAX_INTEGRATION_REPAIRS = 2;
 const MAX_MATH_REVISIONS = 2;
 // Reserve half the widened stage window for KIE GPT-5.6 at maximum reasoning
@@ -596,6 +602,8 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
     };
   }
 
+  const stageRepairLimit = maxStageFormatRepairs(definition.name);
+  let telemetryRepairAttempt = 0;
   const input: ChatCompletionInput = {
     model: planning.model,
     messages: [
@@ -613,18 +621,31 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
         ? getAnimationCompositionReasoningEffort(planning.model)
         : getAnimationReasoningEffort(planning.model),
     signal: planning.signal,
-    // Keep every provider call below the Worker's five-minute execution cap.
-    // Durable retries resume from completed checkpoints instead of letting one
-    // slow upstream request terminate the whole Workflow invocation.
-    // All six stages and their audits share the plan's absolute deadline.
-    // A stage can use at most its own two-provider window, but it can never
-    // extend the complete strict-planning budget. Once exhausted, the caller
-    // immediately switches to deterministic delivery.
-    deadlineAt: Math.min(
+    // Path D observability: persist every failover attempt, including ones a
+    // later target recovers from, keyed to the repair round in flight. The
+    // report is built synchronously inside the round, so the closure variable
+    // is always the round that made the call.
+    onAttempt: (report) =>
+      recordPlanningAttempt({
+        userId: planning.context.userId,
+        chatId: planning.context.chatId,
+        runId: planning.context.runId,
+        stage: definition.name,
+        repairAttempt: telemetryRepairAttempt,
+        report,
+      }),
+  };
+  // Keep every provider call below the Worker's five-minute execution cap.
+  // Durable retries resume from completed checkpoints instead of letting one
+  // slow upstream request terminate the whole Workflow invocation.
+  // All six stages and their audits share the plan's absolute deadline.
+  // Recomputed per repair round: a round that follows a slow failed round
+  // still gets its own provider window, bounded only by the plan deadline.
+  const roundDeadlineAt = () =>
+    Math.min(
       Date.now() + STAGE_PROVIDER_TIMEOUT_MS,
       planning.deadlineAt ?? Number.POSITIVE_INFINITY
-    ),
-  };
+    );
   let latestRow = await startPlanningStage({
     userId: planning.context.userId,
     chatId: planning.context.chatId,
@@ -641,9 +662,10 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
   try {
     for (
       let repairAttempt = 0;
-      repairAttempt <= MAX_STAGE_FORMAT_REPAIRS;
+      repairAttempt <= stageRepairLimit;
       repairAttempt += 1
     ) {
+      telemetryRepairAttempt = repairAttempt;
       if (repairAttempt > 0) {
         latestRow = await startPlanningStage({
           userId: planning.context.userId,
@@ -659,9 +681,10 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
       }
       result = await planning.provider.complete(
         repairAttempt === 0
-          ? input
+          ? { ...input, deadlineAt: roundDeadlineAt() }
           : {
               ...input,
+              deadlineAt: roundDeadlineAt(),
               temperature: 0,
               messages: [
                 ...input.messages,

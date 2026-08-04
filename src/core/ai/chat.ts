@@ -13,6 +13,23 @@ export interface ChatCompletionInput {
   /** Shared absolute deadline used by retry/failover chains. */
   deadlineAt?: number;
   signal?: AbortSignal;
+  /**
+   * Per-target attempt telemetry. ProviderFailoverChatProvider reports every
+   * attempt — including failures that a later target recovers from — so
+   * callers can persist true provider health instead of delivery-only counts.
+   * Observer failures are swallowed; telemetry must never fail a completion.
+   */
+  onAttempt?: (attempt: ChatAttemptReport) => void | Promise<void>;
+}
+
+export interface ChatAttemptReport {
+  attemptNo: number;
+  provider: string;
+  model: string;
+  ok: boolean;
+  errorCode?: string;
+  errorMessage?: string;
+  latencyMs: number;
 }
 
 /** Safe, bounded metadata for diagnosing provider/protocol failures. */
@@ -913,10 +930,41 @@ export class ProviderFailoverChatProvider implements ChatProvider {
     ].includes(error.code);
   }
 
+  private reportAttempt(
+    input: ChatCompletionInput,
+    attemptNo: number,
+    target: ChatProviderTarget,
+    startedAt: number,
+    ok: boolean,
+    error?: ChatProviderError
+  ): void {
+    if (!input.onAttempt) return;
+    // Fire-and-forget: telemetry must never delay a completion or eat the
+    // remaining deadline budget before the next failover target is tried.
+    // The report object is built synchronously, so attempt attribution is
+    // exact even though the persistence write races the return.
+    try {
+      void Promise.resolve(
+        input.onAttempt({
+          attemptNo,
+          provider: target.provider.name,
+          model: target.model,
+          ok,
+          errorCode: error?.code,
+          errorMessage: error?.message?.slice(0, 500),
+          latencyMs: this.now() - startedAt,
+        })
+      ).catch(() => undefined);
+    } catch {
+      // Telemetry must never fail or delay classification of the attempt.
+    }
+  }
+
   async complete(input: ChatCompletionInput): Promise<ChatCompletionResult> {
     const deadlineAt = input.deadlineAt ?? this.now() + this.overallTimeoutMs;
     let lastError: ChatProviderError | undefined;
     let attempted = false;
+    let attemptNo = 0;
     for (let index = 0; index < this.targets.length; index += 1) {
       const target = this.targets[index];
       const next = this.targets[index + 1];
@@ -926,6 +974,8 @@ export class ProviderFailoverChatProvider implements ChatProvider {
         continue;
       }
       attempted = true;
+      attemptNo += 1;
+      const attemptStartedAt = this.now();
       try {
         const targetDeadlineAt = Math.min(
           deadlineAt,
@@ -936,12 +986,21 @@ export class ProviderFailoverChatProvider implements ChatProvider {
         );
         this.resultTargets.set(result, target);
         this.circuitBreaker.recordSuccess(target.provider.name, target.model);
+        this.reportAttempt(input, attemptNo, target, attemptStartedAt, true);
         return result;
       } catch (error) {
         lastError = normalizedError(error, target.provider.name, target.model);
         this.circuitBreaker.recordFailure(
           target.provider.name,
           target.model,
+          lastError
+        );
+        this.reportAttempt(
+          input,
+          attemptNo,
+          target,
+          attemptStartedAt,
+          false,
           lastError
         );
         if (!this.mayAdvance(lastError, target, next, input.signal)) {
@@ -967,6 +1026,7 @@ export class ProviderFailoverChatProvider implements ChatProvider {
     const deadlineAt = input.deadlineAt ?? this.now() + this.overallTimeoutMs;
     let lastError: ChatProviderError | undefined;
     let attempted = false;
+    let attemptNo = 0;
     for (let index = 0; index < this.targets.length; index += 1) {
       const target = this.targets[index];
       const next = this.targets[index + 1];
@@ -976,6 +1036,8 @@ export class ProviderFailoverChatProvider implements ChatProvider {
         continue;
       }
       attempted = true;
+      attemptNo += 1;
+      const attemptStartedAt = this.now();
       try {
         const targetDeadlineAt = Math.min(
           deadlineAt,
@@ -992,12 +1054,21 @@ export class ProviderFailoverChatProvider implements ChatProvider {
         if (!target.provider.stream) onDelta(result.content);
         this.resultTargets.set(result, target);
         this.circuitBreaker.recordSuccess(target.provider.name, target.model);
+        this.reportAttempt(input, attemptNo, target, attemptStartedAt, true);
         return result;
       } catch (error) {
         lastError = normalizedError(error, target.provider.name, target.model);
         this.circuitBreaker.recordFailure(
           target.provider.name,
           target.model,
+          lastError
+        );
+        this.reportAttempt(
+          input,
+          attemptNo,
+          target,
+          attemptStartedAt,
+          false,
           lastError
         );
         if (!this.mayAdvance(lastError, target, next, input.signal)) {
