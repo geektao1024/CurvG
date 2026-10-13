@@ -2,6 +2,18 @@
 
 This is a **headless SaaS engine** — pre-wired business logic (payments, credits, subscriptions, auth, RBAC) with minimal UI. Users build their product pages on top of it.
 
+## CurvG product docs
+
+This repo is CurvG, not a blank template. Before changing public IA, the curve encyclopedia, or the gallery, read:
+
+- `docs/LIBRARY_PLAN.md` — editorial scene library `/library`. P0 skeleton is implemented (graph, hub/topic routes, curve object cards). Scene pages 404 until P1. Source of truth for the math content graph and the boundary with `/curves` and `/gallery`.
+- `docs/SITE_ARCHITECTURE_PLAN.md` — strategy. Its "library = UGC pile / two-layer IA" section is superseded by `LIBRARY_PLAN.md`.
+- `docs/CURVE_ENCYCLOPEDIA.md` — `/curves` contract. Do not fold it into `/library`.
+- `docs/LABS_PLAN.md` — `/labs` interactive labs: subject → suite → chapter IA, URL and redirect rules, per-chapter SEO (title, H1, structured data, share images), reserved slots (video, physics).
+- `docs/PROJECT_BRIEF.md` — project overview: positioning, user paths, status, boundaries, and the change log. Add an entry there when a change affects positioning, page structure, or maintainability.
+- `docs/DESIGN_SYSTEM.md` — visual rules. The "paper & amber" section at the top (2026-10-12) overrides older colour/type/logo notes.
+- `README.md` — what is deployed versus still missing, site map, generated assets.
+
 ## Tech Stack
 
 - **Framework:** TanStack Start (RC, Vite 8 + nitro, React 19, TypeScript strict). File-based routing under `src/routes/`. No React Server Components, no `"use client"` directives — all components are regular React; loaders and server functions handle server-side work.
@@ -120,7 +132,7 @@ Key entry files:
 - `vite.config.ts` — plugins: mdx → tailwindcss → **paraglideVitePlugin** (outdir `./src/paraglide`, `strategy: ['url','cookie','baseLocale']`, `urlPatterns` for the `/zh` prefix) → tanstackStart → viteReact → nitro. Calls `loadEnvFiles()` so server-side `process.env` is populated from `.env.{NODE_ENV}`.
 - `src/server.ts` — Nitro fetch entry; wraps the request in `paraglideMiddleware` so `getLocale()` resolves server-side.
 - `src/router.tsx` — exports `getRouter`; its `rewrite` runs Paraglide `deLocalizeUrl`/`localizeUrl` so routes stay locale-free while URLs gain the `/zh` prefix.
-- `src/routes/__root.tsx` — HTML shell (`QueryClientProvider` + `ReactQueryDevtools` in dev, fonts via `@fontsource` + a Google Fonts `<link>` for Noto Serif SC, `ThemeProvider`/`Toaster`/`GoogleOneTap`/`Analytics`, hreflang `<link>`s, `notFoundComponent`).
+- `src/routes/__root.tsx` — HTML shell (`QueryClientProvider` + `ReactQueryDevtools` in dev, self-hosted fonts via `@fontsource` (Inter, Noto Serif SC, Instrument Serif, JetBrains Mono), `ThemeProvider`/`Toaster`/`GoogleOneTap`/`Analytics`, hreflang `<link>`s, `notFoundComponent`).
 - `src/routeTree.gen.ts` — generated; never edit by hand.
 
 ## Module System
@@ -375,6 +387,10 @@ const rows = await db()
 - **No `asChild` prop.** Use `className={cn(buttonVariants())}` on Link instead.
 - Add components: `npx shadcn add button card dialog` (`components.json` has `rsc: false`)
 - Theme colors in `src/styles/globals.css` as CSS variables (oklch)
+
+### Public page scaffold
+
+Every public page except the lab workspace renders inside `SitePage` from `@/blocks/site-page` (shell + `Header` + `<main>` + `Footer`). Do not repeat the scaffold in a route. 404 and error screens use `StatusPage`; FAQs use `FaqList` from `@/components/faq-list`. Raster share images are generated (`pnpm og:labs`, `pnpm og:brand`), not hand-made.
 
 ### Blocks vs Components
 

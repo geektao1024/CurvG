@@ -351,6 +351,7 @@ export function compileAnimationSpec(input: AnimationSpec): string {
     'import numpy as np',
     '',
     ...frameConfig,
+    'config.frame_rate = 30',
     '',
     `class CurvGScene(${movingCamera ? 'MovingCameraScene' : 'Scene'}):`,
     '    def construct(self):',

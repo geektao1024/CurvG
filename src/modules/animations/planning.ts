@@ -25,14 +25,19 @@ import {
 } from '@/lib/animation-math';
 import {
   ANIMATION_PLANNING_STAGES,
+  applySceneTargetedRepair,
   buildDeterministicAnimationPlanningProfile,
   buildDeterministicSceneArtifact,
   composeAnimationSpecFromArtifacts,
+  normalizeAnimationPlanningArtifact,
   parseAnimationPlanningArtifact,
+  planSceneTargetedRepair,
+  sceneTargetedRepairPrompt,
   supportsDeterministicSceneProfile,
   validateAnimationPlanningArtifact,
   type AnimationPlanningArtifacts,
   type AnimationPlanningStageDefinition,
+  type SceneTargetedRepairItem,
 } from '@/lib/animation-pipeline';
 import { md5 } from '@/lib/hash';
 
@@ -59,24 +64,28 @@ const MAX_MATH_REVISIONS = 2;
 // failover targets (2026-08-04). The scene stage produces the largest
 // artifact by far — production showed both vendors cut at a flat 150s cap
 // while still writing — so it gets a 300s per-target window inside a 600s
-// stage window. Small stages keep 150s/300s. Every window stays below the
-// Worker's five-minute per-call cap at the provider request layer, and the
-// plan's absolute deadline still bounds the sum.
+// stage window. Mathematics (the LaTeX dossier) sits between: successful
+// runs land at 88-112s but the tail crossed 150s in production on
+// 2026-08-04, so it gets 240s/480s. Small stages keep 150s/300s. Every
+// window stays below the Worker's five-minute per-call cap at the provider
+// request layer, and the plan's absolute deadline still bounds the sum.
 const STAGE_PROVIDER_TIMEOUT_MS = 300_000;
 const SCENE_STAGE_PROVIDER_TIMEOUT_MS = 600_000;
+const MATHEMATICS_STAGE_PROVIDER_TIMEOUT_MS = 480_000;
 const STAGE_TARGET_TIMEOUT_MS = 150_000;
 const SCENE_STAGE_TARGET_TIMEOUT_MS = 300_000;
+const MATHEMATICS_STAGE_TARGET_TIMEOUT_MS = 240_000;
 
 function stageProviderWindowMs(stage: AnimationPlanningStageName): number {
-  return stage === 'scene'
-    ? SCENE_STAGE_PROVIDER_TIMEOUT_MS
-    : STAGE_PROVIDER_TIMEOUT_MS;
+  if (stage === 'scene') return SCENE_STAGE_PROVIDER_TIMEOUT_MS;
+  if (stage === 'mathematics') return MATHEMATICS_STAGE_PROVIDER_TIMEOUT_MS;
+  return STAGE_PROVIDER_TIMEOUT_MS;
 }
 
 function stageTargetTimeoutMs(stage: AnimationPlanningStageName): number {
-  return stage === 'scene'
-    ? SCENE_STAGE_TARGET_TIMEOUT_MS
-    : STAGE_TARGET_TIMEOUT_MS;
+  if (stage === 'scene') return SCENE_STAGE_TARGET_TIMEOUT_MS;
+  if (stage === 'mathematics') return MATHEMATICS_STAGE_TARGET_TIMEOUT_MS;
+  return STAGE_TARGET_TIMEOUT_MS;
 }
 
 const STAGE_CONTRACTS: Record<AnimationPlanningStageName, string> = {
@@ -183,7 +192,7 @@ const STAGE_ROLES: Record<AnimationPlanningStageName, string> = {
   storyboard:
     'Translate the approved learning and mathematics artifacts into 3-6 non-overlapping shots. Begin with a hook at 0 and end with payoff or memory exactly at durationSeconds. term-tour emphasis requires a moving-camera scene; never combine term-tour with static.',
   scene:
-    'Declare the concrete visual objects and timed actions that realize every storyboard acceptance condition and the mathematical visual proof. Preserve every storyboard shot id exactly, create an object for every focusRef, and keep every timeline event inside its referenced shot. Every formula object must reference one mathDossier formula through formulaId and copy its latexParts verbatim into parts (or expr when the formula has a single part); never author new LaTeX in the scene, and never render the same formula through two objects. Parametric curves require safe xExpr, yExpr and an increasing domain for t.',
+    'Declare the concrete visual objects and timed actions that realize every storyboard acceptance condition and the mathematical visual proof. Preserve every storyboard shot id exactly, create an object for every focusRef, and keep every timeline event inside its referenced shot. Every formula object must reference one mathDossier formula through formulaId; the pipeline derives its parts and expr from the dossier mechanically, so never author LaTeX in the scene and never render the same formula through two objects. Parametric curves require safe xExpr, yExpr and an increasing domain for t.',
 };
 
 export interface PersistentAnimationPlanningContext {
@@ -219,29 +228,6 @@ class AnimationPlanningStageError extends Error {
     );
     this.name = 'AnimationPlanningStageError';
   }
-}
-
-type ApprovedPlanningArtifacts = Omit<AnimationPlanningArtifacts, 'scene'>;
-
-function approvedPlanningArtifacts(
-  artifacts: Partial<AnimationPlanningArtifacts>
-): ApprovedPlanningArtifacts | undefined {
-  if (
-    !artifacts.intent ||
-    !artifacts.knowledge ||
-    !artifacts.curriculum ||
-    !artifacts.mathematics ||
-    !artifacts.storyboard
-  ) {
-    return undefined;
-  }
-  return {
-    intent: artifacts.intent,
-    knowledge: artifacts.knowledge,
-    curriculum: artifacts.curriculum,
-    mathematics: artifacts.mathematics,
-    storyboard: artifacts.storyboard,
-  };
 }
 
 function planningFailureSummary(error: unknown): string {
@@ -731,6 +717,14 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
   planning.context.onStage?.(planningStageSummary(latestRow));
   let result: ChatCompletionResult | undefined;
   let lastError: unknown;
+  // Path B5: when a scene failure maps cleanly onto objects[i]/timeline[j],
+  // the next round resends only those items instead of the whole artifact.
+  let targetedRepair:
+    | {
+        items: SceneTargetedRepairItem[];
+        base: AnimationPlanningArtifacts['scene'];
+      }
+    | undefined;
   try {
     for (
       let repairAttempt = 0;
@@ -754,46 +748,88 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
       result = await planning.provider.complete(
         repairAttempt === 0
           ? { ...input, deadlineAt: roundDeadlineAt() }
-          : {
-              ...input,
-              deadlineAt: roundDeadlineAt(),
-              temperature: 0,
-              messages: [
-                ...input.messages,
-                { role: 'assistant', content: result?.content || '' },
-                {
-                  role: 'user',
-                  content: `The previous ${definition.name} artifact failed validation: ${
-                    lastError instanceof Error
-                      ? lastError.message.slice(0, 2_000)
-                      : 'invalid output'
-                  }. Return one complete corrected JSON object matching the original contract.`,
-                },
-              ],
-            }
+          : targetedRepair
+            ? {
+                ...input,
+                deadlineAt: roundDeadlineAt(),
+                temperature: 0,
+                messages: [
+                  ...input.messages,
+                  {
+                    role: 'user',
+                    content: sceneTargetedRepairPrompt(targetedRepair.items),
+                  },
+                ],
+              }
+            : {
+                ...input,
+                deadlineAt: roundDeadlineAt(),
+                temperature: 0,
+                messages: [
+                  ...input.messages,
+                  { role: 'assistant', content: result?.content || '' },
+                  {
+                    role: 'user',
+                    content: `The previous ${definition.name} artifact failed validation: ${
+                      lastError instanceof Error
+                        ? lastError.message.slice(0, 2_000)
+                        : 'invalid output'
+                    }. Return one complete corrected JSON object matching the original contract.`,
+                  },
+                ],
+              }
       );
+      let candidate: AnimationPlanningArtifacts[Name] | undefined;
       try {
-        const artifact = parseAnimationPlanningArtifact(
+        candidate = targetedRepair
+          ? (applySceneTargetedRepair(
+              targetedRepair.base,
+              result.content,
+              targetedRepair.items
+            ) as AnimationPlanningArtifacts[Name])
+          : parseAnimationPlanningArtifact(definition.name, result.content);
+        targetedRepair = undefined;
+        const normalized = normalizeAnimationPlanningArtifact(
           definition.name,
-          result.content
+          candidate,
+          params.artifacts
         );
+        candidate = normalized.artifact;
         validateAnimationPlanningStageSemantics(
           definition.name,
-          artifact,
+          candidate,
           params.artifacts
         );
         const completed = await completePlanningStage({
           id: latestRow.id,
-          artifact,
-          outputHash: md5(JSON.stringify(artifact)),
-          diagnostic: safeDiagnostic(result.diagnostic),
+          artifact: candidate,
+          outputHash: md5(JSON.stringify(candidate)),
+          diagnostic: {
+            ...(safeDiagnostic(result.diagnostic) || {}),
+            ...(normalized.corrections.length
+              ? { corrections: normalized.corrections.slice(0, 24) }
+              : {}),
+          },
           provider: result.provider,
           model: result.model,
         });
         planning.context.onStage?.(planningStageSummary(completed));
-        return { artifact, result };
+        return { artifact: candidate, result };
       } catch (error) {
         lastError = error;
+        targetedRepair = undefined;
+        if (definition.name === 'scene' && candidate) {
+          const items = planSceneTargetedRepair(
+            error,
+            candidate as AnimationPlanningArtifacts['scene']
+          );
+          if (items) {
+            targetedRepair = {
+              items,
+              base: candidate as AnimationPlanningArtifacts['scene'],
+            };
+          }
+        }
       }
     }
     throw lastError;
@@ -989,101 +1025,12 @@ async function runFromStage(params: {
   return lastResult!;
 }
 
-async function persistDeterministicSceneFallback(params: {
-  planning: PlanningParams;
-  artifacts: ApprovedPlanningArtifacts;
-  reason: unknown;
-}): Promise<{
-  artifact: AnimationPlanningArtifacts['scene'];
-  result: ChatCompletionResult;
-}> {
-  const prompt = stagePrompt({
-    name: 'scene',
-    prompt: params.planning.prompt,
-    subject: params.planning.subject,
-    currentSpec: params.planning.currentSpec,
-    history: params.planning.history,
-    artifacts: params.artifacts,
-  });
-  // Keep the same input hash as the model scene stage. A later Workflow
-  // attempt can therefore reuse this deterministic result instead of calling
-  // the provider again for a scene that has already been safely assembled.
-  const inputHash = md5(
-    JSON.stringify({
-      pipelineVersion: PIPELINE_VERSION,
-      stage: 'scene',
-      model: params.planning.model,
-      prompt,
-    })
-  );
-  const started = await startPlanningStage({
-    userId: params.planning.context.userId,
-    chatId: params.planning.context.chatId,
-    runId: params.planning.context.runId,
-    stage: 'scene',
-    sequence: definition('scene').sequence,
-    inputHash,
-    provider: 'curvg',
-    model: 'deterministic-scene-v1',
-  });
-  params.planning.context.onStage?.(planningStageSummary(started));
-
-  const artifact = buildDeterministicSceneArtifact(params.artifacts);
-  validateAnimationPlanningStageSemantics('scene', artifact, params.artifacts);
-  const reason = planningFailureSummary(params.reason);
-  const completed = await completePlanningStage({
-    id: started.id,
-    artifact,
-    outputHash: md5(JSON.stringify(artifact)),
-    diagnostic: {
-      kind: 'deterministic_scene_fallback',
-      source: 'approved_planning_artifacts',
-      reason,
-    },
-    provider: 'curvg',
-    model: 'deterministic-scene-v1',
-  });
-  params.planning.context.onStage?.(planningStageSummary(completed));
-  console.warn(
-    '[animation-planning] scene model failed; used deterministic fallback',
-    {
-      chatId: params.planning.context.chatId,
-      runId: params.planning.context.runId,
-      reason,
-    }
-  );
-  return {
-    artifact,
-    result: {
-      content: JSON.stringify(artifact),
-      provider: 'curvg',
-      model: 'deterministic-scene-v1',
-    },
-  };
-}
-
-async function runFromStageWithSceneFallback(
-  params: Parameters<typeof runFromStage>[0]
-) {
-  try {
-    return await runFromStage(params);
-  } catch (error) {
-    if (
-      !(error instanceof AnimationPlanningStageError) ||
-      error.stage !== 'scene'
-    ) {
-      throw error;
-    }
-    const approved = approvedPlanningArtifacts(params.artifacts);
-    if (!approved) throw error;
-    const fallback = await persistDeterministicSceneFallback({
-      planning: params.planning,
-      artifacts: approved,
-      reason: error.cause,
-    });
-    (params.artifacts as Record<string, unknown>).scene = fallback.artifact;
-    return fallback.result;
-  }
+async function runFromStageStrict(params: Parameters<typeof runFromStage>[0]) {
+  // Verified profiles are selected inside runPlanningStage before any scene
+  // provider call. For every other topic, a failed scene stage must remain a
+  // failed plan: replacing an unknown visual proof with formula cards can be
+  // renderable while being semantically unrelated to the request.
+  return runFromStage(params);
 }
 
 interface PersistentPlanningResult {
@@ -1165,7 +1112,11 @@ async function generatePersistentAnimationSpecStrict(
   planning: PlanningParams
 ): Promise<PersistentPlanningResult> {
   const deterministicProfile = buildDeterministicAnimationPlanningProfile(
-    planning.prompt
+    planning.prompt,
+    {
+      currentSpec: planning.currentSpec,
+      hasPriorConversation: Boolean(planning.history?.length),
+    }
   );
   if (deterministicProfile) {
     return persistDeterministicArtifacts({
@@ -1177,7 +1128,7 @@ async function generatePersistentAnimationSpecStrict(
   }
 
   const artifacts: Partial<AnimationPlanningArtifacts> = {};
-  let result = await runFromStageWithSceneFallback({
+  let result = await runFromStageStrict({
     planning,
     artifacts,
     startAt: 'intent',
@@ -1202,7 +1153,7 @@ async function generatePersistentAnimationSpecStrict(
             ? error.message.replace(/[\r\n]+/g, ' ').slice(0, 1_000)
             : String(error).slice(0, 1_000),
       });
-      result = await runFromStageWithSceneFallback({
+      result = await runFromStageStrict({
         planning,
         artifacts,
         startAt: 'storyboard',
@@ -1229,7 +1180,7 @@ async function generatePersistentAnimationSpecStrict(
     revision < MAX_MATH_REVISIONS;
     revision += 1
   ) {
-    result = await runFromStageWithSceneFallback({
+    result = await runFromStageStrict({
       planning,
       artifacts,
       startAt: 'mathematics',

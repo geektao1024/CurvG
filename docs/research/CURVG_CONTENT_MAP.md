@@ -2,6 +2,8 @@
 
 更新时间：2026-07-22
 
+> 2026-09-22：本文只描述当时的首页叙事。公开资源库的页面架构、分类图和与 `/curves`、`/gallery` 的边界见 `docs/LIBRARY_PLAN.md`。下表「公开动画库 → 四个公式卡片」是首页初版做法，不是资源库方案。
+
 ## 参考来源
 
 - 竞品研究：`docs/research/animg.app/COMPETITOR_ANALYSIS.md`

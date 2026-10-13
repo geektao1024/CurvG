@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 
+import type { AnimationOrchestrator } from '@/core/animation-orchestrator';
 import {
   composeAnimationMathematicalRepair,
   composeAnimationQualityRepair,
@@ -13,6 +14,7 @@ import {
   decideAnimationQualityGate,
   deterministicReviewFromQa,
   isAnimationVisualQaReviewable,
+  validateAnimationQualityGateKind,
   validateAnimationVisualQaReport,
 } from '@/lib/animation-qa';
 import {
@@ -68,20 +70,18 @@ async function POST({
     }
     const body = await readJsonBodyCapped<Record<string, unknown>>(
       request,
-      REQUEST_BODY_LIMITS.renderCallback
+      REQUEST_BODY_LIMITS.animationQualityGate
     );
     const jobId = typeof body.jobId === 'string' ? body.jobId : '';
-    const kind = body.kind;
+    let kind;
+    try {
+      kind = validateAnimationQualityGateKind(body.kind);
+    } catch {
+      return respErr('Invalid quality gate kind', { status: 400 });
+    }
     const attempt = body.attempt;
     if (!/^[A-Za-z0-9-]{1,80}$/.test(jobId)) {
       return respErr('Invalid render job', { status: 400 });
-    }
-    if (
-      kind !== 'render_error' &&
-      kind !== 'visual_review' &&
-      kind !== 'final_review'
-    ) {
-      return respErr('Invalid quality gate kind', { status: 400 });
     }
     if (
       !Number.isInteger(attempt) ||
@@ -92,18 +92,39 @@ async function POST({
     }
 
     const context = await getAnimationQualityContext(params.id, jobId);
+    const simulationMode = context.productionMode === 'simulation_short';
     const attemptNumber = Number(attempt);
     if (attemptNumber > context.qualityControl.maxRepairs) {
       return respErr('Quality repair budget exceeded', { status: 409 });
     }
+    const videoDigest =
+      typeof body.videoDigest === 'string' &&
+      /^[a-f0-9]{64}$/.test(body.videoDigest)
+        ? body.videoDigest
+        : undefined;
+    if (
+      (kind === 'delivery_review' && !videoDigest) ||
+      (kind !== 'delivery_review' && body.videoDigest !== undefined)
+    ) {
+      return respErr('Invalid delivery video digest', { status: 400 });
+    }
     const existing = context.qualityControl.attempts.find(
-      (entry) => entry.attempt === attemptNumber && entry.kind === kind
+      (entry) =>
+        entry.attempt === attemptNumber &&
+        entry.kind === kind &&
+        (kind !== 'delivery_review' || entry.videoDigest === videoDigest)
     );
     if (existing) {
       return respData({
         action: existing.action,
         attempt: attemptNumber,
-        ...(existing.action === 'repair' ? { code: context.code } : {}),
+        ...(existing.action === 'repair'
+          ? {
+              code: context.code,
+              frame: context.spec.direction?.frame || '16:9',
+              durationSeconds: context.spec.durationSeconds,
+            }
+          : {}),
       });
     }
 
@@ -112,15 +133,18 @@ async function POST({
     let renderError: string | undefined;
     const approvedCode =
       typeof body.approvedCode === 'string' ? body.approvedCode : undefined;
+    const reviewsCandidateSource =
+      kind === 'final_review' || kind === 'delivery_review';
     if (
-      approvedCode !== undefined &&
-      (kind !== 'final_review' ||
-        approvedCode.length < 100 ||
-        approvedCode.length > 60_000 ||
-        !approvedCode.includes('from manim import') ||
-        !/class\s+CurvGScene\s*\(\s*(?:Scene|MovingCameraScene|ThreeDScene)\s*\)/.test(
-          approvedCode
-        ))
+      (reviewsCandidateSource && approvedCode === undefined) ||
+      (approvedCode !== undefined &&
+        (!reviewsCandidateSource ||
+          approvedCode.length < 100 ||
+          approvedCode.length > 60_000 ||
+          !approvedCode.includes('from manim import') ||
+          !/class\s+CurvGScene\s*\(\s*(?:Scene|MovingCameraScene|ThreeDScene)\s*\)/.test(
+            approvedCode
+          )))
     ) {
       return respErr('Invalid approved render code', { status: 400 });
     }
@@ -149,6 +173,12 @@ async function POST({
             signal: request.signal,
           });
         } catch (error) {
+          // The formal delivery is the artifact users receive. Pixel metrics
+          // alone cannot prove that it still matches the request and approved
+          // mathematical specification, so this final semantic gate fails
+          // closed. Preview review keeps its historical deterministic fallback
+          // so transient reviewer outages do not discard useful repair work.
+          if (kind === 'delivery_review') throw error;
           console.warn('[animation-quality-gate] semantic review degraded', {
             animationId: context.id,
             jobId,
@@ -163,6 +193,7 @@ async function POST({
     }
 
     const action = decideAnimationQualityGate({
+      kind,
       qa: visualQa,
       review,
       attempt: attemptNumber,
@@ -172,7 +203,15 @@ async function POST({
     let code: string | undefined;
     let spec: AnimationSpec | undefined;
     if (action === 'repair') {
-      let orchestrator;
+      if (simulationMode) {
+        // The renderer's code is a replay subscriber to immutable solver
+        // artifacts. Letting a model repair it would sever that lineage.
+        return respErr(
+          'Simulation quality defects require a new trusted compiler run',
+          { status: 409 }
+        );
+      }
+      let orchestrator: AnimationOrchestrator | undefined;
       try {
         orchestrator = resolveAnimationOrchestrator(configs);
       } catch (error) {
@@ -188,10 +227,12 @@ async function POST({
         selection.choice,
         selection.model
       );
-      const hasMathDefect = review.issues.some(
-        (issue) => issue.category === 'math_fidelity'
+      const hasSpecificationDefect = review.issues.some(
+        (issue) =>
+          issue.category === 'request_fidelity' ||
+          issue.category === 'math_fidelity'
       );
-      if (hasMathDefect) {
+      if (hasSpecificationDefect) {
         const repaired = await withAnimationGenerationCapacity(
           context.userId,
           () =>
@@ -238,7 +279,19 @@ async function POST({
       // The renderer may select a previously rendered higher-quality
       // candidate after later autonomous repairs regress. Persist the exact
       // source that produced the approved artifact.
-      code = approvedCode;
+      if (simulationMode) {
+        // A simulation render is a replay subscriber to a source digest that
+        // was sealed before dispatch. The quality gate may approve that exact
+        // source, but it must never replace it from a callback payload.
+        if (approvedCode !== context.code) {
+          return respErr(
+            'Simulation approved code does not match the trusted source',
+            { status: 409 }
+          );
+        }
+      } else {
+        code = approvedCode;
+      }
     }
     const persisted = await recordAnimationQualityGate({
       id: params.id,
@@ -246,6 +299,7 @@ async function POST({
       attempt: attemptNumber,
       kind,
       action,
+      videoDigest,
       visualQa,
       visualReview: review,
       spec,
@@ -254,7 +308,13 @@ async function POST({
     return respData({
       action,
       attempt: attemptNumber,
-      ...(action === 'repair' ? { code: persisted.code } : {}),
+      ...(action === 'repair'
+        ? {
+            code: persisted.code,
+            frame: persisted.spec.direction?.frame || '16:9',
+            durationSeconds: persisted.spec.durationSeconds,
+          }
+        : {}),
     });
   } catch (error) {
     if (isRequestBodyTooLargeError(error)) {

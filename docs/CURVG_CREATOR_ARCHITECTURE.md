@@ -22,7 +22,8 @@ Combining these into one opaque model call makes failures impossible to diagnose
 - Better Auth owns user identity and authorization.
 - Admin settings provide encrypted OpenAI-compatible or Anthropic credentials.
 - D1 stores projects and messages.
-- D1 stores generated code and version snapshots; R2 stores videos and thumbnails.
+- D1 stores generated code and version snapshots; R2 stores private videos,
+  thumbnails, quality evidence, and the immutable simulation run artifacts.
 
 No new database table is required for the first implementation.
 
@@ -72,7 +73,13 @@ Anthropic, Replicate, Gemini, and Fal adapters. Those are not Creator choices.
 
 The web application does not execute generated Python. It dispatches approved code to an authenticated renderer endpoint.
 
-The Cloudflare implementation is a separate Worker using Queue, Sandbox SDK, a custom Python image containing Manim, FFmpeg and LaTeX, and R2. The Sandbox filesystem is disposable; final artifacts are streamed to R2 and returned through an authenticated callback.
+The Cloudflare implementation is a separate Worker using Queue, Sandbox SDK, a
+custom Python image containing Manim, FFmpeg, LaTeX, and the trusted audio
+pipeline, plus R2. The Sandbox filesystem is disposable; final artifacts are
+streamed to R2 and returned through an authenticated callback. It supports two
+production modes: `explainer` uses approved planning IR, while
+`simulation_short` currently accepts only the server-owned `ring_escape`
+fixed-step scenario.
 
 Until a renderer endpoint is configured, CurvG stops at `code_ready` and clearly reports that rendering is not configured. It does not pretend that a video was rendered.
 
@@ -84,13 +91,13 @@ sequenceDiagram
   participant Sandbox as Sandbox Container
   participant R2 as R2
 
-  App->>Renderer: POST /render (approved code)
+  App->>Renderer: POST /render (approved source plus production contract)
   Renderer->>Queue: enqueue render job
   Renderer-->>App: jobId + queued
   Queue->>Renderer: deliver job
   Renderer->>App: rendering callback
   Renderer->>Sandbox: validate AST + run Manim
-  Sandbox-->>Renderer: MP4 + thumbnail streams
+  Sandbox-->>Renderer: MP4, thumbnail and formal QA evidence
   Renderer->>R2: write versioned artifacts
   Renderer->>App: completed callback + private artifact URLs
 ```
@@ -108,6 +115,8 @@ sequenceDiagram
 - R2 keys include the render job ID, so a revision cannot serve a previous video.
 - Artifact routes require the animation owner's session and support byte ranges.
 - A Python AST gate permits only Manim, `math` and NumPy imports before execution.
+- Simulation jobs validate canonical event/checkpoint/manifest/audio artifacts,
+  source and video digests, and an escaped terminal state before delivery.
 
 The AST gate is defense in depth, not the primary security boundary. Generated code still runs only inside a disposable Sandbox container with no application or provider secrets.
 
@@ -118,10 +127,10 @@ requirements, not all of them verified in production:
 
 - Hard limits on CPU, memory, disk, wall-clock, output size and concurrency.
 - Only a fixed base image with version-locked Manim dependencies.
-- Persist source hash, image version, render parameters and artifact checksums
-  so any delivered video can be traced back to its inputs. `animation_planning_stage`
-  already carries `input_hash` and `output_hash` per stage; image version and
-  artifact checksum are not yet persisted.
+- Persist source hash, render parameters, canonical run digests, and video
+  digest so a delivered simulation video can be traced back to its inputs. The
+  current formal simulation contract carries source/run/audio-plan/video
+  digests; image-version provenance remains an operational deployment concern.
 - Sandbox network policy, lifecycle and concurrency limits must be measured
   against current Cloudflare behavior rather than assumed. Deployment completing
   is not evidence that limits or unit cost are known.
@@ -157,6 +166,8 @@ The browser first plays the same-origin artifact URL so HTTP Range remains avail
 - `renderer/src/index.ts` — authenticated enqueue endpoint, Queue consumer, Sandbox execution, R2 upload and callbacks.
 - `renderer/Dockerfile` — Cloudflare Sandbox Python image plus Manim 0.20.1, FFmpeg and LaTeX.
 - `renderer/validate_scene.py` — AST validation before Manim execution.
+- `renderer/audio_pipeline.py` — deterministic event-SFX WAV synthesis and
+  decoded-AAC verification for formal `simulation_short` delivery.
 - `renderer/wrangler.jsonc` — Queue, Sandbox Durable Object, Container and R2 bindings.
 
 ## Required configuration
@@ -190,7 +201,11 @@ npx wrangler secret put RENDERER_TOKEN --config renderer/wrangler.jsonc
 pnpm renderer:deploy
 ```
 
-Docker must be running because Wrangler builds and pushes `renderer/Dockerfile`. Confirm that `renderer/wrangler.jsonc` `CALLBACK_ORIGIN` matches the deployed CurvG origin before deployment.
+Docker must be running because Wrangler builds and pushes `renderer/Dockerfile`.
+Confirm that `renderer/wrangler.jsonc` `CALLBACK_ORIGIN` matches the deployed
+CurvG origin before deployment. A Worker-only deployment is insufficient for
+the current formal simulation contract: rebuild and deploy the renderer image
+so its validator and audio pipeline match the application contract.
 
 ## Local renderer verification
 
@@ -227,9 +242,10 @@ Cloudflare is a suitable single-platform choice for this architecture:
 
 This does not mean rendering is free or operationally zero-cost. Container startup, CPU time, memory, disk, Queue operations, Durable Objects and R2 storage are billed separately according to their current Cloudflare pricing.
 
-## Verification status
+## Historical verification status
 
-Verified against the live Cloudflare deployment on 2026-08-01:
+The following is historical verification from 2026-08-01. It does not verify
+deployment of the current dual-mode, digest-bound, audio-capable renderer.
 
 - `curvg` and `curvg-renderer` Workers are both deployed. The main app's last
   deployment (2026-07-31T07:49:26Z) is 66 seconds after commit `a741ee2`, so
@@ -308,6 +324,8 @@ Not yet verified:
 
 1. Completed: Creator workspace, conversations, specification generation and approval.
 2. Completed: deterministic `spec → Manim` compilation and two-stage validation.
-3. Completed and deployed: Cloudflare Queue, Sandbox renderer and R2 artifact persistence.
+3. Historical deployment: Cloudflare Queue, Sandbox renderer and R2 artifact
+   persistence. The current renderer contract still requires image rebuild and
+   deployment before it is available remotely.
 4. Partial: version snapshots and restore exist; gallery publishing has no page route and no published entry in production.
 5. Open: reduce deterministic substitution so delivered animations reflect the prompt.

@@ -31,8 +31,10 @@ import {
   type AnimationParts,
   type AnimationPlanningPhase,
   type AnimationPlanningStageSummary,
+  type AnimationProductionMode,
   type AnimationQualityControlState,
   type AnimationQualityGateAction,
+  type AnimationQualityGateKind,
   type AnimationQueueState,
   type AnimationSpec,
   type AnimationStatus,
@@ -47,13 +49,23 @@ import {
   parseAnimationMathReview,
   type AnimationMathReview,
 } from '@/lib/animation-math';
+import { hasApprovedAnimationDeliveryReview } from '@/lib/animation-qa';
 import {
   parseAnimationSpec,
   parseManimCode,
   validateAnimationSpec,
 } from '@/lib/animation-schema';
+import {
+  createDefaultRingEscapeScenarioConfig,
+  digestUtf8Text,
+  parseAnimationSimulationScenarioConfig,
+  stableCanonicalJson,
+  type AnimationSimulationScenarioConfig,
+} from '@/lib/animation-simulation';
 import { getUuid, md5 } from '@/lib/hash';
 import { compileAnimationSpec } from '@/lib/manim-compiler';
+import { ringEscapePresentationSpec } from '@/lib/simulation-presentation';
+import { buildVerifiedRingEscapeProduction } from '@/lib/simulation-production';
 
 import {
   generatePersistentAnimationSpec,
@@ -953,6 +965,8 @@ function initialParts(
   modelSelection?: AnimationModelSelection,
   source?: {
     creationMode?: AnimationCreationMode;
+    productionMode?: AnimationProductionMode;
+    simulationScenario?: AnimationSimulationScenarioConfig;
     mathObjectType?: AnimationMathObjectType;
     sourceFormula?: string;
     templateId?: string;
@@ -962,10 +976,11 @@ function initialParts(
 }
 
 function animationParts(row: Chat): StoredAnimationParts {
-  return parseJson(
+  const parts = parseJson(
     row.parts,
     initialParts(row.content || '', 'general' as AnimationSubject)
   );
+  return { ...parts, productionMode: parts.productionMode || 'explainer' };
 }
 
 function publicAnimationParts(parts: StoredAnimationParts): AnimationParts {
@@ -1595,15 +1610,29 @@ function snapshot(parts: AnimationParts): AnimationVersion | null {
     version: parts.versions.length + 1,
     createdAt: new Date().toISOString(),
     prompt: parts.prompt,
+    productionMode: parts.productionMode || 'explainer',
+    simulationScenario: parts.simulationScenario,
+    simulationEvidence: parts.simulationEvidence,
     spec: parts.spec,
     code: parts.code,
     videoUrl: parts.videoUrl,
     thumbnailUrl: parts.thumbnailUrl,
     contactSheetUrl: parts.contactSheetUrl,
     qaReportUrl: parts.qaReportUrl,
+    eventsUrl: parts.eventsUrl,
+    stateTrackUrl: parts.stateTrackUrl,
+    runManifestUrl: parts.runManifestUrl,
     visualQa: parts.visualQa,
     visualReview: parts.visualReview,
   };
+}
+
+export function revisionFormulaLineage<T extends AnimationParts>(
+  current: T,
+  sourceFormula: string | undefined
+): T {
+  const normalized = sourceFormula?.trim();
+  return { ...current, sourceFormula: normalized || undefined };
 }
 
 export async function listAnimations(
@@ -1682,6 +1711,8 @@ interface CreateAnimationDraftParams {
   prompt: string;
   subject: AnimationSubject;
   creationMode?: Exclude<AnimationCreationMode, 'template'>;
+  productionMode?: AnimationProductionMode;
+  simulationScenario?: AnimationSimulationScenarioConfig;
   mathObjectType?: AnimationMathObjectType;
   sourceFormula?: string;
   modelSelection: AnimationModelSelection;
@@ -1697,6 +1728,8 @@ export async function createAnimationDraft(
   const parts: StoredAnimationParts = {
     ...initialParts(params.prompt, params.subject, params.modelSelection, {
       creationMode: params.creationMode || 'description',
+      productionMode: params.productionMode || 'explainer',
+      simulationScenario: params.simulationScenario,
       mathObjectType: params.mathObjectType,
       sourceFormula: params.sourceFormula,
     }),
@@ -1899,6 +1932,8 @@ export async function createAnimation(params: {
   prompt: string;
   subject: AnimationSubject;
   creationMode?: Exclude<AnimationCreationMode, 'template'>;
+  productionMode?: AnimationProductionMode;
+  simulationScenario?: AnimationSimulationScenarioConfig;
   mathObjectType?: AnimationMathObjectType;
   sourceFormula?: string;
   modelSelection: AnimationModelSelection;
@@ -1912,6 +1947,8 @@ export async function createAnimation(params: {
     prompt: params.prompt,
     subject: params.subject,
     creationMode: params.creationMode,
+    productionMode: params.productionMode,
+    simulationScenario: params.simulationScenario,
     mathObjectType: params.mathObjectType,
     sourceFormula: params.sourceFormula,
     modelSelection: params.modelSelection,
@@ -1927,6 +1964,102 @@ export async function createAnimation(params: {
     signal: params.signal,
     hooks: params.hooks,
   });
+}
+
+function simulationTitle(prompt: string): string {
+  const title = prompt.replace(/\s+/g, ' ').trim().slice(0, 48);
+  return title || 'Deterministic ring escape';
+}
+
+async function persistSimulationPlan(params: {
+  row: Chat;
+  parts: StoredAnimationParts;
+  scenario: AnimationSimulationScenarioConfig;
+}): Promise<AnimationDetail> {
+  const production = await buildVerifiedRingEscapeProduction({
+    scenario: params.scenario,
+    title: simulationTitle(params.parts.prompt),
+    durationSeconds: 8,
+  });
+  const spec = validateAnimationSpec(
+    ringEscapePresentationSpec({
+      title: simulationTitle(params.parts.prompt),
+      durationSeconds: 8,
+      seed: production.evidence.seed,
+      solverDigest: production.evidence.solverDigest,
+      eventCount: production.evidence.eventCount,
+    })
+  );
+  const { operation: _operation, ...completedParts } = params.parts;
+  await db()
+    .update(chat)
+    .set({
+      title: spec.title,
+      status: 'awaiting_approval',
+      model: 'ring_escape/v1',
+      provider: 'curvg-solver',
+      parts: JSON.stringify({
+        ...completedParts,
+        productionMode: 'simulation_short',
+        simulationScenario: production.scenario,
+        simulationEvidence: production.evidence,
+        spec,
+        code: production.code,
+        error: undefined,
+        failure: undefined,
+      }),
+    })
+    .where(and(eq(chat.id, params.row.id), eq(chat.status, 'generating_spec')));
+  await insertMessage({
+    userId: params.row.userId,
+    chatId: params.row.id,
+    role: 'assistant',
+    content: `${spec.summary} Solver run ${production.evidence.solverDigest} reached escaped with ${production.evidence.eventCount} canonical events.`,
+    model: 'ring_escape/v1',
+    provider: 'curvg-solver',
+    metadata: {
+      kind: 'simulation_spec_ready',
+      family: 'ring_escape',
+      runDigest: production.evidence.manifest.runDigest,
+    },
+  });
+  return getAnimation(params.row.userId, params.row.id);
+}
+
+export async function createSimulationAnimation(params: {
+  userId: string;
+  prompt: string;
+  subject: AnimationSubject;
+  modelSelection?: AnimationModelSelection;
+  scenario?: unknown;
+  hooks?: AnimationGenerationHooks;
+}): Promise<AnimationDetail> {
+  const scenario = params.scenario
+    ? parseAnimationSimulationScenarioConfig(params.scenario)
+    : createDefaultRingEscapeScenarioConfig();
+  const started = await createAnimationDraft({
+    userId: params.userId,
+    prompt: params.prompt,
+    subject: params.subject,
+    creationMode: 'description',
+    productionMode: 'simulation_short',
+    simulationScenario: scenario,
+    modelSelection: params.modelSelection || { choice: 'auto' },
+    model: 'ring_escape/v1',
+    providerName: 'curvg-solver',
+  });
+  params.hooks?.onStarted?.(started);
+  const row = await ownedRow(params.userId, started.id);
+  try {
+    return await persistSimulationPlan({
+      row,
+      parts: animationParts(row),
+      scenario,
+    });
+  } catch (error) {
+    const failure = await setFailure(row, animationParts(row), error, 'spec');
+    throw new AnimationGenerationError(failure, error);
+  }
 }
 
 export async function createAnimationFromTemplate(params: {
@@ -1988,6 +2121,9 @@ export async function reviseAnimationDraft(params: {
   id: string;
   prompt: string;
   subject?: AnimationSubject;
+  productionMode?: AnimationProductionMode;
+  simulationScenario?: AnimationSimulationScenarioConfig;
+  sourceFormula?: string;
   modelSelection: AnimationModelSelection;
   providerName: string;
   model: string;
@@ -2008,12 +2144,22 @@ export async function reviseAnimationDraft(params: {
     throw new Error('Animation is currently processing');
   }
   const nextSubject = params.subject ?? current.subject;
+  const nextProductionMode =
+    params.productionMode ?? current.productionMode ?? 'explainer';
   const previous = snapshot(current);
   const planningRunId = getUuid();
   const nextParts: StoredAnimationParts = {
-    ...current,
+    ...revisionFormulaLineage(current, params.sourceFormula),
     subject: nextSubject,
     prompt: params.prompt,
+    productionMode: nextProductionMode,
+    simulationScenario:
+      nextProductionMode === 'simulation_short'
+        ? params.simulationScenario || current.simulationScenario
+        : undefined,
+    simulationEvidence: undefined,
+    // A revision prompt is not proof that the original structured formula is
+    // still exact. Only retain formula lineage when this request supplies it.
     modelSelection: params.modelSelection,
     versions: previous
       ? [...current.versions, previous].slice(-MAX_ANIMATION_VERSIONS)
@@ -2024,6 +2170,9 @@ export async function reviseAnimationDraft(params: {
     thumbnailUrl: undefined,
     contactSheetUrl: undefined,
     qaReportUrl: undefined,
+    eventsUrl: undefined,
+    stateTrackUrl: undefined,
+    runManifestUrl: undefined,
     visualQa: undefined,
     visualReview: undefined,
     render: undefined,
@@ -2067,6 +2216,9 @@ export async function reviseAnimation(params: {
   id: string;
   prompt: string;
   subject?: AnimationSubject;
+  productionMode?: AnimationProductionMode;
+  simulationScenario?: AnimationSimulationScenarioConfig;
+  sourceFormula?: string;
   modelSelection: AnimationModelSelection;
   provider: ChatProvider;
   model: string;
@@ -2078,6 +2230,9 @@ export async function reviseAnimation(params: {
     id: params.id,
     prompt: params.prompt,
     subject: params.subject,
+    productionMode: params.productionMode,
+    simulationScenario: params.simulationScenario,
+    sourceFormula: params.sourceFormula,
     modelSelection: params.modelSelection,
     model: params.model,
     providerName: params.provider.name,
@@ -2091,6 +2246,43 @@ export async function reviseAnimation(params: {
     signal: params.signal,
     hooks: params.hooks,
   });
+}
+
+export async function reviseSimulationAnimation(params: {
+  userId: string;
+  id: string;
+  prompt: string;
+  subject?: AnimationSubject;
+  scenario?: unknown;
+}): Promise<AnimationDetail> {
+  const current = await getAnimation(params.userId, params.id);
+  const scenario = params.scenario
+    ? parseAnimationSimulationScenarioConfig(params.scenario)
+    : current.parts.simulationScenario
+      ? parseAnimationSimulationScenarioConfig(current.parts.simulationScenario)
+      : createDefaultRingEscapeScenarioConfig();
+  const started = await reviseAnimationDraft({
+    userId: params.userId,
+    id: params.id,
+    prompt: params.prompt,
+    subject: params.subject,
+    productionMode: 'simulation_short',
+    simulationScenario: scenario,
+    modelSelection: { choice: 'auto' },
+    providerName: 'curvg-solver',
+    model: 'ring_escape/v1',
+  });
+  const row = await ownedRow(params.userId, started.id);
+  try {
+    return await persistSimulationPlan({
+      row,
+      parts: animationParts(row),
+      scenario,
+    });
+  } catch (error) {
+    const failure = await setFailure(row, animationParts(row), error, 'spec');
+    throw new AnimationGenerationError(failure, error);
+  }
 }
 
 export async function approveAnimation(params: {
@@ -2135,8 +2327,12 @@ export async function approveAnimation(params: {
   });
   let code: string | undefined;
   let generatedOrchestration: AnimationOrchestrationState | undefined;
+  let simulationProduction:
+    | Awaited<ReturnType<typeof buildVerifiedRingEscapeProduction>>
+    | undefined;
   let failureStage: AnimationFailureStage = 'code';
   try {
+    const isSimulation = parts.productionMode === 'simulation_short';
     const repairEvidence = parts.renderRepair?.regenerateCode
       ? parts.renderRepair.context
       : undefined;
@@ -2149,7 +2345,24 @@ export async function approveAnimation(params: {
       providerName: row.provider,
       modelName: row.model,
     });
-    if (shouldCompose) {
+    if (isSimulation) {
+      if (!parts.simulationScenario) {
+        throw new Error('Simulation scenario is missing');
+      }
+      simulationProduction = await buildVerifiedRingEscapeProduction({
+        scenario: parts.simulationScenario,
+        title: simulationTitle(parts.prompt),
+        durationSeconds: parts.spec.durationSeconds,
+      });
+      if (
+        !parts.simulationEvidence ||
+        parts.simulationEvidence.manifest.runDigest !==
+          simulationProduction.evidence.manifest.runDigest
+      ) {
+        throw new Error('Simulation solver lineage changed after approval');
+      }
+      code = simulationProduction.code;
+    } else if (shouldCompose) {
       const composed = await composeOrchestratedAnimationCode({
         animationId: row.id,
         provider: params.provider!,
@@ -2213,6 +2426,21 @@ export async function approveAnimation(params: {
       code,
       callbackUrl: params.callbackUrl,
       qualityGateUrl: params.qualityGateUrl,
+      frame: parts.spec.direction?.frame || '16:9',
+      durationSeconds: parts.spec.durationSeconds,
+      productionMode: isSimulation ? 'simulation_short' : 'explainer',
+      idempotencyKey: await digestUtf8Text(
+        stableCanonicalJson({
+          animationId: row.id,
+          code,
+          frame: parts.spec.direction?.frame || '16:9',
+          durationSeconds: parts.spec.durationSeconds,
+          productionMode: isSimulation ? 'simulation_short' : 'explainer',
+        })
+      ),
+      ...(simulationProduction
+        ? { simulationArtifacts: simulationProduction.artifacts }
+        : {}),
       signal: params.signal,
     });
     const {
@@ -2236,6 +2464,13 @@ export async function approveAnimation(params: {
           failure: undefined,
           render: {
             ...render,
+            ...(simulationProduction
+              ? {
+                  runDigest: simulationProduction.evidence.manifest.runDigest,
+                  compiledSourceDigest:
+                    simulationProduction.evidence.compiledSourceDigest,
+                }
+              : {}),
             stage: 'queued',
             progress: 8,
             startedAt: new Date().toISOString(),
@@ -2244,7 +2479,10 @@ export async function approveAnimation(params: {
           qualityControl: {
             status: 'pending',
             attempt: 0,
-            maxRepairs: 2,
+            // A model-authored code repair could detach the rendered motion
+            // from the immutable solver log. Simulation defects fail closed
+            // and require a new trusted plan/compiler release instead.
+            maxRepairs: isSimulation ? 0 : 2,
             attempts: [],
           },
         }),
@@ -2299,6 +2537,11 @@ export async function updateAnimationSpec(params: {
     throw new Error('Animation is currently processing');
   }
   const parts = animationParts(row);
+  if (parts.productionMode === 'simulation_short') {
+    throw new Error(
+      'Simulation presentation specs are read-only; revise the trusted scenario instead'
+    );
+  }
   if (parts.spec && !isAnimationSpecRenderable(parts.spec)) {
     throw new Error('Legacy animations are read-only archives');
   }
@@ -2314,6 +2557,9 @@ export async function updateAnimationSpec(params: {
     thumbnailUrl: undefined,
     contactSheetUrl: undefined,
     qaReportUrl: undefined,
+    eventsUrl: undefined,
+    stateTrackUrl: undefined,
+    runManifestUrl: undefined,
     visualQa: undefined,
     visualReview: undefined,
     publishedAt: undefined,
@@ -2357,6 +2603,14 @@ export async function restoreAnimationVersion(params: {
   const selected = parts.versions.find(
     (version) => version.version === params.version
   );
+  if (
+    selected?.productionMode === 'simulation_short' ||
+    parts.productionMode === 'simulation_short'
+  ) {
+    throw new Error(
+      'Simulation versions cannot be restored through the explainer compiler'
+    );
+  }
   if (!selected?.spec || !isAnimationSpecRenderable(selected.spec)) {
     throw new Error('Version cannot be restored');
   }
@@ -2372,6 +2626,9 @@ export async function restoreAnimationVersion(params: {
     thumbnailUrl: undefined,
     contactSheetUrl: undefined,
     qaReportUrl: undefined,
+    eventsUrl: undefined,
+    stateTrackUrl: undefined,
+    runManifestUrl: undefined,
     visualQa: undefined,
     visualReview: undefined,
     publishedAt: undefined,
@@ -2526,6 +2783,7 @@ export interface AnimationQualityContext {
   id: string;
   jobId: string;
   prompt: string;
+  productionMode: AnimationProductionMode;
   spec: AnimationSpec;
   code: string;
   provider: string;
@@ -2558,6 +2816,7 @@ export async function getAnimationQualityContext(
     id: row.id,
     jobId,
     prompt: parts.prompt,
+    productionMode: parts.productionMode || 'explainer',
     spec: parts.spec,
     code: parts.code,
     provider: row.provider,
@@ -2689,8 +2948,9 @@ export async function recordAnimationQualityGate(params: {
   id: string;
   jobId: string;
   attempt: number;
-  kind: 'render_error' | 'visual_review' | 'final_review';
+  kind: AnimationQualityGateKind;
   action: AnimationQualityGateAction;
+  videoDigest?: string;
   visualQa?: AnimationVisualQaReport;
   visualReview?: AnimationVisualReview;
   spec?: AnimationSpec;
@@ -2704,8 +2964,9 @@ async function persistAnimationQualityGate(
     id: string;
     jobId: string;
     attempt: number;
-    kind: 'render_error' | 'visual_review' | 'final_review';
+    kind: AnimationQualityGateKind;
     action: AnimationQualityGateAction;
+    videoDigest?: string;
     visualQa?: AnimationVisualQaReport;
     visualReview?: AnimationVisualReview;
     spec?: AnimationSpec;
@@ -2734,10 +2995,31 @@ async function persistAnimationQualityGate(
     maxRepairs: 2,
     attempts: [],
   };
+  const qualityDigestPattern = /^[a-f0-9]{64}$/;
+  if (
+    (params.kind === 'delivery_review' &&
+      !qualityDigestPattern.test(params.videoDigest || '')) ||
+    (params.kind !== 'delivery_review' && params.videoDigest !== undefined)
+  ) {
+    throw new Error('Animation delivery review has an invalid video digest');
+  }
   const existing = qualityControl.attempts.find(
-    (entry) => entry.attempt === params.attempt && entry.kind === params.kind
+    (entry) =>
+      entry.attempt === params.attempt &&
+      entry.kind === params.kind &&
+      (params.kind !== 'delivery_review' ||
+        entry.videoDigest === params.videoDigest)
   );
   if (existing) return getAnimationQualityContext(params.id, params.jobId);
+  if (
+    parts.productionMode === 'simulation_short' &&
+    ((params.spec !== undefined && params.spec !== parts.spec) ||
+      (params.code !== undefined && params.code !== parts.code))
+  ) {
+    throw new Error(
+      'Simulation quality review cannot replace trusted specification or source'
+    );
+  }
 
   const status =
     params.action === 'approve'
@@ -2761,6 +3043,7 @@ async function persistAnimationQualityGate(
           attempt: params.attempt,
           kind: params.kind,
           action: params.action,
+          ...(params.videoDigest ? { videoDigest: params.videoDigest } : {}),
           deterministicScore: params.visualQa?.score,
           reviewStatus: params.visualReview?.status,
           issueCount:
@@ -2787,7 +3070,11 @@ async function persistAnimationQualityGate(
     );
   const persisted = await getAnimationQualityContext(params.id, params.jobId);
   const recorded = persisted.qualityControl.attempts.some(
-    (entry) => entry.attempt === params.attempt && entry.kind === params.kind
+    (entry) =>
+      entry.attempt === params.attempt &&
+      entry.kind === params.kind &&
+      (params.kind !== 'delivery_review' ||
+        entry.videoDigest === params.videoDigest)
   );
   if (!recorded) {
     if (conflictAttempt >= 3) {
@@ -2813,6 +3100,14 @@ export async function updateRender(params: {
   thumbnailUrl?: string;
   contactSheetUrl?: string;
   qaReportUrl?: string;
+  eventsUrl?: string;
+  stateTrackUrl?: string;
+  runManifestUrl?: string;
+  runDigest?: string;
+  compiledSourceDigest?: string;
+  videoDigest?: string;
+  /** Renderer-reported mode; must match the persisted job contract. */
+  productionMode?: AnimationProductionMode;
   visualQa?: AnimationVisualQaReport;
   error?: string;
 }): Promise<{
@@ -2827,8 +3122,85 @@ export async function updateRender(params: {
     .limit(1);
   if (!row || row.status === 'deleted') throw new Error('Animation not found');
   const parts = animationParts(row);
+  const isSimulation = parts.productionMode === 'simulation_short';
+  const strictDeliveryProtocol =
+    parts.render?.protocolVersion === 'curvg-renderer/v2';
+  if (
+    params.productionMode &&
+    params.productionMode !== (parts.productionMode || 'explainer')
+  ) {
+    throw new Error('Render production mode does not match the animation');
+  }
   if (parts.render?.jobId && params.jobId !== parts.render.jobId) {
     throw new Error('Render job does not match the animation');
+  }
+  if (
+    params.status === 'completed' &&
+    strictDeliveryProtocol &&
+    !/^[a-f0-9]{64}$/.test(params.videoDigest || '')
+  ) {
+    throw new Error('Completed v2 render is missing a valid video digest');
+  }
+  if (isSimulation) {
+    const digestPattern = /^[a-f0-9]{64}$/;
+    if (!digestPattern.test(params.runDigest || '')) {
+      throw new Error('Simulation render callback has an invalid run digest');
+    }
+    if (!digestPattern.test(params.compiledSourceDigest || '')) {
+      throw new Error(
+        'Simulation render callback has an invalid compiled source digest'
+      );
+    }
+    if (
+      params.status === 'completed' &&
+      !digestPattern.test(params.videoDigest || '')
+    ) {
+      throw new Error(
+        'Completed simulation render has an invalid video digest'
+      );
+    }
+    if (
+      params.videoDigest !== undefined &&
+      !digestPattern.test(params.videoDigest)
+    ) {
+      throw new Error('Simulation render callback has an invalid video digest');
+    }
+    const evidence = parts.simulationEvidence;
+    if (
+      !evidence ||
+      params.runDigest !== evidence.manifest.runDigest ||
+      params.compiledSourceDigest !== evidence.compiledSourceDigest ||
+      params.compiledSourceDigest !== evidence.manifest.compiledSourceDigest
+    ) {
+      throw new Error('Simulation render callback lineage does not match');
+    }
+    if (
+      typeof parts.code !== 'string' ||
+      (await digestUtf8Text(parts.code)) !== params.compiledSourceDigest
+    ) {
+      throw new Error(
+        'Persisted simulation source does not match the render callback'
+      );
+    }
+    if (
+      params.status === 'completed' &&
+      evidence.videoDigest &&
+      params.videoDigest !== evidence.videoDigest
+    ) {
+      throw new Error('Simulation video digest does not match prior delivery');
+    }
+  } else if (
+    params.runDigest !== undefined ||
+    params.compiledSourceDigest !== undefined
+  ) {
+    throw new Error('Explainer render callback includes simulation digests');
+  }
+  if (
+    params.status === 'completed' &&
+    parts.render?.videoDigest &&
+    params.videoDigest !== parts.render.videoDigest
+  ) {
+    throw new Error('Render video digest does not match prior delivery');
   }
   if (parts.render?.cancelRequested) {
     return {
@@ -2844,11 +3216,34 @@ export async function updateRender(params: {
     if (row.status === 'completed' && params.status === 'completed') {
       const replayParts: StoredAnimationParts = {
         ...parts,
+        ...(isSimulation
+          ? {
+              simulationEvidence: {
+                ...parts.simulationEvidence!,
+                videoDigest: params.videoDigest!,
+              },
+            }
+          : {}),
         videoUrl: params.videoUrl || parts.videoUrl,
         thumbnailUrl: params.thumbnailUrl || parts.thumbnailUrl,
         contactSheetUrl: params.contactSheetUrl || parts.contactSheetUrl,
         qaReportUrl: params.qaReportUrl || parts.qaReportUrl,
+        eventsUrl: params.eventsUrl || parts.eventsUrl,
+        stateTrackUrl: params.stateTrackUrl || parts.stateTrackUrl,
+        runManifestUrl: params.runManifestUrl || parts.runManifestUrl,
         visualQa: params.visualQa || parts.visualQa,
+        render: {
+          ...parts.render,
+          ...(isSimulation
+            ? {
+                runDigest: params.runDigest,
+                compiledSourceDigest: params.compiledSourceDigest,
+                videoDigest: params.videoDigest,
+              }
+            : params.videoDigest
+              ? { videoDigest: params.videoDigest }
+              : {}),
+        },
       };
       if (JSON.stringify(replayParts) !== JSON.stringify(parts)) {
         await db()
@@ -2874,17 +3269,49 @@ export async function updateRender(params: {
     throw new Error('Animation is not awaiting a render update');
   }
   if (params.status === 'completed') {
+    const strictSimulation = isSimulation;
     if (!params.videoUrl && !parts.videoUrl) {
       throw new Error(
         'Completed render callback is missing the video artifact'
       );
     }
-    const finalApproval = parts.qualityControl?.attempts.some(
-      (entry) => entry.kind === 'final_review' && entry.action === 'approve'
-    );
-    if (parts.qualityControl?.status !== 'approved' || !finalApproval) {
+    if (
+      strictDeliveryProtocol &&
+      (!params.thumbnailUrl || !params.contactSheetUrl)
+    ) {
       throw new Error(
-        'Final high-quality render has not passed quality review'
+        'Completed v2 render callback is missing reviewed visual artifacts'
+      );
+    }
+    if (strictDeliveryProtocol && (!params.visualQa || !params.qaReportUrl)) {
+      throw new Error(
+        'Completed render callback is missing formal delivery evidence'
+      );
+    }
+    if (
+      strictDeliveryProtocol &&
+      !hasApprovedAnimationDeliveryReview(
+        parts.qualityControl,
+        params.videoDigest
+      )
+    ) {
+      throw new Error('Formal delivery render has not passed quality review');
+    }
+    if (
+      strictSimulation &&
+      (!params.eventsUrl || !params.stateTrackUrl || !params.runManifestUrl)
+    ) {
+      throw new Error(
+        'Completed simulation render is missing canonical run artifacts'
+      );
+    }
+    if (
+      strictSimulation &&
+      (!parts.simulationEvidence ||
+        parts.simulationEvidence.terminalReason !== 'escaped')
+    ) {
+      throw new Error(
+        'Simulation render has no verified escaped terminal state'
       );
     }
   }
@@ -2907,10 +3334,21 @@ export async function updateRender(params: {
   const startedAt = parts.render?.startedAt || new Date().toISOString();
   const nextParts: StoredAnimationParts = {
     ...parts,
+    ...(isSimulation && params.status === 'completed'
+      ? {
+          simulationEvidence: {
+            ...parts.simulationEvidence!,
+            videoDigest: params.videoDigest!,
+          },
+        }
+      : {}),
     videoUrl: params.videoUrl || parts.videoUrl,
     thumbnailUrl: params.thumbnailUrl || parts.thumbnailUrl,
     contactSheetUrl: params.contactSheetUrl || parts.contactSheetUrl,
     qaReportUrl: params.qaReportUrl || parts.qaReportUrl,
+    eventsUrl: params.eventsUrl || parts.eventsUrl,
+    stateTrackUrl: params.stateTrackUrl || parts.stateTrackUrl,
+    runManifestUrl: params.runManifestUrl || parts.runManifestUrl,
     visualQa: params.visualQa || parts.visualQa,
     // Keep the latest semantic verdict through progress and failure callbacks.
     // New render attempts explicitly clear it when they are queued, so erasing
@@ -2923,6 +3361,17 @@ export async function updateRender(params: {
       : undefined,
     render: {
       ...parts.render,
+      ...(isSimulation
+        ? {
+            runDigest: params.runDigest,
+            compiledSourceDigest: params.compiledSourceDigest,
+            ...(params.status === 'completed'
+              ? { videoDigest: params.videoDigest }
+              : {}),
+          }
+        : params.status === 'completed' && params.videoDigest
+          ? { videoDigest: params.videoDigest }
+          : {}),
       jobId: params.jobId,
       status: params.status,
       stage:

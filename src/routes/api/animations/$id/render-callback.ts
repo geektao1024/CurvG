@@ -21,8 +21,37 @@ const stages = new Set([
   'reviewing',
   'uploading',
 ]);
+const sha256DigestPattern = /^[a-f0-9]{64}$/;
 
 class RenderCallbackValidationError extends Error {}
+
+export function parseRenderCallbackVisualQa(params: {
+  status: string;
+  value: unknown;
+  strictDelivery?: boolean;
+}) {
+  if (params.value === undefined) {
+    if (params.status === 'completed' && params.strictDelivery) {
+      throw new RenderCallbackValidationError(
+        'Completed render requires a valid visual QA report'
+      );
+    }
+    return undefined;
+  }
+  try {
+    return validateAnimationVisualQaReport(params.value);
+  } catch (error) {
+    if (params.status === 'completed' && params.strictDelivery) {
+      throw new RenderCallbackValidationError(
+        'Completed render requires a valid visual QA report'
+      );
+    }
+    console.warn('[render-callback] ignored invalid visual QA report', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
+}
 
 export function renderCallbackErrorResponse(error: unknown): Response {
   if (isRequestBodyTooLargeError(error)) {
@@ -34,15 +63,27 @@ export function renderCallbackErrorResponse(error: unknown): Response {
   return respErr('Render callback failed', { status: 500 });
 }
 
-function optionalArtifactUrl(
+export function optionalArtifactUrl(
   value: unknown,
   origin: string,
   id: string,
   jobId: string,
-  kind: 'video' | 'thumbnail' | 'contact-sheet' | 'qa-report'
+  kind:
+    | 'video'
+    | 'thumbnail'
+    | 'contact-sheet'
+    | 'qa-report'
+    | 'events'
+    | 'state-track'
+    | 'run-manifest'
 ): string | undefined {
   if (typeof value !== 'string' || !value.trim()) return undefined;
-  const url = new URL(value, origin);
+  let url: URL;
+  try {
+    url = new URL(value, origin);
+  } catch {
+    throw new RenderCallbackValidationError('Artifact URL is invalid');
+  }
   if (url.origin !== origin) {
     throw new RenderCallbackValidationError('Artifact URL origin is invalid');
   }
@@ -111,20 +152,103 @@ async function POST({
       jobId,
       'qa-report'
     );
-    let visualQa;
-    if (body.visualQa !== undefined) {
-      try {
-        visualQa = validateAnimationVisualQaReport(body.visualQa);
-      } catch (error) {
-        // Deterministic QA is diagnostic metadata. A malformed report must not
-        // downgrade a successfully rendered and uploaded video to failed.
-        console.warn('[render-callback] ignored invalid visual QA report', {
-          animationId: params.id,
-          jobId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+    const eventsUrl = optionalArtifactUrl(
+      body.eventsUrl,
+      origin,
+      params.id,
+      jobId,
+      'events'
+    );
+    const stateTrackUrl = optionalArtifactUrl(
+      body.stateTrackUrl,
+      origin,
+      params.id,
+      jobId,
+      'state-track'
+    );
+    const runManifestUrl = optionalArtifactUrl(
+      body.runManifestUrl,
+      origin,
+      params.id,
+      jobId,
+      'run-manifest'
+    );
+    const productionMode =
+      body.productionMode === 'simulation_short'
+        ? 'simulation_short'
+        : body.productionMode === 'explainer' ||
+            body.productionMode === undefined
+          ? 'explainer'
+          : undefined;
+    if (!productionMode) {
+      return respErr('Invalid production mode', { status: 400 });
     }
+    if (
+      productionMode === 'explainer' &&
+      [body.runDigest, body.compiledSourceDigest].some(
+        (value) => value !== undefined
+      )
+    ) {
+      return respErr('Explainer callback cannot include simulation digests', {
+        status: 400,
+      });
+    }
+    const runDigest =
+      typeof body.runDigest === 'string' &&
+      sha256DigestPattern.test(body.runDigest)
+        ? body.runDigest
+        : undefined;
+    const compiledSourceDigest =
+      typeof body.compiledSourceDigest === 'string' &&
+      sha256DigestPattern.test(body.compiledSourceDigest)
+        ? body.compiledSourceDigest
+        : undefined;
+    const videoDigest =
+      typeof body.videoDigest === 'string' &&
+      sha256DigestPattern.test(body.videoDigest)
+        ? body.videoDigest
+        : undefined;
+    const strictDelivery = body.protocolVersion === 'curvg-renderer/v2';
+    if (
+      strictDelivery &&
+      body.status === 'completed' &&
+      (!videoDigest || body.videoDigest !== videoDigest)
+    ) {
+      return respErr('Completed v2 callback has an invalid video digest', {
+        status: 400,
+      });
+    }
+    if (
+      productionMode === 'simulation_short' &&
+      (!runDigest ||
+        !compiledSourceDigest ||
+        (body.status === 'completed' && !videoDigest) ||
+        (body.videoDigest !== undefined && !videoDigest))
+    ) {
+      return respErr('Simulation callback digests are invalid', {
+        status: 400,
+      });
+    }
+    const simulationArtifactCount = [
+      eventsUrl,
+      stateTrackUrl,
+      runManifestUrl,
+    ].filter(Boolean).length;
+    if (
+      (productionMode === 'simulation_short' &&
+        body.status === 'completed' &&
+        simulationArtifactCount !== 3) ||
+      (productionMode === 'explainer' && simulationArtifactCount !== 0)
+    ) {
+      return respErr('Simulation artifact URLs are incomplete', {
+        status: 400,
+      });
+    }
+    const visualQa = parseRenderCallbackVisualQa({
+      status: body.status,
+      value: body.visualQa,
+      strictDelivery: body.protocolVersion === 'curvg-renderer/v2',
+    });
     if (body.status === 'completed' && !videoUrl) {
       return respErr('Completed render requires a video URL', { status: 400 });
     }
@@ -150,7 +274,14 @@ async function POST({
       videoUrl,
       thumbnailUrl,
       contactSheetUrl,
-      qaReportUrl: visualQa ? qaReportUrl : undefined,
+      qaReportUrl,
+      eventsUrl,
+      stateTrackUrl,
+      runManifestUrl,
+      runDigest,
+      compiledSourceDigest,
+      videoDigest,
+      productionMode,
       visualQa,
       error:
         typeof body.error === 'string' ? body.error.slice(0, 2000) : undefined,

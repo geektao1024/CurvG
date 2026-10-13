@@ -18,6 +18,10 @@ export const REQUEST_BODY_LIMITS = {
   animationSpec: 96 * 1024,
   animationAction: 8 * 1024,
   renderCallback: 16 * 1024,
+  // Final quality reviews include the candidate Manim source plus the
+  // deterministic QA report. Keep this separate from the small render status
+  // callback so a valid 60 KB scene is not rejected after it renders.
+  animationQualityGate: 192 * 1024,
   paymentCheckout: 8 * 1024,
   subscriptionCancel: 4 * 1024,
   paymentWebhook: 1024 * 1024,

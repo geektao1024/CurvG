@@ -6,6 +6,7 @@ import {
   createAnimation,
   createAnimationDraft,
   createAnimationFromTemplate,
+  createSimulationAnimation,
   listAnimations,
   planAnimation,
 } from '@/modules/animations/service';
@@ -33,6 +34,7 @@ import { startSilentAnimationProduction } from './animations/-production';
 import {
   animationErrorInit,
   animationErrorResponse,
+  parseAnimationProductionRequest,
   parseModelChoice,
   parseSubject,
   resolveChatProvider,
@@ -74,6 +76,7 @@ async function POST({ request }: { request: Request }) {
       body.mode === 'template' || body.mode === 'formula'
         ? body.mode
         : 'description';
+    const production = parseAnimationProductionRequest(body);
     if (mode === 'template') {
       const templateId =
         typeof body.templateId === 'string' ? body.templateId.trim() : '';
@@ -148,6 +151,36 @@ async function POST({ request }: { request: Request }) {
       return respErr('Prompt is too long', { status: 400 });
     }
     const configs = await getAllConfigs();
+    if (production.productionMode === 'simulation_short') {
+      const produce = async (
+        signal: AbortSignal,
+        onStarted?: (animation: AnimationDetail) => void
+      ) => {
+        const planned = await createSimulationAnimation({
+          userId: session.user.id,
+          prompt,
+          subject: parseSubject(body.subject),
+          scenario: production.simulationScenario,
+          hooks: { onStarted },
+        });
+        return startSilentAnimationProduction({
+          request,
+          configs,
+          userId: session.user.id,
+          animation: planned,
+          signal,
+        });
+      };
+      if (request.headers.get('accept')?.includes('text/event-stream')) {
+        return animationEventStream(async (send, signal) => {
+          const animation = await produce(signal, (started) =>
+            send({ type: 'started', animation: started })
+          );
+          send({ type: 'completed', animation });
+        });
+      }
+      return respData(await produce(request.signal));
+    }
     const modelChoice = parseModelChoice(body.modelChoice);
     const requestedModel =
       typeof body.model === 'string' ? body.model.trim() : undefined;

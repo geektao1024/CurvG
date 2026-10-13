@@ -5,7 +5,10 @@ export type AnimationArtifactKind =
   | 'video'
   | 'thumbnail'
   | 'contact-sheet'
-  | 'qa-report';
+  | 'qa-report'
+  | 'events'
+  | 'state-track'
+  | 'run-manifest';
 
 interface ArtifactBucket {
   get(key: string, options?: Record<string, unknown>): Promise<any>;
@@ -16,6 +19,9 @@ const extensions: Record<AnimationArtifactKind, string> = {
   thumbnail: 'thumbnail.jpg',
   'contact-sheet': 'contact-sheet.jpg',
   'qa-report': 'qa-report.json',
+  events: 'events.jsonl',
+  'state-track': 'state-track.json',
+  'run-manifest': 'run-manifest.json',
 };
 
 export function animationArtifactKind(

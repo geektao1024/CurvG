@@ -14,8 +14,10 @@ flowchart TD
   J --> K[Contact-sheet and temporal QA]
   K -->|targeted repair| N[Optional Python orchestrator and model repair]
   N --> I
-  K -->|approve| L[Formal 720p30 render]
-  L --> M[(R2 versioned artifacts)]
+  K -->|approve| L[Formal 1080p30 render]
+  L --> O[Formal evidence and delivery review]
+  O -->|targeted repair| N
+  O -->|approve| M[(R2 versioned artifacts)]
 ```
 
 The Worker remains the owner of authentication, subscriptions, credits,
@@ -23,6 +25,64 @@ provider credentials, model selection, D1 state, and renderer callbacks. The
 initial render is compiled from the approved specification inside the Worker.
 The optional Python service is used for visual-contract preflight and targeted
 repair, not as a prerequisite for the first render.
+
+## Production modes
+
+New animation requests select an explicit production mode. Archived rows that
+do not carry the field are interpreted as `explainer`.
+
+| Mode               | Source of truth                                               | Initial code path                        |
+| ------------------ | ------------------------------------------------------------- | ---------------------------------------- |
+| `explainer`        | User request → six validated schema-v6 planning artifacts     | Deterministic IR compiler                |
+| `simulation_short` | Server-owned scenario → fixed-step solver → canonical run log | Trusted event/checkpoint replay compiler |
+
+The first `simulation_short` family is `ring_escape`. The public API does not
+accept seed, solver configuration, or arbitrary physics parameters; it creates
+the audited server-side scenario. `ring_escape/v1` runs twice before approval,
+and the complete results must be byte-identical. Production stops unless the
+event log ends in exactly one `terminal:escaped` state.
+
+The renderer receives immutable, digest-bound artifacts with the trusted Manim
+source:
+
+- `events.jsonl` — contiguous canonical events, including contact enter/exit,
+  escape, and terminal events.
+- `state-track.json` — checkpoint positions and event cursors consumed by the
+  visual replay subscriber.
+- `run-manifest.json` — scenario, event-log, checkpoint, summary, and aggregate
+  SHA-256 digests, including the trusted source and audio-plan digests. It is
+  uploaded last as the R2 commit marker.
+- `audio-plan.json` — the canonical event-SFX plan. It is not a user-supplied
+  soundtrack and is verified against the run manifest before rendering.
+
+The renderer independently parses the event, checkpoint, manifest, and audio
+artifacts; recomputes their digests; and requires an escaped terminal state.
+The exact replay-frame map drives both the visual replay and event SFX, so a
+cue remains attached to its canonical event rather than an approximate wall
+clock. Simulation render jobs have a zero model-repair budget: a model may
+review composition, but it cannot rewrite physical state, event timing,
+counts, audio timing, or the trusted replay source. A failure must be addressed
+in the scenario or deterministic compiler and then run again.
+
+Current scope is deliberately narrow: one vertical `ring_escape` scene at
+1080x1920, 30 fps. Its formal delivery contains AAC at 48 kHz stereo generated
+from the canonical event-SFX plan; preview output and `explainer` renders have
+no audio track. There is no narration, music, publishing package, reference
+video dissection, additional scenario family, or native 60 fps support. None
+of those capabilities is implied by the `simulation_short` label.
+
+Renderer protocol `curvg-renderer/v2` binds each new job to an approved frame
+and duration, validates the formal 1080x1920/30-fps simulation MP4, and
+requires a separate `delivery_review` before completion. That review combines
+visual QA, media probing, simulation audio QA, and source/run/video digest
+lineage. Submission identity is a stable SHA-256 of the animation, exact source,
+frame, duration, and production mode, so a timed-out HTTP dispatch retry resolves
+to the same renderer job instead of creating a duplicate queue item. Only the
+animation owner can read the resulting private artifacts;
+there is no public gallery delivery path. Deploying the application Worker is
+not sufficient: this contract requires rebuilding and deploying the renderer
+image because the validator and audio pipeline execute inside that image. No
+deployment is asserted by this document.
 
 ## Provider routing
 
@@ -135,20 +195,16 @@ CurvG has two deliberately different deterministic paths:
 1. A _pre-matched_ verified profile (quadratic tangent, cycloid, heart) can
    run before provider calls. It is narrow and only runs when the schema-6
    mathematics dossier authors the exact formulas required by that profile.
-2. If the scene provider and its failover targets all fail **after** intent,
-   knowledge, curriculum, mathematics, and storyboard have completed and
-   passed validation, `runFromStageWithSceneFallback` rebuilds only the scene
-   from those approved artifacts. Known profiles receive verified geometry;
-   unknown topics receive a conservative scene using the dossier's own
-   formulas and distinct step cards. It never invents a new mathematical claim
-   or silently replaces an earlier approved artifact.
+2. Scene-stage failure is fail-closed for unknown topics. The old generic
+   formula/`Step N` scene substitution is no longer used by current planning;
+   it could render cleanly while failing the user's requested visual mechanism.
+   Narrow, verified deterministic profiles remain eligible only when every
+   hard request constraint is compatible.
 
-The recovery row is completed with `provider=curvg`,
+Historical recovery rows may still carry `provider=curvg`,
 `model=deterministic-scene-v1`, and
-`diagnostic.kind=deterministic_scene_fallback`, including the original failure
-summary. This makes it possible to measure recovery separately from both
-provider-produced scenes and the old silent substitutions. If any upstream
-artifact is missing or invalid, the error propagates to the Workflow queue.
+`diagnostic.kind=deterministic_scene_fallback`. They remain readable but do not
+describe the current unknown-topic failure policy.
 
 Historical context — before this boundary existed, a failed stage could be
 marked completed from a generic pre-authored scene. On 2026-07-31, 71% of one
@@ -255,13 +311,17 @@ frames and analyzes occupancy, edge risk, contrast, black/frozen segments, and
 flash frames. The quality gate can request a targeted repair and preserves the
 highest-ranked preview when later repairs regress.
 
-After approval, the selected source is rendered again with `-qm`. Thumbnail,
-contact sheet, and QA JSON are regenerated from that formal MP4, then the
-formal video and evidence are uploaded to R2. A formal MP4 below a 32 KiB
-floor is rejected as a stub before the renderer may report `completed`, and
-the Worker-side `updateRender` additionally refuses a completed callback that
-carries no video artifact. Preview media is never delivered
-as the final artifact.
+After approval, the selected source is rendered again with `-qh` at 30 fps and
+the approved delivery resolution (the current simulation family is
+1080x1920). Thumbnail, contact sheet, and QA JSON are regenerated from that
+formal MP4. For `simulation_short`, the renderer synthesizes the canonical
+event-SFX WAV, muxes AAC 48 kHz stereo, and verifies the decoded audio before
+the formal video and evidence are uploaded to R2. A `delivery_review` must
+pass visual, media, and (where applicable) audio QA as well as the digest
+lineage before the renderer may report `completed`. A formal MP4 below a 32 KiB
+floor is rejected as a stub; the Worker-side `updateRender` additionally
+refuses a completed callback that lacks the required reviewed artifacts.
+Preview media is never delivered as the final artifact.
 
 ## Configuration
 

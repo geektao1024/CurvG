@@ -2,21 +2,16 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
-import { Footer } from '@/blocks/footer';
-import { Header } from '@/blocks/header';
 import { FreeMathVideoCreatorPage } from '@/blocks/page-free-math-video-creator';
+import { SitePage } from '@/blocks/site-page';
 
 import { marketingHead } from './-marketing-head';
 
 function RoutePage() {
   return (
-    <div className="bg-background text-foreground flex min-h-screen flex-col">
-      <Header />
-      <main className="flex-1">
-        <FreeMathVideoCreatorPage />
-      </main>
-      <Footer />
-    </div>
+    <SitePage>
+      <FreeMathVideoCreatorPage />
+    </SitePage>
   );
 }
 

@@ -1,6 +1,7 @@
 # AnimG 竞品拆解与实现评估
 
 - 审计日期：2026-07-22
+- 2026-09-22 补注：本文不覆盖 Library 的 Hub / Topic / 场景详情结构。该结构在 2026-09-21 复核后写入 `docs/LIBRARY_PLAN.md` §2。当时「library 是用户作品堆」的说法已过时：`/en/library` 是编辑精选，`/en/explore` 才是 UGC。本文 Creator / Playground / 规格状态机结论仍然有效。
 - 目标页面：https://animg.app/en/playground
 - 延伸页面：`/en/creator`、`/en/how-it-works`、`/en/library`、`/en/subscription`
 - 目标：判断“自然语言/数学公式 → Manim 动画网站”能否基于当前 ShipAny Next 项目实现

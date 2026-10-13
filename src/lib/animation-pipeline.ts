@@ -118,6 +118,13 @@ export function validateAnimationPlanningArtifact<
 export function composeAnimationSpecFromArtifacts(
   artifacts: AnimationPlanningArtifacts
 ): AnimationSpec {
+  // Formula content is derived, never trusted: whatever the scene stage
+  // authored, the dossier's latexParts are (re)injected here so the verbatim
+  // rule holds by construction on every path that reaches the compiler.
+  const scene = deriveSceneFormulaContent(
+    artifacts.scene,
+    artifacts.mathematics
+  ).artifact;
   return validateAnimationSpec({
     schemaVersion: 6,
     ...artifacts.intent,
@@ -125,8 +132,321 @@ export function composeAnimationSpecFromArtifacts(
     ...artifacts.curriculum,
     ...artifacts.mathematics,
     ...artifacts.storyboard,
-    ...artifacts.scene,
+    ...scene,
   });
+}
+
+// ─── Path B (2026-08-04): mechanical normalization and targeted repair ──────
+//
+// Principle: anything mechanically derivable or normalizable is corrected in
+// code with an auditable note; anything that needs new content is rejected —
+// but rejected narrowly, so the model repairs `objects[i]`/`timeline[j]`
+// instead of regenerating the whole artifact.
+
+const SNAP_EVENT_TOLERANCE_SECONDS = 0.5;
+const SNAP_STORYBOARD_TOLERANCE_SECONDS = 1;
+const MAX_TARGETED_REPAIR_ITEMS = 6;
+
+function canonicalReferenceId(value: string): string {
+  return value.toLowerCase().replace(/[-_]/g, '');
+}
+
+function uniqueCanonicalMatch(
+  value: string,
+  declared: ReadonlySet<string>
+): string | undefined {
+  if (declared.has(value)) return undefined;
+  const canonical = canonicalReferenceId(value);
+  const matches = [...declared].filter(
+    (candidate) => canonicalReferenceId(candidate) === canonical
+  );
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+/**
+ * Re-derive formula object content from the dossier (schema-6 single
+ * ownership). Only rewrites when the rendered LaTeX does not already match,
+ * so deterministic profiles keep their namespaced part ids and colors.
+ */
+export function deriveSceneFormulaContent(
+  scene: AnimationPlanningArtifacts['scene'],
+  mathematics: Pick<AnimationPlanningArtifacts['mathematics'], 'mathDossier'>
+): { artifact: AnimationPlanningArtifacts['scene']; corrections: string[] } {
+  const corrections: string[] = [];
+  const formulas = new Map(
+    mathematics.mathDossier.formulas.map((formula) => [formula.id, formula])
+  );
+  const objects = scene.objects.map((object) => {
+    if (object.kind !== 'formula' || !object.formulaId) return object;
+    const formula = formulas.get(object.formulaId);
+    if (!formula) return object;
+    const authored = formula.latexParts.map((part) => part.latex).join('');
+    const rendered = object.parts
+      ? object.parts.map((part) => part.latex).join('')
+      : (object.expr ?? '');
+    if (rendered === authored) return object;
+    corrections.push(
+      `objects/${object.id}: derived formula content from dossier ${formula.id}`
+    );
+    const next = { ...object };
+    if (formula.latexParts.length >= 2) {
+      next.parts = formula.latexParts.map((part) => ({
+        id: part.id,
+        latex: part.latex,
+        meaning: part.meaning,
+      }));
+      delete next.expr;
+    } else {
+      next.expr = authored;
+      delete next.parts;
+    }
+    return next;
+  });
+  return corrections.length
+    ? { artifact: { ...scene, objects }, corrections }
+    : { artifact: scene, corrections };
+}
+
+function normalizeStoryboardArtifact(
+  storyboard: AnimationPlanningArtifacts['storyboard'],
+  intent: Pick<AnimationPlanningArtifacts['intent'], 'durationSeconds'>
+): {
+  artifact: AnimationPlanningArtifacts['storyboard'];
+  corrections: string[];
+} {
+  const corrections: string[] = [];
+  const lastEnd = Math.max(...storyboard.shots.map((shot) => shot.endAt));
+  const drift = intent.durationSeconds - lastEnd;
+  if (
+    Math.abs(drift) > 0.001 &&
+    Math.abs(drift) <= SNAP_STORYBOARD_TOLERANCE_SECONDS
+  ) {
+    const shots = storyboard.shots.map((shot) =>
+      shot.endAt === lastEnd && shot.startAt < intent.durationSeconds
+        ? { ...shot, endAt: intent.durationSeconds }
+        : shot
+    );
+    corrections.push(
+      `shots: snapped final endAt ${lastEnd} to durationSeconds ${intent.durationSeconds}`
+    );
+    return { artifact: { ...storyboard, shots }, corrections };
+  }
+  return { artifact: storyboard, corrections };
+}
+
+function normalizeSceneArtifact(
+  scene: AnimationPlanningArtifacts['scene'],
+  artifacts: Partial<AnimationPlanningArtifacts>
+): { artifact: AnimationPlanningArtifacts['scene']; corrections: string[] } {
+  const corrections: string[] = [];
+  const objectIds = new Set(scene.objects.map((object) => object.id));
+  const objectKinds = new Map(
+    scene.objects.map((object) => [object.id, object.kind])
+  );
+  const shots = artifacts.storyboard?.shots ?? [];
+  const shotIds = new Set(shots.map((shot) => shot.id));
+  const shotById = new Map(shots.map((shot) => [shot.id, shot]));
+
+  const timeline = scene.timeline.map((event) => {
+    let next = event;
+    const rewrite = (field: 'ref' | 'targetRef' | 'pathRef' | 'shotId') => {
+      const value = next[field];
+      if (!value) return;
+      const pool = field === 'shotId' ? shotIds : objectIds;
+      const match = uniqueCanonicalMatch(value, pool);
+      if (match) {
+        corrections.push(
+          `timeline/${event.id}: normalized ${field} ${value} -> ${match}`
+        );
+        next = { ...next, [field]: match };
+      }
+    };
+    rewrite('shotId');
+    rewrite('ref');
+    rewrite('targetRef');
+    rewrite('pathRef');
+
+    // Transform target inference: only when exactly one same-kind sibling of
+    // the source object exists. Anything ambiguous stays for targeted repair.
+    if (
+      next.op === 'transform' &&
+      (!next.targetRef || !objectIds.has(next.targetRef))
+    ) {
+      const sourceKind = objectKinds.get(next.ref);
+      const candidates = scene.objects.filter(
+        (object) => object.kind === sourceKind && object.id !== next.ref
+      );
+      if (sourceKind && candidates.length === 1) {
+        corrections.push(
+          `timeline/${event.id}: inferred transform targetRef ${candidates[0].id}`
+        );
+        next = { ...next, targetRef: candidates[0].id };
+      }
+    }
+
+    const shot = next.shotId ? shotById.get(next.shotId) : undefined;
+    if (shot) {
+      // Timestamp snapping: clamp small overshoots into the shot window;
+      // larger drift is content-level and stays a rejection.
+      if (
+        next.at < shot.startAt &&
+        shot.startAt - next.at <= SNAP_EVENT_TOLERANCE_SECONDS
+      ) {
+        corrections.push(
+          `timeline/${event.id}: clamped at ${next.at} -> ${shot.startAt}`
+        );
+        next = { ...next, at: shot.startAt };
+      } else if (
+        next.at > shot.endAt &&
+        next.at - shot.endAt <= SNAP_EVENT_TOLERANCE_SECONDS
+      ) {
+        const clamped = Math.max(shot.startAt, shot.endAt - next.runTime);
+        corrections.push(
+          `timeline/${event.id}: clamped at ${next.at} -> ${clamped}`
+        );
+        next = { ...next, at: clamped };
+      }
+      const overrun = next.at + next.runTime - shot.endAt;
+      if (overrun > 0 && overrun <= SNAP_EVENT_TOLERANCE_SECONDS) {
+        const trimmed = Number(Math.max(0.1, shot.endAt - next.at).toFixed(3));
+        if (trimmed < next.runTime) {
+          corrections.push(
+            `timeline/${event.id}: trimmed runTime ${next.runTime} -> ${trimmed}`
+          );
+          next = { ...next, runTime: trimmed };
+        }
+      }
+    }
+    return next;
+  });
+
+  let artifact: AnimationPlanningArtifacts['scene'] = { ...scene, timeline };
+  if (artifacts.mathematics) {
+    const derived = deriveSceneFormulaContent(artifact, artifacts.mathematics);
+    artifact = derived.artifact;
+    corrections.push(...derived.corrections);
+  }
+  return { artifact, corrections };
+}
+
+/**
+ * Mechanical normalization between schema parse and semantic validation.
+ * Every correction is auditable; nothing here invents content.
+ */
+export function normalizeAnimationPlanningArtifact<
+  Name extends AnimationPlanningStageName,
+>(
+  name: Name,
+  artifact: AnimationPlanningArtifacts[Name],
+  artifacts: Partial<AnimationPlanningArtifacts>
+): { artifact: AnimationPlanningArtifacts[Name]; corrections: string[] } {
+  if (name === 'storyboard' && artifacts.intent) {
+    return normalizeStoryboardArtifact(
+      artifact as AnimationPlanningArtifacts['storyboard'],
+      artifacts.intent
+    ) as { artifact: AnimationPlanningArtifacts[Name]; corrections: string[] };
+  }
+  if (name === 'scene') {
+    return normalizeSceneArtifact(
+      artifact as AnimationPlanningArtifacts['scene'],
+      artifacts
+    ) as { artifact: AnimationPlanningArtifacts[Name]; corrections: string[] };
+  }
+  return { artifact, corrections: [] };
+}
+
+export interface SceneTargetedRepairItem {
+  collection: 'objects' | 'timeline';
+  index: number;
+  issues: string[];
+  value: unknown;
+}
+
+/**
+ * Map a zod failure to the exact scene items that caused it. Returns
+ * undefined when any issue lies outside `objects[i]`/`timeline[j]` (another
+ * stage's contract, or artifact-level) — those need the full repair path.
+ */
+export function planSceneTargetedRepair(
+  error: unknown,
+  scene: AnimationPlanningArtifacts['scene']
+): SceneTargetedRepairItem[] | undefined {
+  if (!(error instanceof z.ZodError)) return undefined;
+  const items = new Map<string, SceneTargetedRepairItem>();
+  for (const issue of error.issues) {
+    const [head, index] = issue.path;
+    if (
+      (head !== 'objects' && head !== 'timeline') ||
+      typeof index !== 'number'
+    ) {
+      return undefined;
+    }
+    const collection = head as 'objects' | 'timeline';
+    const value = scene[collection][index];
+    if (value === undefined) return undefined;
+    const key = `${collection}:${index}`;
+    const existing = items.get(key);
+    if (existing) {
+      existing.issues.push(issue.message);
+    } else {
+      items.set(key, { collection, index, issues: [issue.message], value });
+    }
+  }
+  if (items.size === 0 || items.size > MAX_TARGETED_REPAIR_ITEMS) {
+    return undefined;
+  }
+  return [...items.values()];
+}
+
+export function sceneTargetedRepairPrompt(
+  items: SceneTargetedRepairItem[]
+): string {
+  const listing = items
+    .map(
+      (item) =>
+        `${item.collection}[${item.index}] (${item.issues.join('; ')}):\n${JSON.stringify(item.value)}`
+    )
+    .join('\n\n');
+  return `The scene artifact you produced is accepted except the items below, which failed validation (incremental repair ${items.length} item(s)):\n\n${listing}\n\nReturn ONLY one JSON object of the form {"objects":[{"index":<number>,"value":{...}}],"timeline":[{"index":<number>,"value":{...}}]} containing corrected complete versions of exactly these items and no others. Preserve ids unless an issue demands otherwise. Do not resend the rest of the artifact.`;
+}
+
+/** Merge a targeted-repair fragment; throws when it does not follow the contract. */
+export function applySceneTargetedRepair(
+  scene: AnimationPlanningArtifacts['scene'],
+  content: string,
+  expected: SceneTargetedRepairItem[]
+): AnimationPlanningArtifacts['scene'] {
+  const fragment = parseStructuredJsonObject(content) as {
+    objects?: Array<{ index: number; value: unknown }>;
+    timeline?: Array<{ index: number; value: unknown }>;
+  };
+  const allowed = new Set(
+    expected.map((item) => `${item.collection}:${item.index}`)
+  );
+  const objects = [...scene.objects] as unknown[];
+  const timeline = [...scene.timeline] as unknown[];
+  let applied = 0;
+  for (const collection of ['objects', 'timeline'] as const) {
+    for (const entry of fragment[collection] || []) {
+      if (
+        !entry ||
+        typeof entry.index !== 'number' ||
+        entry.value === undefined ||
+        !allowed.has(`${collection}:${entry.index}`)
+      ) {
+        throw new Error(
+          `Targeted repair fragment addressed an unexpected item in ${collection}`
+        );
+      }
+      (collection === 'objects' ? objects : timeline)[entry.index] =
+        entry.value;
+      applied += 1;
+    }
+  }
+  if (applied === 0) {
+    throw new Error('Targeted repair fragment contained no repairs');
+  }
+  return sceneArtifactSchema.parse({ ...scene, objects, timeline });
 }
 
 type ApprovedPlanningArtifacts = Omit<AnimationPlanningArtifacts, 'scene'>;
@@ -1957,14 +2277,149 @@ export interface DeterministicAnimationPlanningProfile {
   artifacts: AnimationPlanningArtifacts;
 }
 
+export interface DeterministicAnimationPlanningProfileContext {
+  currentSpec?: AnimationSpec;
+  hasPriorConversation?: boolean;
+}
+
+const EXPLICIT_PORTRAIT_REQUEST =
+  /(?:9\s*[:x×／/]\s*16|1080\s*[x×]\s*1920|portrait|vertical|竖屏|竖版|手机竖屏)/iu;
+const EXPLICIT_VISUAL_DIRECTION =
+  /(?:#[0-9a-f]{3,8}\b|\b(?:red|green|blue|yellow|orange|purple|pink|black|white|cyan|magenta|gold(?:en)?)\b|红色|绿色|蓝色|黄色|橙色|紫色|粉色|黑色|白色|青色|金色|配色|色板|背景色|(?:视觉|动画|画面|设计)?风格|palette|color\s*scheme|background\s*color|watercolor|hand[- ]?drawn|minimalist|neon|cyberpunk|chalkboard|水墨|手绘|极简|霓虹|赛博朋克|黑板)/iu;
+const REVISION_LANGUAGE =
+  /(?:\b(?:revise|revision|edit|modify|change|update|redo|instead)\b|修改|修订|改成|换成|调整|重做|不要原来|上一版|上一稿|当前版本|在原(?:动画|版本|场景)上)/iu;
+const EXPLICIT_FORMULA =
+  /(?:[a-z]\s*\([^)]{0,24}\)\s*=|[xy]\s*=|\\(?:sin|cos|frac)|\b(?:sin|cos)\s*\(|参数方程|公式(?:为|是|改成|换成))/iu;
+
+function requestedDurationSeconds(prompt: string): number | undefined {
+  const match = prompt.match(
+    /(?:^|\D)(\d{1,3})(?:\s*)(?:秒|seconds?|secs?)(?:\D|$)/iu
+  );
+  return match ? Number(match[1]) : undefined;
+}
+
+function quadraticPromptHasConflictingFormula(prompt: string): boolean {
+  let remainder = prompt
+    .toLowerCase()
+    .replaceAll('**', '^')
+    .replaceAll('²', '^2')
+    .replaceAll('−', '-')
+    .replace(/\s+/gu, '');
+  remainder = remainder
+    .replaceAll('y=x^2', '')
+    .replaceAll('f(x)=x^2', '')
+    .replaceAll('y=2x-1', '')
+    .replaceAll('x=1', '')
+    .replace(/(?:slope|斜率)(?:is|equals?|equalto|为|=)?2/gu, '');
+  return EXPLICIT_FORMULA.test(remainder);
+}
+
+function normalizedFormulaText(prompt: string): string {
+  return prompt
+    .toLowerCase()
+    .replaceAll('−', '-')
+    .replaceAll('π', 'pi')
+    .replaceAll('\\pi', 'pi')
+    .replaceAll('\\sin', 'sin')
+    .replaceAll('\\cos', 'cos')
+    .replaceAll('{', '')
+    .replaceAll('}', '')
+    .replace(/\s+/gu, '');
+}
+
+function cycloidPromptHasConflictingFormula(prompt: string): boolean {
+  if (!EXPLICIT_FORMULA.test(prompt)) return false;
+  const normalized = normalizedFormulaText(prompt);
+  return !(
+    normalized.includes('x=t-pi-sin(t)') && normalized.includes('y=1-cos(t)')
+  );
+}
+
+function heartPromptHasConflictingFormula(prompt: string): boolean {
+  if (!EXPLICIT_FORMULA.test(prompt)) return false;
+  const normalized = normalizedFormulaText(prompt).replaceAll('^', '');
+  return !(
+    normalized.includes('x=4sin3(t)') &&
+    normalized.includes('y=2.6cos(t)-cos(2t)-0.4cos(3t)-0.2cos(4t)')
+  );
+}
+
+/**
+ * Decide whether a fixed profile may replace the normal planning pipeline.
+ *
+ * Profiles intentionally do not parse arbitrary art direction or revision
+ * instructions. When the user supplies one of those constraints, falling
+ * through to staged planning preserves the request instead of silently
+ * shipping the profile's fixed 16:9 palette, formula and scene grammar.
+ */
+export function isDeterministicAnimationPlanningProfileEligible(params: {
+  prompt: string;
+  candidate: DeterministicAnimationPlanningProfile;
+  context?: DeterministicAnimationPlanningProfileContext;
+}): boolean {
+  if (params.context?.currentSpec || params.context?.hasPriorConversation) {
+    return false;
+  }
+  if (REVISION_LANGUAGE.test(params.prompt)) return false;
+  if (EXPLICIT_PORTRAIT_REQUEST.test(params.prompt)) return false;
+  if (EXPLICIT_VISUAL_DIRECTION.test(params.prompt)) return false;
+
+  const requestedDuration = requestedDurationSeconds(params.prompt);
+  if (
+    requestedDuration !== undefined &&
+    requestedDuration !== params.candidate.artifacts.intent.durationSeconds
+  ) {
+    return false;
+  }
+
+  if (params.candidate.id === 'quadratic-tangent-v1') {
+    return !quadraticPromptHasConflictingFormula(params.prompt);
+  }
+  if (params.candidate.id === 'cycloid-v1') {
+    return !cycloidPromptHasConflictingFormula(params.prompt);
+  }
+  return !heartPromptHasConflictingFormula(params.prompt);
+}
+
 export function buildDeterministicAnimationPlanningProfile(
-  prompt: string
+  prompt: string,
+  context?: DeterministicAnimationPlanningProfileContext
 ): DeterministicAnimationPlanningProfile | undefined {
   const heart = buildDeterministicHeartCurveArtifacts(prompt);
-  if (heart) return { id: 'heart-curve-v1', artifacts: heart };
+  if (heart) {
+    const candidate = { id: 'heart-curve-v1', artifacts: heart } as const;
+    return isDeterministicAnimationPlanningProfileEligible({
+      prompt,
+      candidate,
+      context,
+    })
+      ? candidate
+      : undefined;
+  }
   const quadratic = buildDeterministicQuadraticTangentArtifacts(prompt);
-  if (quadratic) return { id: 'quadratic-tangent-v1', artifacts: quadratic };
+  if (quadratic) {
+    const candidate = {
+      id: 'quadratic-tangent-v1',
+      artifacts: quadratic,
+    } as const;
+    return isDeterministicAnimationPlanningProfileEligible({
+      prompt,
+      candidate,
+      context,
+    })
+      ? candidate
+      : undefined;
+  }
   const cycloid = buildDeterministicCycloidArtifacts(prompt);
-  if (cycloid) return { id: 'cycloid-v1', artifacts: cycloid };
+  if (cycloid) {
+    const candidate = { id: 'cycloid-v1', artifacts: cycloid } as const;
+    return isDeterministicAnimationPlanningProfileEligible({
+      prompt,
+      candidate,
+      context,
+    })
+      ? candidate
+      : undefined;
+  }
   return undefined;
 }

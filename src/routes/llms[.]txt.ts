@@ -2,6 +2,14 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { envConfigs } from '@/config';
 import { baseLocale } from '@/paraglide/runtime.js';
+import {
+  labPath,
+  publicSubjects,
+  subjectPath,
+  suitesForSubject,
+} from '@/content/labs';
+import { rootCategories } from '@/content/library';
+import { libraryText } from '@/content/library/types';
 import { getLocalPosts, mergePosts } from '@/content/posts';
 
 const STATIC_PAGES: { path: string; title: string; description: string }[] = [
@@ -42,10 +50,22 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
       'An honest comparison of CurvG and raw Manim CE, including when raw Manim is the better choice.',
   },
   {
+    path: '/labs',
+    title: 'Interactive Math & Physics Labs',
+    description:
+      'Free interactive lessons: drag a live board, follow a guided tour, read the explanation and take a short quiz. Functions and calculus, conic sections, geometry, probability, motion, forces and waves.',
+  },
+  {
     path: '/curves',
     title: 'Math Curve Encyclopedia',
     description:
       '30 classic curves with interactive graphs, LaTeX equations, key properties, and one-click Manim animation briefs.',
+  },
+  {
+    path: '/library',
+    title: 'Math Animation Library',
+    description:
+      'Inspectable shelves for geometry, algebra, calculus, and waves. Curve objects link to the encyclopedia; scene pages are added as they are written.',
   },
   {
     path: '/privacy-policy',
@@ -108,6 +128,30 @@ export const Route = createFileRoute('/llms.txt')({
           ...STATIC_PAGES.map(
             (p) => `- [${p.title}](${app_url}${p.path}): ${p.description}`
           ),
+          ...rootCategories.map(
+            (hub) =>
+              `- [${libraryText(hub.title, 'en')}](${app_url}/library/${hub.id}): ${libraryText(hub.description, 'en')}`
+          ),
+          '',
+          '## Interactive Labs',
+          '',
+          ...publicSubjects().flatMap((subject) => [
+            `### [${libraryText(subject.name, 'en')}](${app_url}${subjectPath(subject.id)})`,
+            '',
+            libraryText(subject.description, 'en'),
+            '',
+            ...suitesForSubject(subject.id).flatMap((suite) => [
+              `#### ${libraryText(suite.name, 'en')}`,
+              '',
+              ...suite.chapters
+                .filter((lab) => lab.publication === 'public')
+                .map(
+                  (lab) =>
+                    `- [${libraryText(lab.title, 'en')}](${app_url}${labPath(lab)}): ${libraryText(lab.summary, 'en')}`
+                ),
+              '',
+            ]),
+          ]),
         ];
 
         if (posts.length > 0) {

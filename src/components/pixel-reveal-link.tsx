@@ -24,6 +24,8 @@ interface PixelRevealLinkProps {
   className?: string;
   target?: '_blank' | '_self';
   onClick?: MouseEventHandler<HTMLAnchorElement>;
+  /** The page this link points to is the one being viewed. */
+  current?: boolean;
 }
 
 function getDefaultPixelDelays(variant: PixelRevealVariant) {
@@ -106,6 +108,7 @@ export function PixelRevealLink({
   className,
   target,
   onClick,
+  current = false,
 }: PixelRevealLinkProps) {
   const hoveredRef = useRef(false);
   const focusedRef = useRef(false);
@@ -184,6 +187,8 @@ export function PixelRevealLink({
       aria-label={label}
       className={cn('curvg-pixel-reveal-link', className)}
       data-active={active}
+      data-current={current || undefined}
+      aria-current={current ? 'page' : undefined}
       data-variant={variant}
       onPointerEnter={() => {
         hoveredRef.current = true;

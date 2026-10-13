@@ -138,6 +138,18 @@ function normalizeEffort(
   return effort === 'xhigh' || effort === 'max' ? 'high' : effort;
 }
 
+/**
+ * DeepSeek counts chain-of-thought tokens against `max_output_tokens`
+ * (usage reports them under output_tokens_details.reasoning_tokens). A
+ * caller's stage budget sizes only the visible artifact, so with thinking
+ * active the budget must be inflated or nearly every call ends
+ * `status: "incomplete"` before the artifact starts — exactly what
+ * production telemetry showed on 2026-08-04 (every planning attempt
+ * output_truncated in 20-60s). parseResponses reads only output_text items,
+ * so the headroom never leaks reasoning into the artifact.
+ */
+const REASONING_OUTPUT_HEADROOM_TOKENS = 24_000;
+
 export class DeepSeekChatProvider implements ChatProvider {
   readonly name = 'deepseek';
   private readonly apiKey: string;
@@ -190,13 +202,19 @@ export class DeepSeekChatProvider implements ChatProvider {
       );
     }
     const effort = normalizeEffort(input.reasoningEffort);
+    const maxOutputTokens =
+      input.maxTokens === undefined
+        ? undefined
+        : effort
+          ? input.maxTokens + REASONING_OUTPUT_HEADROOM_TOKENS
+          : input.maxTokens;
     const body: Record<string, unknown> = {
       model,
       input: responsesInput(input.messages),
       stream: false,
-      ...(input.maxTokens === undefined
+      ...(maxOutputTokens === undefined
         ? {}
-        : { max_output_tokens: input.maxTokens }),
+        : { max_output_tokens: maxOutputTokens }),
       // Ignored by the upstream while thinking is active; harmless otherwise.
       ...(input.temperature === undefined
         ? {}

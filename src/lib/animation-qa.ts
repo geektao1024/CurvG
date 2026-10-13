@@ -1,11 +1,14 @@
 import { z } from 'zod';
 
-import type {
-  AnimationQualityGateAction,
-  AnimationVisualQaCode,
-  AnimationVisualQaReport,
-  AnimationVisualReview,
-  AnimationVisualReviewIssue,
+import {
+  ANIMATION_QUALITY_GATE_KINDS,
+  type AnimationQualityControlState,
+  type AnimationQualityGateAction,
+  type AnimationQualityGateKind,
+  type AnimationVisualQaCode,
+  type AnimationVisualQaReport,
+  type AnimationVisualReview,
+  type AnimationVisualReviewIssue,
 } from '@/lib/animation';
 import { parseStructuredJsonObject } from '@/lib/structured-json';
 
@@ -14,6 +17,10 @@ const timeSegmentSchema = z.tuple([
   z.number().min(0).max(300),
   z.number().min(0).max(300),
 ]);
+
+export const animationQualityGateKindSchema = z.enum(
+  ANIMATION_QUALITY_GATE_KINDS
+);
 
 const hardVisualQaCodes = new Set<AnimationVisualQaCode>([
   'empty_frame',
@@ -166,6 +173,7 @@ export const animationVisualReviewDraftSchema = z.object({
           'legibility',
           'pacing',
           'hierarchy',
+          'request_fidelity',
           'math_fidelity',
           'payoff',
         ]),
@@ -190,6 +198,12 @@ export function validateAnimationVisualQaReport(
   value: unknown
 ): AnimationVisualQaReport {
   return animationVisualQaReportSchema.parse(value);
+}
+
+export function validateAnimationQualityGateKind(
+  value: unknown
+): AnimationQualityGateKind {
+  return animationQualityGateKindSchema.parse(value);
 }
 
 export function parseAnimationVisualReview(params: {
@@ -300,13 +314,23 @@ export function deterministicReviewFromQa(params: {
   };
 }
 
-export function decideAnimationQualityGate(params: {
+export interface AnimationQualityGateDecisionInput {
+  /**
+   * Defaults to the historical preview gate so existing callers remain
+   * compatible. Formal-render callers must pass `delivery_review` explicitly.
+   */
+  kind?: AnimationQualityGateKind;
   qa?: AnimationVisualQaReport;
   review?: AnimationVisualReview;
   attempt: number;
   maxRepairs: number;
   renderError?: string;
-}): AnimationQualityGateAction {
+}
+
+export function decideAnimationQualityGate(
+  params: AnimationQualityGateDecisionInput
+): AnimationQualityGateAction {
+  const kind = params.kind ?? 'final_review';
   const repairAvailable = params.attempt < params.maxRepairs;
   if (params.renderError) return repairAvailable ? 'repair' : 'reject';
   if (!params.qa || !params.review)
@@ -317,7 +341,9 @@ export function decideAnimationQualityGate(params: {
   );
   const blocking = params.review.issues.some(
     (issue) =>
-      issue.severity === 'blocking' || issue.category === 'math_fidelity'
+      issue.severity === 'blocking' ||
+      issue.category === 'request_fidelity' ||
+      issue.category === 'math_fidelity'
   );
   const deterministicPass = isAnimationVisualQaReviewable(params.qa);
   if (
@@ -336,5 +362,38 @@ export function decideAnimationQualityGate(params: {
   ) {
     return 'approve';
   }
+
+  // A formal render is a separate review subject from the preview that
+  // selected its code. When it fails the same bar, it must re-enter the repair
+  // loop while budget remains and reject at exhaustion; a previous
+  // `final_review` approval is intentionally irrelevant here.
+  if (kind === 'delivery_review') {
+    return repairAvailable ? 'repair' : 'reject';
+  }
   return repairAvailable ? 'repair' : 'reject';
+}
+
+/**
+ * Completion requires an approval recorded against the formal render itself.
+ * A legacy/preview `final_review` approval is deliberately insufficient.
+ */
+export function hasApprovedAnimationDeliveryReview(
+  qualityControl:
+    | Pick<AnimationQualityControlState, 'status' | 'attempts'>
+    | undefined,
+  videoDigest?: string
+): boolean {
+  if (qualityControl?.status !== 'approved') return false;
+  const latestDeliveryReview = qualityControl.attempts
+    .filter(
+      (attempt) =>
+        attempt.kind === 'delivery_review' &&
+        (videoDigest === undefined || attempt.videoDigest === videoDigest)
+    )
+    .sort(
+      (left, right) =>
+        right.attempt - left.attempt ||
+        right.createdAt.localeCompare(left.createdAt)
+    )[0];
+  return latestDeliveryReview?.action === 'approve';
 }

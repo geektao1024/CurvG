@@ -1,8 +1,37 @@
 # CurvG
 
-CurvG is a math curve animation gallery and a formula-first animation generator in development. The product is designed to keep equations, scene plans, generated Manim code, and render artifacts inspectable instead of treating mathematical animation as an opaque text-to-video task.
+CurvG is a math tool site with two halves that feed each other:
 
-Website: [curvg.com](https://curvg.com)
+- **Free interactive labs** (`/labs`): one idea per board you can drag —
+  sliders, a guided walk-through, the explanation and a short quiz. They are
+  the indexable, shareable entry point.
+- **A formula-first AI animation generator** (`/creator`): any lab, curve or
+  idea becomes a narrated Manim video, with the scene plan and code kept
+  inspectable instead of hidden behind an opaque text-to-video call.
+
+The curve encyclopedia (`/curves`), scene library (`/library`) and guides
+(`/blog`) sit around them for search and discovery.
+
+Website: [curvg.com](https://curvg.com) · Project brief and change log:
+[docs/PROJECT_BRIEF.md](docs/PROJECT_BRIEF.md)
+
+## Site map
+
+| Path                                                                        | What it is                                                                                                                  | Doc                             |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `/`                                                                         | Homepage, labs first: a live lab + topic search, the lab index, lab → video, for teachers, what's new, pricing summary, FAQ | `SITE_ARCHITECTURE_PLAN.md`     |
+| `/labs`, `/labs/{math,physics}`, `/labs/{suite}`, `/labs/{suite}/{chapter}` | Interactive labs: hub with topic search → subject page → suite → chapter (full-screen workspace)                            | `LABS_PLAN.md`                  |
+| `/creator`                                                                  | AI animation generator (sign-in to render)                                                                                  | `CURVG_CREATOR_ARCHITECTURE.md` |
+| `/curves`, `/curves/{slug}`                                                 | 30-curve encyclopedia with live parameter previews                                                                          | `CURVE_ENCYCLOPEDIA.md`         |
+| `/library`, `/library/{hub}`, `/library/{hub}/{topic}`                      | Editorial library: math content graph; links curves and labs                                                                | `LIBRARY_PLAN.md`               |
+| `/pricing`                                                                  | Plans and credits                                                                                                           | —                               |
+| `/blog`, `/blog/{slug}`                                                     | Guides (MDX in `src/content/posts`)                                                                                         | —                               |
+| `/math-animation-tool`, `/free-math-video-creator`, `/manim-alternative`    | One-keyword landing pages                                                                                                   | `SEO_CONTENT_STRATEGY.md`       |
+| `/privacy-policy`, `/terms-of-service`                                      | MDX static pages                                                                                                            | —                               |
+| `/settings/*`, `/admin/*`                                                   | Account and admin (not indexed)                                                                                             | `AGENTS.md`                     |
+
+`sitemap.xml`, `llms.txt` and `llms-full.txt` are generated from the same
+content modules, so a new lab, curve or post appears in all three.
 
 ## Current Status
 
@@ -45,10 +74,40 @@ Implemented and build-verified, awaiting deployment (2026-08-04):
   artifacts; model-written Python remains limited to targeted repair. Pending
   production deployment.
 
+Implemented and build-verified, awaiting deployment (2026-10-12):
+
+- Interactive labs `/labs`: 24 bilingual chapters in 6 suites — math
+  (functions & calculus: transformations, exponentials & logs, unit circle,
+  y = A sin(ωx + φ), derivatives, monotonicity & extrema, bisection, Riemann
+  sums; conic sections: ellipse, parabola and focal chords, hyperbola and
+  asymptotes, eccentricity; geometry) and physics (motion: v–t
+  graphs, projectiles, circular motion, river crossing; forces & energy:
+  inclined plane, mass on a spring, pendulum, energy conservation; waves:
+  travelling waves, interference, Doppler effect) — with subject pages
+  `/labs/math` and `/labs/physics`, a safe expression engine and board
+  spec (`src/lib/board`), draggable points, pan/zoom, answer bands, status
+  readouts, annotation pen, guided steps that ease the board between states.
+  Per-chapter SEO: one H1, `LearningResource` + `Quiz` + `BreadcrumbList`
+  structured data, real-board share images. Old `/labs/{chapter}` URLs 301.
+- Site-wide "paper & amber" theme and a new logo, shared with the lab
+  workspace: serif headings (Noto Serif SC), Instrument Serif display
+  numerals, JetBrains Mono labels; dark mode is the lab's Studio palette.
+  New default share image and per-post covers. See `docs/DESIGN_SYSTEM.md`.
+- Interaction pass: sticky header with current-page state, mobile menu that
+  closes on navigation and Escape, smooth FAQ disclosures, branded 404 and
+  error pages with ways forward, library hubs and curve pages linking labs.
+- Labs-first IA: four-entry nav (Labs and Resources dropdowns, Make a video,
+  Pricing), a homepage built around a live lab board and a topic search, and
+  a footer "Free tools" column for the traffic pages.
+
 Not implemented yet:
 
+- Editorial scene pages (`/library/scenes/{slug}`). The library skeleton is in
+  the tree: content graph, hub/topic routes, navigation, and sitemap. Scene
+  seeds are not written, so scene URLs 404. See `docs/LIBRARY_PLAN.md`.
 - The public gallery page. Gallery API routes exist; there is no gallery page
-  route and no published entry in production.
+  route and no published entry in production. UGC gallery stays separate from
+  the editorial library.
 - Project editor over saved works.
 - SymPy or equivalent symbolic verification.
 - Published pricing tiers. Credits are wired, but no tier is on sale pending
@@ -151,10 +210,42 @@ pnpm dev
 
 The development server runs at `http://localhost:3000`.
 
+## Front-end structure
+
+Public pages follow the repo's block / component split (see `AGENTS.md`):
+
+- `src/blocks/site-page.tsx` — `SitePage`: shell + header + `<main>` + footer
+  for every public page except the lab workspace. New pages use it instead of
+  repeating the scaffold.
+- `src/blocks/status-page.tsx` — 404 and error pages (lazy-loaded from
+  `__root.tsx` so the root bundle stays small).
+- `src/components/faq-list.tsx` — the FAQ list used by the homepage and pricing.
+- Labs: `src/lib/board/*` (expression parser, spec, pure evaluator),
+  `src/components/lab-board.tsx` (SVG renderer + state hook),
+  `src/components/lab-workspace.tsx` (full-screen workspace),
+  `src/content/labs/*` (subjects, suites, chapters), `src/routes/labs/*`.
+- Styles: theme tokens and shared `curvg-*` classes in
+  `src/styles/globals.css`; the lab workspace in `src/styles/lab-workspace.css`
+  (`.lw-*`, scoped).
+
+## Generated assets
+
+Raster images are rendered from code with the site's own fonts, so they stay
+in step with the theme. Rerun after changing the source:
+
+| Command         | Writes                                                            | When                                                                    |
+| --------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `pnpm og:labs`  | `public/og/labs/{slug}.{lang}.png` (needs `pnpm dev` running)     | a board changed or a chapter was added (a test fails if one is missing) |
+| `pnpm og:brand` | `public/og/curvg-social.png`, `public/og/posts/{slug}.{lang}.png` | the social SVG changed, or a post was added or retitled                 |
+
+The logo is `public/logo.svg` (also `favicon.svg`); `apple-touch-icon.png`
+is a 180px raster of it.
+
 ## Validation
 
 ```bash
 pnpm build
+pnpm test
 pnpm cf:build
 ```
 
@@ -190,7 +281,9 @@ Product and planning:
 - [Site architecture plan](docs/SITE_ARCHITECTURE_PLAN.md)
 - [SEO and content strategy](docs/SEO_CONTENT_STRATEGY.md)
 - [Curve encyclopedia](docs/CURVE_ENCYCLOPEDIA.md)
-- [Design system](docs/DESIGN_SYSTEM.md)
+- [Interactive labs plan](docs/LABS_PLAN.md) — `/labs` IA, URL and redirect rules, per-chapter SEO, reserved slots (video, physics), new-chapter checklist.
+- [Scene library plan](docs/LIBRARY_PLAN.md) — editorial `/library`. P0 skeleton is implemented; scene pages are not. Source of truth for Hub/topic/scene IA, the math content graph, and what must not be copied from animg.app or shapeof.world.
+- [Design system](docs/DESIGN_SYSTEM.md) — the 2026-10-12 "paper & amber" section at the top overrides older colour, type and logo notes below it.
 
 Research:
 
@@ -200,16 +293,19 @@ Research:
 
 ## Commands
 
-| Command            | Purpose                                                |
-| ------------------ | ------------------------------------------------------ |
-| `pnpm dev`         | Start the local development server                     |
-| `pnpm build`       | Build the standard Nitro production target             |
-| `pnpm cf:build`    | Build the Cloudflare Workers module target             |
-| `pnpm db:setup`    | Select the schema template for the configured database |
-| `pnpm db:push`     | Apply schema changes during local development          |
-| `pnpm db:generate` | Generate reviewable production migrations              |
-| `pnpm db:migrate`  | Apply pending production migrations                    |
-| `pnpm rbac:init`   | Seed default roles and permissions                     |
+| Command            | Purpose                                                         |
+| ------------------ | --------------------------------------------------------------- |
+| `pnpm dev`         | Start the local development server                              |
+| `pnpm build`       | Build the standard Nitro production target                      |
+| `pnpm cf:build`    | Build the Cloudflare Workers module target                      |
+| `pnpm db:setup`    | Select the schema template for the configured database          |
+| `pnpm db:push`     | Apply schema changes during local development                   |
+| `pnpm db:generate` | Generate reviewable production migrations                       |
+| `pnpm db:migrate`  | Apply pending production migrations                             |
+| `pnpm rbac:init`   | Seed default roles and permissions                              |
+| `pnpm test`        | Unit tests (pipeline, board engine, lab content, library graph) |
+| `pnpm og:labs`     | Regenerate lab share images (dev server running)                |
+| `pnpm og:brand`    | Regenerate the default share image and post covers              |
 
 ## License
 

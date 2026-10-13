@@ -35,6 +35,12 @@ import type {
   AnimationModelOption,
   AnimationSubject,
 } from '@/lib/animation';
+import {
+  animationProductionModeSchema,
+  createDefaultRingEscapeScenarioConfig,
+  type AnimationProductionMode,
+  type AnimationSimulationScenarioConfig,
+} from '@/lib/animation-simulation';
 import { getUuid } from '@/lib/hash';
 
 const subjects = new Set<AnimationSubject>([
@@ -56,6 +62,7 @@ export class AnimationApiError extends Error {
       | 'PRO_REQUIRED'
       | 'MODEL_UNAVAILABLE'
       | 'INVALID_MODEL'
+      | 'INVALID_PRODUCTION_MODE'
       | 'INSUFFICIENT_CREDITS'
       | 'CAPACITY_LIMIT',
     readonly status: number,
@@ -191,6 +198,82 @@ export function parseModelChoice(value: unknown): AnimationModelChoice {
     return value as AnimationModelChoice;
   }
   throw new AnimationApiError('Invalid animation model', 'INVALID_MODEL', 400);
+}
+
+export interface ParsedAnimationProductionRequest {
+  productionMode: AnimationProductionMode | undefined;
+  simulationFamily?: 'ring_escape';
+  simulationScenario?: AnimationSimulationScenarioConfig;
+}
+
+/**
+ * Parse the public production-mode switch without accepting client-authored
+ * solver parameters. Simulation requests receive the server-owned scenario;
+ * arbitrary physics payloads never cross the API trust boundary.
+ */
+export function parseAnimationProductionRequest(
+  body: Record<string, unknown>,
+  options: { revision?: boolean } = {}
+): ParsedAnimationProductionRequest {
+  const rawMode = body.productionMode;
+  let productionMode: AnimationProductionMode | undefined;
+  if (rawMode === undefined) {
+    productionMode = options.revision ? undefined : 'explainer';
+  } else {
+    const parsed = animationProductionModeSchema.safeParse(rawMode);
+    if (!parsed.success) {
+      throw new AnimationApiError(
+        'Invalid animation production mode',
+        'INVALID_PRODUCTION_MODE',
+        400
+      );
+    }
+    productionMode = parsed.data;
+  }
+
+  const simulationFamily = body.simulationFamily;
+  const hasClientScenario =
+    body.simulationScenario !== undefined ||
+    body.scenario !== undefined ||
+    body.solverConfig !== undefined ||
+    body.simulationConfig !== undefined ||
+    body.simulationParameters !== undefined ||
+    body.physics !== undefined ||
+    body.parameters !== undefined;
+  if (hasClientScenario) {
+    throw new AnimationApiError(
+      'Client-authored simulation parameters are not supported',
+      'INVALID_PRODUCTION_MODE',
+      400
+    );
+  }
+
+  if (productionMode !== 'simulation_short') {
+    if (simulationFamily !== undefined) {
+      throw new AnimationApiError(
+        'Simulation family requires simulation_short mode',
+        'INVALID_PRODUCTION_MODE',
+        400
+      );
+    }
+    return { productionMode };
+  }
+
+  if (
+    (body.mode !== undefined && body.mode !== 'description') ||
+    simulationFamily !== 'ring_escape'
+  ) {
+    throw new AnimationApiError(
+      'simulation_short requires description mode and ring_escape family',
+      'INVALID_PRODUCTION_MODE',
+      400
+    );
+  }
+  return {
+    productionMode,
+    simulationFamily: 'ring_escape',
+    simulationScenario: createDefaultRingEscapeScenarioConfig(),
+  };
 }
 
 function kuaipaoProvider(configs: ConfigMap) {

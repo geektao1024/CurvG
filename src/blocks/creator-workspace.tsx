@@ -30,7 +30,7 @@ export function CreatorWorkspace({
     title: m['creator.title'](),
     subtitle: m['creator.subtitle'](),
     newAnimation: m['creator.new_animation'](),
-    gallery: m['landing.nav.gallery'](),
+    gallery: m['landing.nav.library'](),
     workflow: m['landing.nav.workflow'](),
     history: m['creator.history'](),
     historyEmpty: m['creator.history_empty'](),
@@ -59,6 +59,15 @@ export function CreatorWorkspace({
     signInToCreate: m['creator.sign_in_to_create'](),
     subject: m['creator.subject'](),
     model: m['creator.model'](),
+    productionModeLabel: m['creator.production_mode.label'](),
+    productionModeExplainer: m['creator.production_mode.explainer'](),
+    productionModeExplainerDescription:
+      m['creator.production_mode.explainer_description'](),
+    productionModeSimulation: m['creator.production_mode.simulation'](),
+    productionModeSimulationDescription:
+      m['creator.production_mode.simulation_description'](),
+    productionModeSimulationPrompt:
+      m['creator.production_mode.simulation_prompt'](),
     characters: m['creator.characters'](),
     welcomeEyebrow: m['creator.welcome_eyebrow'](),
     welcomeTitle: m['creator.welcome_title'](),

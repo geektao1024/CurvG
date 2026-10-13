@@ -81,6 +81,13 @@ export type AnimationStatus =
 
 export type AnimationCreationMode = 'template' | 'formula' | 'description';
 
+export type AnimationProductionMode =
+  import('./animation-simulation').AnimationProductionMode;
+export type AnimationSimulationScenarioConfig =
+  import('./animation-simulation').AnimationSimulationScenarioConfig;
+export type AnimationSimulationEvidence =
+  import('./animation-simulation').AnimationSimulationEvidence;
+
 export type AnimationMathObjectType =
   | 'function'
   | 'integral'
@@ -331,6 +338,7 @@ export interface AnimationVisualReviewIssue {
     | 'legibility'
     | 'pacing'
     | 'hierarchy'
+    | 'request_fidelity'
     | 'math_fidelity'
     | 'payoff';
   severity: 'minor' | 'major' | 'blocking';
@@ -351,10 +359,29 @@ export interface AnimationVisualReview {
 
 export type AnimationQualityGateAction = 'approve' | 'repair' | 'reject';
 
+/**
+ * The review phase that produced a quality-gate decision.
+ *
+ * `final_review` is the historical preview-render review. It remains readable
+ * for existing records, but only `delivery_review` approves the formal render
+ * that may be exposed as the completed artifact.
+ */
+export const ANIMATION_QUALITY_GATE_KINDS = [
+  'render_error',
+  'visual_review',
+  'final_review',
+  'delivery_review',
+] as const;
+
+export type AnimationQualityGateKind =
+  (typeof ANIMATION_QUALITY_GATE_KINDS)[number];
+
 export interface AnimationQualityGateAttempt {
   attempt: number;
-  kind: 'render_error' | 'visual_review' | 'final_review';
+  kind: AnimationQualityGateKind;
   action: AnimationQualityGateAction;
+  /** SHA-256 of the exact formal MP4 reviewed by a delivery gate. */
+  videoDigest?: string;
   deterministicScore?: number;
   reviewStatus?: AnimationVisualReview['status'];
   issueCount: number;
@@ -518,12 +545,18 @@ export interface AnimationVersion {
   version: number;
   createdAt: string;
   prompt: string;
+  productionMode?: AnimationProductionMode;
+  simulationScenario?: AnimationSimulationScenarioConfig;
+  simulationEvidence?: AnimationSimulationEvidence;
   spec?: AnimationSpec;
   code?: string;
   videoUrl?: string;
   thumbnailUrl?: string;
   contactSheetUrl?: string;
   qaReportUrl?: string;
+  eventsUrl?: string;
+  stateTrackUrl?: string;
+  runManifestUrl?: string;
   visualQa?: AnimationVisualQaReport;
   visualReview?: AnimationVisualReview;
 }
@@ -532,6 +565,13 @@ export interface AnimationRenderState {
   jobId?: string;
   status?: string;
   provider?: string;
+  protocolVersion?: 'curvg-renderer/v2';
+  /** Immutable simulation lineage copied into the queued render contract. */
+  runDigest?: string;
+  /** SHA-256 of the exact persisted source submitted for this render. */
+  compiledSourceDigest?: string;
+  /** SHA-256 of the exact completed v2 MP4, set only after delivery. */
+  videoDigest?: string;
   stage?:
     | 'queued'
     | 'validating'
@@ -650,7 +690,14 @@ export interface AnimationParts {
   subject: AnimationSubject;
   prompt: string;
   creationMode?: AnimationCreationMode;
+  /** Missing on archived rows and interpreted as `explainer`. */
+  productionMode?: AnimationProductionMode;
+  /** Trusted fixed-step scenario; only present for simulation_short. */
+  simulationScenario?: AnimationSimulationScenarioConfig;
+  /** Compact solver and artifact digest lineage for deterministic QA. */
+  simulationEvidence?: AnimationSimulationEvidence;
   mathObjectType?: AnimationMathObjectType;
+  /** Exact structured formula for the current request; absent after an unstructured revision. */
   sourceFormula?: string;
   templateId?: string;
   publishedAt?: string;
@@ -662,6 +709,9 @@ export interface AnimationParts {
   thumbnailUrl?: string;
   contactSheetUrl?: string;
   qaReportUrl?: string;
+  eventsUrl?: string;
+  stateTrackUrl?: string;
+  runManifestUrl?: string;
   visualQa?: AnimationVisualQaReport;
   visualReview?: AnimationVisualReview;
   /** @deprecated Read failure.message. Kept for existing persisted rows. */

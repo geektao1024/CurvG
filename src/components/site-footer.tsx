@@ -53,7 +53,7 @@ export function SiteFooter({
         )}
       >
         {tagline && (
-          <p className="text-foreground mb-12 max-w-2xl text-3xl leading-[1.15] font-semibold tracking-[-0.03em] text-balance sm:text-4xl">
+          <p className="curvg-heading text-foreground mb-12 max-w-2xl text-3xl text-balance sm:text-4xl">
             {tagline}
           </p>
         )}

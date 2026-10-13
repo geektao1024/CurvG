@@ -4,6 +4,17 @@ import { localizedUrl } from '@/lib/seo';
 import { baseLocale, locales } from '@/paraglide/runtime.js';
 import { CURVES } from '@/content/curves';
 import {
+  labPath,
+  publicLabs,
+  publicSubjects,
+  subjectPath,
+} from '@/content/labs';
+import {
+  indexableTopics,
+  publicLibraryScenes,
+  rootCategories,
+} from '@/content/library';
+import {
   getLocalPostLocales,
   getLocalPosts,
   type BlogPost,
@@ -51,6 +62,29 @@ const STATIC_ENTRIES: Entry[] = [
     priority: 0.7,
   },
   {
+    path: '/labs',
+    availableLocales: ALL_LOCALES,
+    changeFrequency: 'weekly',
+    priority: 0.9,
+  },
+  ...publicSubjects().map(
+    (subject): Entry => ({
+      path: subjectPath(subject.id),
+      availableLocales: ALL_LOCALES,
+      changeFrequency: 'weekly',
+      priority: 0.9,
+    })
+  ),
+  ...publicLabs().map(
+    (lab): Entry => ({
+      path: labPath(lab),
+      availableLocales: ALL_LOCALES,
+      lastModified: lab.updated,
+      changeFrequency: 'monthly',
+      priority: 0.8,
+    })
+  ),
+  {
     path: '/curves',
     availableLocales: ALL_LOCALES,
     changeFrequency: 'weekly',
@@ -59,6 +93,36 @@ const STATIC_ENTRIES: Entry[] = [
   ...CURVES.map(
     (curve): Entry => ({
       path: `/curves/${curve.slug}`,
+      availableLocales: ALL_LOCALES,
+      changeFrequency: 'monthly',
+      priority: 0.6,
+    })
+  ),
+  {
+    path: '/library',
+    availableLocales: ALL_LOCALES,
+    changeFrequency: 'weekly',
+    priority: 0.8,
+  },
+  ...rootCategories.map(
+    (hub): Entry => ({
+      path: `/library/${hub.id}`,
+      availableLocales: ALL_LOCALES,
+      changeFrequency: 'weekly',
+      priority: 0.7,
+    })
+  ),
+  ...publicLibraryScenes.map(
+    (scene): Entry => ({
+      path: `/library/scenes/${scene.slug}`,
+      availableLocales: ALL_LOCALES,
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    })
+  ),
+  ...indexableTopics().map(
+    (topic): Entry => ({
+      path: `/library/${topic.primaryParentId}/${topic.id}`,
       availableLocales: ALL_LOCALES,
       changeFrequency: 'monthly',
       priority: 0.6,

@@ -391,7 +391,7 @@ export function Pricing({
               {m['landing.pricing.eyebrow']()}
               <span className="text-muted-foreground ml-2">》</span>
             </p>
-            <Heading className="relative mt-7 max-w-3xl text-[30px] leading-[1.05] font-normal tracking-[-0.035em] sm:text-[52px]">
+            <Heading className="relative mt-7 max-w-3xl text-[30px] leading-[1.2] font-semibold tracking-[0.01em] sm:text-[52px]">
               {title ?? m['landing.pricing.title']()}
             </Heading>
             <p className="text-muted-foreground relative mx-auto mt-6 max-w-xl text-base leading-6">

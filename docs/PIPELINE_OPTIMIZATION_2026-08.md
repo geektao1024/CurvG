@@ -63,6 +63,8 @@
 
 ## 路径 B:程序化自动修正层 + 修复回路增强(消灭 schema_validation 大头)
 
+> **状态(2026-08-04):B1-B5 已全部落地**。`normalizeAnimationPlanningArtifact`(`animation-pipeline.ts`)在 schema parse 之后、语义校验之前运行:B1 formula 内容一律从 mathDossier 派生(compose 处二次兜底,verbatim 规则构造性成立);B2 时间戳吸附(事件 ≤0.5s 夹紧、storyboard 末镜 ≤1s 吸附);B3 id 大小写/`-_` 归一(唯一匹配才改写);B4 transform targetRef 唯一同类候选时推断。B5 定点修复:scene 的 zod 失败若全部映射到 `objects[i]/timeline[j]`(≤6 项)则只重发损坏项(`planSceneTargetedRepair`/`applySceneTargetedRepair`),fragment 越界或无法映射自动回退全量修复。所有机械修正写入 stage diagnostic 的 `corrections`(≤24 条)保持可审计。单测 `tests/animation-normalize.test.ts` 8 项。scene 合同同步改为"只声明 formulaId,不再逐字拷贝 LaTeX"。
+
 原则:**可机械派生/归一的自动修,缺内容的仍 reject 但改为增量定点修复**。所有机械修正写入 diagnostics(info 级)保持可审计。
 
 1. **LaTeX 派生取代逐字拷贝**:scene 的 formula 对象只声明 `formulaId`,`composeAnimationSpecFromArtifacts` 组装时从 `mathDossier.formulas[].latexParts` 注入 parts/expr;删除"逐字符拷贝"这一最反 LLM 的合同条款。同步修订 `STAGE_CONTRACTS.scene` 与 `STAGE_ROLES.scene`(`planning.ts:125-160`)。
@@ -94,7 +96,7 @@
 - `workflow_internal` budget exhausted → 0(A 预算)
 - KIE 实际交付占比可测且显著回升(D 观测 + A)
 - 规划端到端 P50/P95 时长有记录,P95 ≤ 20 分钟
-- 质量门(720p 终审、数学审计)通过标准零改动 — 红线不动的证明
+- 质量门（正式 1080p30 交付审查、数学审计）通过标准零改动 — 红线不动的证明
 
 ## 探活脚本
 
@@ -124,3 +126,12 @@ KIE_API_KEY=<你的key> node scripts/probe-kie-luna.mjs
 4. **验收**:193 项测试(新增 deepseek-chat 套件 10 项)、vite/cf 双 build、191 基线类型错误零新增。
 
 已知边界(诚实记录):Pro 链第三腿(DeepSeek)在"双慢超时"模式下单轮内拿不到时间,只在快失败(auth/4xx/5xx/饱和)时可达;慢超时场景靠排队梯子下一轮 + 断路器接管。DeepSeek 上游对 Responses 严格性(assistant 轮内容类型、'high' 档接受度)以上线后 `animation_planning_attempt` 遥测为准。
+
+### 2026-08-04 线上首日遥测修正
+
+首日 Lite 生产数据暴露两个缺陷,已修:
+
+1. **DeepSeek 全量 `output_truncated`**:DeepSeek 把思维链 token 计入 `max_output_tokens`,阶段配额(1800-6000)被推理吃光,正文未出即截断(20-60s 全灭,仅 intent 偶过)。修复:思考启用时 adapter 侧给配额加 24k 推理余量(`REASONING_OUTPUT_HEADROOM_TOKENS`),parseResponses 只读 output_text,不会泄漏思维链。
+2. **mathematics 阶段 150s 单目标上限偏紧**:成功样本 88-112s,尾部三次卡整 150s。修复:mathematics 提为 240s/窗口 480s(scene 300/600、其余 150/300 不变)。
+
+另:同日用户侧会话已提交"deterministic scene recovery"(b53c386)——scene 模型失败时从五个已验证的上游产物确定性组装场景,血统保留(与已废除的无关内容替换不同),stage 行仍标 `curvg/deterministic-scene-v1` + `deterministic_scene_fallback` 诊断,可审计。

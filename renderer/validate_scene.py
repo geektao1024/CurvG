@@ -48,6 +48,31 @@ NUMPY_IO_METHODS = {
     "savetxt",
     "tofile",
 }
+# NumPy exposes Python's native FFI through ``ctypeslib``. Merely restricting
+# imports is insufficient: ``np.ctypeslib.ctypes.CDLL(...)`` can reach process
+# APIs without an ``os`` or ``subprocess`` import. Reject the entire bridge and
+# related dynamic loader/compiler namespaces wherever they occur in a chain.
+BLOCKED_NATIVE_BRIDGE_ATTRIBUTES = {
+    "CDLL",
+    "LoadLibrary",
+    "PyDLL",
+    "cdll",
+    "ctypes",
+    "ctypeslib",
+    "distutils",
+    "f2py",
+    "load_library",
+    "pydll",
+    "pythonapi",
+}
+BLOCKED_SYSTEM_NAMESPACE_ATTRIBUTES = {
+    "os",
+    "pathlib",
+    "shutil",
+    "socket",
+    "subprocess",
+    "sys",
+}
 DISPLAY_ANIMATIONS = {
     "AddTextLetterByLetter",
     "Create",
@@ -105,9 +130,26 @@ def root_name(node: ast.AST) -> str | None:
     return node.id if isinstance(node, ast.Name) else None
 
 
+def attribute_names(node: ast.AST) -> set[str]:
+    names: set[str] = set()
+    while isinstance(node, ast.Attribute):
+        names.add(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name):
+        names.add(node.id)
+    return names
+
+
 def numeric_value(node: ast.AST, constants: dict[str, float]) -> float | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
         return float(node.value)
+    if (
+        isinstance(node, ast.UnaryOp)
+        and isinstance(node.op, (ast.UAdd, ast.USub))
+    ):
+        operand = numeric_value(node.operand, constants)
+        if operand is not None:
+            return -operand if isinstance(node.op, ast.USub) else operand
     if isinstance(node, ast.Name):
         return constants.get(node.id)
     return None
@@ -117,6 +159,44 @@ def coordinate_y(node: ast.AST, constants: dict[str, float]) -> float | None:
     if not isinstance(node, (ast.List, ast.Tuple)) or len(node.elts) < 2:
         return None
     return numeric_value(node.elts[1], constants)
+
+
+def configured_frame_size(tree: ast.AST) -> tuple[float | None, float | None]:
+    frame_width: float | None = None
+    frame_height: float | None = None
+    # Only module-level assignments configure Manim's frame. Ignoring nested
+    # lookalikes prevents a dead/function-local assignment from widening the
+    # validator's safe zone without changing the actual render contract.
+    for node in getattr(tree, "body", []):
+        if (
+            not isinstance(node, ast.Assign)
+            or len(node.targets) != 1
+            or not isinstance(node.targets[0], ast.Attribute)
+            or not isinstance(node.targets[0].value, ast.Name)
+            or node.targets[0].value.id != "config"
+        ):
+            continue
+        value = numeric_value(node.value, {})
+        if value is None or value <= 0:
+            continue
+        if node.targets[0].attr == "frame_width":
+            frame_width = value
+        elif node.targets[0].attr == "frame_height":
+            frame_height = value
+    return frame_width, frame_height
+
+
+def text_safe_y_bounds(tree: ast.AST) -> tuple[float, float]:
+    frame_width, frame_height = configured_frame_size(tree)
+    if (
+        frame_width is not None
+        and frame_height is not None
+        and frame_height > frame_width
+    ):
+        # Portrait Shorts reserve the top 10% and bottom 15% for platform UI.
+        return (-0.35 * frame_height, 0.40 * frame_height)
+    # Preserve the established landscape/default rule.
+    return (-3.4, 3.4)
 
 
 def has_explicit_run_time(node: ast.AST) -> bool:
@@ -129,6 +209,7 @@ def validate(path: Path) -> None:
     source = path.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(path))
     compile(tree, str(path), "exec")
+    text_safe_min_y, text_safe_max_y = text_safe_y_bounds(tree)
     constants: dict[str, float] = {}
     for node in ast.walk(tree):
         if (
@@ -233,10 +314,24 @@ def validate(path: Path) -> None:
         if isinstance(node, ast.Import):
             if any(alias.name.split(".")[0] not in ALLOWED_MODULES for alias in node.names):
                 raise ValueError("Generated code imports a blocked module")
+            if any(
+                set(alias.name.split(".")) & BLOCKED_NATIVE_BRIDGE_ATTRIBUTES
+                for alias in node.names
+            ):
+                raise ValueError("Generated code imports a native bridge")
         if isinstance(node, ast.ImportFrom):
             module = (node.module or "").split(".")[0]
             if module not in ALLOWED_MODULES:
                 raise ValueError("Generated code imports a blocked module")
+            if (
+                set((node.module or "").split("."))
+                & BLOCKED_NATIVE_BRIDGE_ATTRIBUTES
+                or any(
+                    alias.name in BLOCKED_NATIVE_BRIDGE_ATTRIBUTES
+                    for alias in node.names
+                )
+            ):
+                raise ValueError("Generated code imports a native bridge")
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name):
                 if node.func.id in FILE_BACKED_MOBJECTS:
@@ -311,7 +406,9 @@ def validate(path: Path) -> None:
                     and node.args
                 ):
                     y = coordinate_y(node.args[0], constants)
-                    if y is not None and abs(y) > 3.4:
+                    if y is not None and not (
+                        text_safe_min_y <= y <= text_safe_max_y
+                    ):
                         raise ValueError(
                             "Generated code positions text outside the safe frame"
                         )
@@ -371,6 +468,16 @@ def validate(path: Path) -> None:
                     raise ValueError("Generated code uses a non-positive run_time")
         if (
             isinstance(node, ast.Attribute)
+            and attribute_names(node) & BLOCKED_NATIVE_BRIDGE_ATTRIBUTES
+        ):
+            raise ValueError("Generated code accesses a blocked native bridge")
+        if (
+            isinstance(node, ast.Attribute)
+            and attribute_names(node) & BLOCKED_SYSTEM_NAMESPACE_ATTRIBUTES
+        ):
+            raise ValueError("Generated code accesses a blocked system namespace")
+        if (
+            isinstance(node, ast.Attribute)
             and node.attr.startswith("__")
             and node.attr not in ALLOWED_DUNDER_ATTRIBUTES
         ):
@@ -396,7 +503,10 @@ def validate(path: Path) -> None:
             raise ValueError(
                 "Generated code must use move_camera instead of self.camera.animate"
             )
-        if isinstance(node, ast.Call) and root_name(node.func) in {"os", "pathlib", "socket", "subprocess"}:
+        if (
+            isinstance(node, ast.Call)
+            and root_name(node.func) in BLOCKED_SYSTEM_NAMESPACE_ATTRIBUTES
+        ):
             raise ValueError("Generated code calls a blocked API")
     if hidden_targets & fade_in_targets:
         raise ValueError("Generated code hides an object before FadeIn")

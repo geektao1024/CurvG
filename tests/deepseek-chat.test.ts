@@ -69,7 +69,9 @@ test('requests hit /responses with the documented body shape', async () => {
   assert.equal(authorization, 'Bearer test-deepseek-key');
   assert.equal(requestBody?.model, 'deepseek-v4-flash');
   assert.equal(requestBody?.stream, false);
-  assert.equal(requestBody?.max_output_tokens, 9_000);
+  // Thinking is active, so the stage budget gains the reasoning headroom —
+  // DeepSeek counts chain-of-thought against max_output_tokens.
+  assert.equal(requestBody?.max_output_tokens, 9_000 + 24_000);
   assert.deepEqual(requestBody?.reasoning, { effort: 'high' });
   const items = requestBody?.input as Array<Record<string, unknown>>;
   assert.deepEqual(
@@ -232,4 +234,22 @@ test('a custom base URL keeps its path and gains /responses', async () => {
 
   await provider.complete(input);
   assert.equal(requestUrl, 'https://proxy.example.com/deepseek/responses');
+});
+
+test('without thinking the stage budget passes through untouched', async () => {
+  const budgets: unknown[] = [];
+  const provider = providerWith((async (_url, init) => {
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    budgets.push(body.max_output_tokens);
+    return successResponse({ status: 'completed', output_text: 'OK' });
+  }) as typeof globalThis.fetch);
+
+  await provider.complete({ ...input, maxTokens: 2_400 });
+  await provider.complete({
+    ...input,
+    maxTokens: 2_400,
+    reasoningEffort: 'high',
+  });
+
+  assert.deepEqual(budgets, [2_400, 26_400]);
 });

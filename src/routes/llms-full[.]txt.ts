@@ -3,6 +3,8 @@ import { createFileRoute } from '@tanstack/react-router';
 import { envConfigs } from '@/config';
 import { baseLocale } from '@/paraglide/runtime.js';
 import { CURVES } from '@/content/curves';
+import { rootCategories } from '@/content/library';
+import { libraryText } from '@/content/library/types';
 import { getLocalPosts, mergePosts } from '@/content/posts';
 
 const STATIC_PAGES: { path: string; title: string; description: string }[] = [
@@ -49,6 +51,12 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
       '30 classic curves with interactive graphs, LaTeX equations, key properties, and one-click Manim animation briefs.',
   },
   {
+    path: '/library',
+    title: 'Math Animation Library',
+    description:
+      'Inspectable shelves for geometry, algebra, calculus, and waves. Curve objects link to the encyclopedia; scene pages are added as they are written.',
+  },
+  {
     path: '/privacy-policy',
     title: 'Privacy Policy',
     description: 'How CurvG handles account, project, and service data.',
@@ -90,6 +98,13 @@ export const Route = createFileRoute('/llms-full.txt')({
           '',
           ...STATIC_PAGES.map(
             (p) => `- [${p.title}](${app_url}${p.path}): ${p.description}`
+          ),
+          '',
+          '## Scene Library',
+          '',
+          ...rootCategories.map(
+            (hub) =>
+              `- [${libraryText(hub.title, 'en')}](${app_url}/library/${hub.id}): ${libraryText(hub.description, 'en')}`
           ),
           '',
           '## Curve Encyclopedia',

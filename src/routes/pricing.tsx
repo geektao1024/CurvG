@@ -3,10 +3,9 @@ import { createFileRoute } from '@tanstack/react-router';
 import { localizedLinks, socialMeta } from '@/lib/seo';
 import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
-import { Footer } from '@/blocks/footer';
-import { Header } from '@/blocks/header';
 import { Pricing } from '@/blocks/pricing';
 import { PricingFaq } from '@/blocks/pricing-faq';
+import { SitePage } from '@/blocks/site-page';
 
 export const Route = createFileRoute('/pricing')({
   loader: () => {
@@ -35,13 +34,9 @@ export const Route = createFileRoute('/pricing')({
 
 function PricingPage() {
   return (
-    <div className="bg-background text-foreground flex min-h-screen flex-col">
-      <Header />
-      <main className="flex-1">
-        <Pricing />
-        <PricingFaq />
-      </main>
-      <Footer />
-    </div>
+    <SitePage>
+      <Pricing />
+      <PricingFaq />
+    </SitePage>
   );
 }

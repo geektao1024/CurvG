@@ -5,9 +5,10 @@
 
 ## 1. 定位
 
-曲线百科是 `SITE_ARCHITECTURE_PLAN.md` 双层内容结构中的**编辑精选层**:
-承接 "{curve} equation / graph / animation" 长尾搜索,把读者引导进 Creator
-(预填该曲线的动画需求)。它与 UGC 画廊(`/gallery`,未实施)互补,不互相替代。
+曲线百科是对象层:承接 "{curve} equation / graph / animation" 长尾搜索,把读者引导进 Creator
+(预填该曲线的动画需求)。它与编辑场景库(`/library`,规划见 `LIBRARY_PLAN.md`,未实施)
+和 UGC 画廊(`/gallery`,未实施)互补,不互相替代,也不重定向。
+场景通过 `curveSlugs` 链回这里;本模块的 `CurveDef` 契约不变。
 
 流量闭环:百科页(SEO 入口)→ 交互预览(停留/行为数据)→ "生成这条曲线的动画"
 (预填 Creator)→ 转化。

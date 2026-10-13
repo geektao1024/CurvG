@@ -1,37 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" role="img" aria-labelledby="title">
-  <title id="title">CurvG</title>
-  <defs>
-    <linearGradient id="tile" x1="18" y1="10" x2="84" y2="92" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#8589ff"/>
-      <stop offset="0.56" stop-color="#6268fa"/>
-      <stop offset="1" stop-color="#4650f5"/>
-    </linearGradient>
-    <path id="g-path" d="M70 28C62 21 52 19 43 21C29 24 21 35 21 50C21 66 31 77 47 79C58 80 68 75 74 68"/>
-    <clipPath id="solid-side"><path d="M0 0L100 100H0Z"/></clipPath>
-    <rect id="pixel" width="6.4" height="6.4" rx="1.1"/>
-  </defs>
-  <rect width="100" height="100" rx="23" fill="url(#tile)"/>
-  <g clip-path="url(#solid-side)">
-    <use href="#g-path" stroke="#f3f3f9" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
-  </g>
-  <g fill="#f3f3f9">
-    <use href="#pixel" x="24.9" y="18.5"/>
-    <use href="#pixel" x="32.5" y="15.8"/>
-    <use href="#pixel" x="40.5" y="12.8"/>
-    <use href="#pixel" x="48.8" y="11.4"/>
-    <use href="#pixel" x="57.1" y="12.2"/>
-    <use href="#pixel" x="65" y="15"/>
-    <use href="#pixel" x="72.1" y="19.8"/>
-    <use href="#pixel" x="32.7" y="26.3"/>
-    <use href="#pixel" x="40.5" y="22.8"/>
-    <use href="#pixel" x="48.5" y="21.2"/>
-    <use href="#pixel" x="56.5" y="22"/>
-    <use href="#pixel" x="64.1" y="25"/>
-    <use href="#pixel" x="71" y="30"/>
-    <use href="#pixel" x="52.8" y="49.8"/>
-    <use href="#pixel" x="61.8" y="49.8"/>
-    <use href="#pixel" x="70.8" y="53.8"/>
-    <use href="#pixel" x="74.8" y="62.8"/>
-    <use href="#pixel" x="68.8" y="69.8"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-labelledby="t">
+  <title id="t">CurvG</title>
+  <rect x=".5" y=".5" width="63" height="63" rx="14.5" fill="#1d2321" stroke="#f6f4ef" stroke-opacity=".1"/>
+  <path d="M10 33H54M32 10V56" stroke="#f6f4ef" stroke-opacity=".12" stroke-width="1.4"/>
+  <path d="M42.71 21.11A16 16 0 1 0 48 33H36" stroke="#f6f4ef" stroke-width="5.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="42.71" cy="21.11" r="7.2" fill="#c9800f" fill-opacity=".28"/>
+  <circle cx="42.71" cy="21.11" r="4.1" fill="#1d2321" stroke="#f2a93b" stroke-width="2.6"/>
 </svg>

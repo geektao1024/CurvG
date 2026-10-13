@@ -4,8 +4,10 @@ import test from 'node:test';
 import {
   decideAnimationQualityGate,
   deterministicReviewFromQa,
+  hasApprovedAnimationDeliveryReview,
   isAnimationVisualQaReviewable,
   parseAnimationVisualReview,
+  validateAnimationQualityGateKind,
   validateAnimationVisualQaReport,
 } from '../src/lib/animation-qa';
 import {
@@ -49,6 +51,18 @@ test('visual QA report validation preserves bounded metrics', () => {
   assert.throws(() =>
     validateAnimationVisualQaReport({ ...qaReport, score: 101 })
   );
+});
+
+test('quality gate kind validation accepts the formal delivery review', () => {
+  assert.equal(
+    validateAnimationQualityGateKind('delivery_review'),
+    'delivery_review'
+  );
+  assert.equal(
+    validateAnimationQualityGateKind('final_review'),
+    'final_review'
+  );
+  assert.throws(() => validateAnimationQualityGateKind('delivery'));
 });
 
 test('semantic visual review extracts one strict JSON object', () => {
@@ -97,6 +111,7 @@ test('quality gate approves only when deterministic and semantic checks agree', 
 
   assert.equal(
     decideAnimationQualityGate({
+      kind: 'delivery_review',
       qa: cleanQa,
       review: approvedReview,
       attempt: 0,
@@ -104,6 +119,158 @@ test('quality gate approves only when deterministic and semantic checks agree', 
     }),
     'approve'
   );
+});
+
+test('delivery review repairs within budget and rejects when exhausted', () => {
+  const qa = validateAnimationVisualQaReport(qaReport);
+  const review = deterministicReviewFromQa({ qa, jobId: 'job-delivery' });
+
+  assert.equal(
+    decideAnimationQualityGate({
+      kind: 'delivery_review',
+      qa,
+      review,
+      attempt: 1,
+      maxRepairs: 2,
+    }),
+    'repair'
+  );
+  assert.equal(
+    decideAnimationQualityGate({
+      kind: 'delivery_review',
+      qa,
+      review,
+      attempt: 2,
+      maxRepairs: 2,
+    }),
+    'reject'
+  );
+});
+
+test('request fidelity is blocking even when the reviewer understates severity', () => {
+  const qa = validateAnimationVisualQaReport({
+    ...qaReport,
+    status: 'pass',
+    score: 100,
+    frames: qaReport.frames.map((frame) => ({
+      ...frame,
+      edgeRisk: false,
+      edgeContent: 0.01,
+    })),
+    issues: [],
+  });
+  const review = parseAnimationVisualReview({
+    content: JSON.stringify({
+      status: 'needs_revision',
+      summary: 'The render is clean but does not honor the requested format.',
+      strengths: [],
+      issues: [
+        {
+          category: 'request_fidelity',
+          severity: 'minor',
+          frames: [1],
+          problem: 'The user requested portrait, but the render is landscape.',
+          suggestion: 'Rebuild the specification and scene as 9:16.',
+        },
+      ],
+    }),
+    model: 'review-model',
+    jobId: 'job-request-fidelity',
+  });
+
+  assert.equal(
+    decideAnimationQualityGate({
+      kind: 'delivery_review',
+      qa,
+      review,
+      attempt: 1,
+      maxRepairs: 2,
+    }),
+    'repair'
+  );
+  assert.equal(
+    decideAnimationQualityGate({
+      kind: 'delivery_review',
+      qa,
+      review,
+      attempt: 2,
+      maxRepairs: 2,
+    }),
+    'reject'
+  );
+});
+
+test('only an approved delivery review satisfies formal completion', () => {
+  const baseAttempt = {
+    attempt: 0,
+    issueCount: 0,
+    createdAt: '2026-08-12T00:00:00.000Z',
+  } as const;
+
+  assert.equal(
+    hasApprovedAnimationDeliveryReview({
+      status: 'approved',
+      attempts: [{ ...baseAttempt, kind: 'final_review', action: 'approve' }],
+    }),
+    false
+  );
+  assert.equal(
+    hasApprovedAnimationDeliveryReview({
+      status: 'repairing',
+      attempts: [{ ...baseAttempt, kind: 'delivery_review', action: 'repair' }],
+    }),
+    false
+  );
+  assert.equal(
+    hasApprovedAnimationDeliveryReview(
+      {
+        status: 'approved',
+        attempts: [
+          {
+            ...baseAttempt,
+            kind: 'delivery_review',
+            action: 'approve',
+            videoDigest: 'a'.repeat(64),
+          },
+        ],
+      },
+      'a'.repeat(64)
+    ),
+    true
+  );
+  assert.equal(
+    hasApprovedAnimationDeliveryReview(
+      {
+        status: 'approved',
+        attempts: [
+          {
+            ...baseAttempt,
+            kind: 'delivery_review',
+            action: 'approve',
+            videoDigest: 'a'.repeat(64),
+          },
+        ],
+      },
+      'b'.repeat(64)
+    ),
+    false
+  );
+  assert.equal(
+    hasApprovedAnimationDeliveryReview({
+      status: 'approved',
+      attempts: [
+        { ...baseAttempt, kind: 'delivery_review', action: 'approve' },
+        {
+          ...baseAttempt,
+          attempt: 1,
+          kind: 'delivery_review',
+          action: 'reject',
+        },
+      ],
+    }),
+    false
+  );
+  assert.equal(hasApprovedAnimationDeliveryReview(undefined), false);
 });
 
 test('soft deterministic warnings proceed to semantic review without admitting hard defects', () => {

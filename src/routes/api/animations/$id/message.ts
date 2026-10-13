@@ -2,9 +2,11 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { getAuth } from '@/core/auth';
 import {
+  getAnimation,
   planAnimation,
   reviseAnimation,
   reviseAnimationDraft,
+  reviseSimulationAnimation,
 } from '@/modules/animations/service';
 import { getAllConfigs } from '@/modules/config/service';
 import type { AnimationSubject } from '@/lib/animation';
@@ -24,6 +26,7 @@ import { startSilentAnimationProduction } from '../-production';
 import {
   animationErrorInit,
   animationErrorResponse,
+  parseAnimationProductionRequest,
   parseModelChoice,
   resolveChatProvider,
   withAnimationGenerationCapacity,
@@ -76,8 +79,51 @@ async function POST({
     if (prompt.length > 5000) {
       return respErr('Prompt is too long', { status: 400 });
     }
+    const sourceFormula =
+      typeof body.formula === 'string' ? body.formula.trim() : undefined;
+    if (sourceFormula && sourceFormula.length > 1000) {
+      return respErr('Formula is too long', { status: 400 });
+    }
     const subject = parseSubject(body.subject);
+    const production = parseAnimationProductionRequest(body, {
+      revision: true,
+    });
     const configs = await getAllConfigs();
+    const current =
+      production.productionMode === undefined
+        ? await getAnimation(session.user.id, params.id)
+        : undefined;
+    const effectiveProductionMode =
+      production.productionMode || current?.parts.productionMode || 'explainer';
+    if (effectiveProductionMode === 'simulation_short') {
+      const produce = async (signal: AbortSignal) => {
+        const planned = await reviseSimulationAnimation({
+          userId: session.user.id,
+          id: params.id,
+          prompt,
+          subject,
+          scenario: production.simulationScenario,
+        });
+        return {
+          started: planned,
+          completed: await startSilentAnimationProduction({
+            request,
+            configs,
+            userId: session.user.id,
+            animation: planned,
+            signal,
+          }),
+        };
+      };
+      if (request.headers.get('accept')?.includes('text/event-stream')) {
+        return animationEventStream(async (send, signal) => {
+          const result = await produce(signal);
+          send({ type: 'started', animation: result.started });
+          send({ type: 'completed', animation: result.completed });
+        });
+      }
+      return respData((await produce(request.signal)).completed);
+    }
     const modelChoice = parseModelChoice(body.modelChoice);
     const requestedModel =
       typeof body.model === 'string' ? body.model.trim() : undefined;
@@ -96,6 +142,8 @@ async function POST({
           id: params.id,
           prompt,
           subject,
+          productionMode: production.productionMode,
+          sourceFormula,
           modelSelection,
           model: provider.model,
           providerName: provider.provider.name,
@@ -187,6 +235,8 @@ async function POST({
               id: params.id,
               prompt,
               subject,
+              productionMode: production.productionMode,
+              sourceFormula,
               modelSelection,
               ...provider,
               signal,
@@ -218,6 +268,8 @@ async function POST({
         id: params.id,
         prompt,
         subject,
+        productionMode: production.productionMode,
+        sourceFormula,
         modelSelection,
         ...provider,
         signal: request.signal,

@@ -1,13 +1,68 @@
 # CurvG 网站架构规划（第一性原理版）
 
-更新时间：2026-08-04（在 07-22 评审基线上标注实施进展）
-状态：已评审的规划基线（本文档为战略层，实施细节见 `ANIMATION_ORCHESTRATION.md` 与 `CURVG_CREATOR_ARCHITECTURE.md`；曲线百科实施细节见 `CURVE_ENCYCLOPEDIA.md`）
+更新时间：2026-10-12（实验室优先的信息架构，见文首修订）；正文进度标注仍停在 2026-08-04
+状态：战略层。渲染与 Creator 细节见 `ANIMATION_ORCHESTRATION.md` 与 `CURVG_CREATOR_ARCHITECTURE.md`。曲线百科见 `CURVE_ENCYCLOPEDIA.md`。
+
+> **修订（2026-10-12，信息架构以本节为准；导航、首页、学科页已于当日实施）**：站点改为「实验室优先」的工具站，
+> 按「泛流量引流 → 核心流量转化」双轨道组织页面和导航。下文 2026-09 及更早的内容仅作历史参考。
+>
+> **双轨道**
+>
+> | 轨道             | 作用                                   | 页面                                                                                       | 转化出口                           |
+> | ---------------- | -------------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------- |
+> | 泛流量（引流）   | 承接知识点、曲线、教学类长尾搜索与分享 | 实验章节页、学科页、曲线百科 30 条、资源库主题页、指南博客、关键词落地页，后续的免费小工具 | 全部指向实验室，再从实验指向生成器 |
+> | 核心流量（转化） | 把已经在用的人变成注册和付费           | 实验工作台里的「做成视频」、`/creator`、`/pricing`                                         | 注册 → 渲染积分 → 订阅             |
+>
+> **竞品参照（2026-10-12 实测）**
+>
+> - wedulab 首页就是实验卡片墙：顶部只有品牌和语言，一行学科筛选（全部 / 物理 / 化学 / 生物 / 数学 / 地理 / 历史，带数量），
+>   卡片 = 插图 + 名称 + 一句话 + 知识点标签 + 「进入实验」，没有营销区块。说明：内容量本身就是首页。
+> - mathos 顶部导航只放 4 个产品入口（Tutor / Video / Adaptive + 登录），大量免费工具页（计算器、绘图、测验、白板…）
+>   放在页脚「Tools」栏和资源页里，专门吃泛流量，不占导航。
+>
+> **导航（7 项 → 4 项 + 登录）**
+>
+> 1. **实验室**（下拉：数学 / 物理 两栏，各列实验集；底部「全部实验」）— 主推
+> 2. **做成视频**（`/creator`）— 转化
+> 3. **资源**（下拉：曲线百科、资源库、指南）— 泛流量入口集中到一处
+> 4. **价格**
+>
+> 常见问题、三张关键词落地页不进导航，只在首页、价格页和页脚出现（页脚加一栏「免费工具」，照 mathos）。
+>
+> **首页（复审后修订，已实施）**：初版照 wedulab 做"实验卡片墙即首页"，复审认为不够：wedulab 没有付费产品，
+> 首页只需导流；CurvG 首页要同时服务两条轨道，且纯卡片墙文字少、内容过百章后难检索、看不出实验和付费视频的关系、
+> 没有给付费人群（老师）的理由。改为学 Desmos / mathos / Brilliant「首屏就是工具」：
+>
+> 1. 首屏：左侧定位 + 知识点搜索框 + 热门知识点；右侧一块真实可拖动的实验画板（复用 `BoardCanvas`），
+>    下方「进入完整实验」「把它做成视频」两个按钮
+> 2. 知识点索引：数学 / 物理切换，实验集直接列出章节链接（给学科页、实验集页分发权重），后续加"按教材章节"筛选
+> 3. 实验 → 视频对照演示：左为引导步骤，右为同一实验的讲解视频样片（依赖生产生成恢复或预渲染样片）
+> 4. 给老师：投屏、画笔、随堂检测、导出视频进课件
+> 5. 最新实验 + 曲线百科 + 指南精选
+> 6. 价格摘要 + FAQ（保留 FAQPage 结构化数据）
+>
+> `/labs` 总览页承担完整的筛选与列表，首页只放精选与索引，两者不重复。首页 title / H1 的主关键词
+> （实验类 vs 沿用 2026-08 的 "math animation maker"）需先查关键词数据再定；目前 title 仍是旧的生成器词，H1 已改为实验。
+>
+> **实施对照**：区块 `src/blocks/home-{hero,lab-index,lab-video,teachers,explore,pricing}.tsx`；组件 `LabPlayground`、`LabSearch`、`SectionHeading`；
+> 学科页 `src/routes/labs/{math,physics}.tsx`（共用 `-subject-page.tsx`）。第③块暂用 `/videos/gallery/parabola-plot.mp4` 样片，
+> 章节有 `lab.video` 后自动替换。
+>
+> **URL**：新增学科页 `/labs/math`、`/labs/physics`（学科聚合页，可收录；`math`、`physics` 作为保留 slug，
+> 实验集不得用这两个名字），实验集与章节 URL 不变。
+>
+> **内容目标（首批）**：数学 4 个实验集约 16 章，物理 3 个实验集约 10 章。章节清单见 `LABS_PLAN.md` §6。
+>
+> **其他模块定位**：曲线百科保留，作为泛流量入口并反链实验；资源库内容尚空，先降到「资源」下拉里，
+> 长期定位为"实验做成的视频成品库"；博客放进「资源」与页脚。
+
+> **修订（2026-09-22）**：第 3 节「animg library 是用户作品堆」和「百科 + 画廊」双层结构已被取代。2026-09-21 复核公开站后，animg 的 `/library` 是编辑精选场景，`/explore` 才是 UGC。CurvG 改为三层：`/curves` 对象百科、`/library` 编辑场景库、`/gallery` 用户作品。分类用知识图（主父节点 + 兼挂），不照搬课表学段，也不搬 shapeof.world 的九大根类。实施基线、URL、数据模型和种子条目全部以 `LIBRARY_PLAN.md` 为准。下面第 3 节保留当时的原文，读的时候以本修订和 `LIBRARY_PLAN.md` 为准。
 
 > **实施进展（2026-08-04）**：`/curves` 百科（30 条）与 SEO 内页矩阵
 > （`/math-animation-tool`、`/free-math-video-creator`、`/manim-alternative`、
 > `/blog/best-math-video-apps`）已建成并通过验证，待部署。百科采用静态内容模块
 > 而非数据表（决策记录见 `CURVE_ENCYCLOPEDIA.md` §2）；`gallery_entry` 数据表
-> 仍是 UGC 画廊层的待办。`/gallery`、`/playground`、`/learn` 未实施。
+> 仍是 UGC 画廊层的待办。`/gallery`、`/playground`、`/learn` 未实施。`/library` 的 P0 骨架已在 2026-09-22 落地，场景页未写。
 
 ---
 
@@ -101,7 +156,8 @@ animg 的 library 是"用户作品堆"。CurvG 做成 **"曲线百科 + 作品�
 ## 6. 各页面的验收标准
 
 - **/curves/[slug]**：未登录用户可查看 LaTeX 公式、交互调参实时预览、点击"生成动画"进入 Creator（预填该曲线上下文）。每页有独立 title/description/OG 图，可被搜索引擎索引。
-- **/gallery/[slug]**：展示视频、公式、规格摘要、Manim 代码（可折叠）、"Create similar" 按钮；作者可控公开/私有。
+- **/library、/library/{hub}、/library/{hub}/{topic}、/library/scenes/{slug}**：验收标准见 `LIBRARY_PLAN.md` §6 与 §8。2026-09-22 起以此为准，不再把场景库塞进 `/gallery`。
+- **/gallery/[slug]**：展示视频、公式、规格摘要、Manim 代码（可折叠）、"Create similar" 按钮；作者可控公开/私有。与编辑精选分区展示。
 - **/creator**：同一输入可复现生成记录；渲染前用户可修改规格与代码；渲染失败有可读诊断。
 - **/pricing**：在拿到 ≥50 个真实成本样本前，只展示"早期访问"而非价格表。
 
@@ -110,4 +166,5 @@ animg 的 library 是"用户作品堆"。CurvG 做成 **"曲线百科 + 作品�
 - `ROADMAP.md`：本文档第 5 节的优先级已同步至路线图"当前最优先的下一步"。
 - `ANIMATION_ORCHESTRATION.md`：基础设施选型（Cloudflare、D1、R2、Sandbox）不变；该文档取代了已删除的 `TECHNICAL_ARCHITECTURE.md`，并补充了 provider 路由与确定性兜底。
 - `CURVG_CREATOR_ARCHITECTURE.md`：四层事实模型与状态机不变，本文档在其上补充数学验证层与模板库。
-- `docs/research/animg.app/COMPETITOR_ANALYSIS.md`：竞品结论的战略化落地即本文档第 2、3 节。
+- `docs/research/animg.app/COMPETITOR_ANALYSIS.md`：Creator / Playground / 规格状态机的结论仍可用。Library 页面结构以 `LIBRARY_PLAN.md` §2 为准，不再以本文第 3 节为准。
+- `LIBRARY_PLAN.md`：2026-09-22 资源库实施基线。信息架构冲突时以它为准。

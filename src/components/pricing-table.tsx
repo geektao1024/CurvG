@@ -178,7 +178,7 @@ export function PricingTable({
             >
               <div className="flex min-h-[21rem] flex-col gap-6 p-5 md:min-h-96 md:p-10">
                 <div className="flex min-h-7 items-start justify-between gap-3">
-                  <h3 className="font-sans text-xl leading-7 font-medium tracking-[-0.02em] md:text-2xl">
+                  <h3 className="text-xl leading-7 font-semibold md:text-2xl">
                     {plan.name}
                   </h3>
                   {plan.badge && (

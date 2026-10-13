@@ -181,7 +181,8 @@ export const parametricCurves: CurveDef[] = [
     ],
     fitMode: 'fixed',
     sample: ({ winds }) => [
-      sweep(0, winds * Math.PI, 1600, (t) => {
+      // 24π of fast wing beats: ~80 samples per radian keeps the corners smooth.
+      sweep(0, winds * Math.PI, Math.max(800, Math.round(winds * Math.PI * 80)), (t) => {
         const e =
           Math.exp(Math.cos(t)) -
           2 * Math.cos(4 * t) -

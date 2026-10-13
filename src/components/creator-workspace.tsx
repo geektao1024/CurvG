@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
@@ -21,6 +29,7 @@ import {
   LoaderCircle,
   Menu,
   MessageSquareText,
+  Orbit,
   PanelLeftClose,
   PanelLeftOpen,
   PencilLine,
@@ -63,6 +72,7 @@ import {
   type AnimationSubject,
   type AnimationSummary,
 } from '@/lib/animation';
+import type { AnimationProductionMode } from '@/lib/animation-simulation';
 import type { AnimationTemplateSummary } from '@/lib/animation-template';
 import {
   apiDelete,
@@ -75,7 +85,6 @@ import {
 } from '@/lib/api-client';
 import { detectMathObjectType } from '@/lib/math-preview';
 import { cn } from '@/lib/utils';
-import { MathFormulaPreview } from '@/components/math-formula-preview';
 import { PixelRevealLink } from '@/components/pixel-reveal-link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -115,6 +124,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 
+const MathFormulaPreview = lazy(async () => {
+  const module = await import('@/components/math-formula-preview');
+  return { default: module.MathFormulaPreview };
+});
+
 interface CreatorOption<T extends string> {
   value: T;
   label: string;
@@ -134,6 +148,8 @@ interface CreatorGenerationRequest {
   prompt: string;
   subject: AnimationSubject;
   mode: AnimationCreationMode;
+  productionMode: AnimationProductionMode;
+  simulationFamily?: 'ring_escape';
   formula?: string;
   intent?: string;
   mathObjectType?: AnimationMathObjectType;
@@ -233,6 +249,12 @@ export interface CreatorWorkspaceCopy {
   signInToCreate: string;
   subject: string;
   model: string;
+  productionModeLabel: string;
+  productionModeExplainer: string;
+  productionModeExplainerDescription: string;
+  productionModeSimulation: string;
+  productionModeSimulationDescription: string;
+  productionModeSimulationPrompt: string;
   characters: string;
   welcomeEyebrow: string;
   welcomeTitle: string;
@@ -470,7 +492,7 @@ function isAbortError(error: unknown) {
 type ArtifactTab = 'specification' | 'code' | 'video';
 
 const SPLIT_RATIO_STORAGE_KEY = 'creator-split-ratio';
-const GUEST_DRAFT_STORAGE_KEY = 'curvg-creator-guest-draft-v1';
+const GUEST_DRAFT_STORAGE_KEY = 'curvg-creator-guest-draft-v2';
 const GUEST_DRAFT_TTL_MS = 2 * 60 * 60 * 1000;
 const DEFAULT_SPLIT_RATIO = 0.4;
 const MIN_SPLIT_RATIO = 0.28;
@@ -479,6 +501,7 @@ const MAX_SPLIT_RATIO = 0.62;
 interface GuestCreatorDraft {
   savedAt: number;
   creationMode: AnimationCreationMode;
+  productionMode: AnimationProductionMode;
   prompt: string;
   formula: string;
   formulaIntent: string;
@@ -499,6 +522,7 @@ function readGuestCreatorDraft(): GuestCreatorDraft | undefined {
       !['description', 'template', 'formula'].includes(
         value.creationMode || ''
       ) ||
+      !['explainer', 'simulation_short'].includes(value.productionMode || '') ||
       typeof value.prompt !== 'string' ||
       typeof value.formula !== 'string' ||
       typeof value.formulaIntent !== 'string' ||
@@ -602,7 +626,7 @@ function WorkspaceNavigation({
           className={cn('space-y-1', collapsed && 'flex flex-col items-center')}
         >
           <Link
-            href="/#gallery"
+            href="/library"
             className={linkClassName}
             aria-label={copy.gallery}
             title={collapsed ? copy.gallery : undefined}
@@ -639,7 +663,7 @@ function GuestWorkspaceHeader({ copy }: { copy: CreatorWorkspaceCopy }) {
             alt=""
             className="size-8 shrink-0 rounded-lg"
           />
-          <span className="truncate text-lg font-bold tracking-[-0.03em] sm:text-xl">
+          <span className="font-heading truncate text-lg font-semibold tracking-[0.01em] sm:text-xl">
             {envConfigs.app_name}
           </span>
         </Link>
@@ -1159,7 +1183,7 @@ function WorkspaceSidebarChrome({
                 alt=""
                 className="size-8 shrink-0 rounded-lg"
               />
-              <span className="truncate text-xl font-bold tracking-[-0.03em]">
+              <span className="font-heading truncate text-xl font-semibold tracking-[0.01em]">
                 {envConfigs.app_name}
               </span>
             </Link>
@@ -1567,6 +1591,8 @@ function Welcome({
   locale,
   creationMode,
   onCreationModeChange,
+  productionMode,
+  onProductionModeChange,
   creditNotice,
   prompt,
   onPromptChange,
@@ -1599,6 +1625,8 @@ function Welcome({
   locale: string;
   creationMode: AnimationCreationMode;
   onCreationModeChange: (value: AnimationCreationMode) => void;
+  productionMode: AnimationProductionMode;
+  onProductionModeChange: (value: AnimationProductionMode) => void;
   creditNotice?: string;
   prompt: string;
   onPromptChange: (value: string) => void;
@@ -1903,26 +1931,97 @@ function Welcome({
                 />
               </div>
             </div>
-            <MathFormulaPreview
-              formula={formula}
-              type={mathObjectType}
-              previewLabel={copy.formulaPreview}
-              className="self-start"
-            />
+            <Suspense
+              fallback={
+                <div
+                  aria-busy="true"
+                  className="bg-card aspect-[2/1] min-h-52 self-start rounded-2xl border"
+                />
+              }
+            >
+              <MathFormulaPreview
+                formula={formula}
+                type={mathObjectType}
+                previewLabel={copy.formulaPreview}
+                className="self-start"
+              />
+            </Suspense>
           </div>
         )}
 
         {creationMode === 'description' && (
           <div className="mt-28 w-full max-w-4xl sm:mt-40">
+            <fieldset
+              className="bg-card/72 border-border/80 mb-4 rounded-2xl border p-2 shadow-sm backdrop-blur-sm"
+              disabled={processing}
+            >
+              <legend className="text-muted-foreground px-2 font-mono text-[9px] font-semibold tracking-[0.13em] uppercase">
+                {copy.productionModeLabel}
+              </legend>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {(
+                  [
+                    {
+                      value: 'explainer',
+                      label: copy.productionModeExplainer,
+                      description: copy.productionModeExplainerDescription,
+                      icon: Sparkles,
+                    },
+                    {
+                      value: 'simulation_short',
+                      label: copy.productionModeSimulation,
+                      description: copy.productionModeSimulationDescription,
+                      icon: Orbit,
+                    },
+                  ] as const
+                ).map((option) => {
+                  const Icon = option.icon;
+                  const selected = productionMode === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => {
+                        onProductionModeChange(option.value);
+                        if (
+                          option.value === 'simulation_short' &&
+                          !prompt.trim()
+                        ) {
+                          onPromptChange(copy.productionModeSimulationPrompt);
+                        }
+                      }}
+                      aria-pressed={selected}
+                      className={cn(
+                        'focus-visible:ring-primary/45 rounded-xl border p-3 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none',
+                        selected
+                          ? 'border-primary/40 bg-primary/[0.07] text-foreground'
+                          : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground border-transparent'
+                      )}
+                    >
+                      <span className="flex items-center gap-2 text-sm font-semibold">
+                        <Icon className="text-primary size-4" />
+                        {option.label}
+                      </span>
+                      <span className="mt-1.5 block text-xs leading-5">
+                        {option.description}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
             <div className="relative">
               <img
-                src="/imgs/generated/creator-assistant-sitting.png"
+                src="/imgs/generated/creator-assistant-sitting.webp"
                 alt=""
                 aria-hidden="true"
                 draggable={false}
                 width={360}
                 height={360}
-                className="pointer-events-none absolute top-0 right-4 z-20 h-40 w-auto -translate-y-[67%] object-contain drop-shadow-[0_20px_24px_rgba(26,28,48,0.14)] select-none sm:right-10 sm:h-72 dark:brightness-[0.92]"
+                loading="lazy"
+                fetchPriority="low"
+                decoding="async"
+                className="pointer-events-none absolute top-0 right-10 z-20 hidden h-72 w-auto -translate-y-[67%] object-contain drop-shadow-[0_20px_24px_rgba(29,35,33,0.16)] select-none md:block dark:brightness-[0.92]"
               />
               <PromptComposer
                 copy={copy}
@@ -4292,6 +4391,8 @@ export function CreatorWorkspace({
   const [selectedId, setSelectedId] = useState(initialAnimationId);
   const [creationMode, setCreationMode] =
     useState<AnimationCreationMode>('description');
+  const [productionMode, setProductionMode] =
+    useState<AnimationProductionMode>('explainer');
   const [prompt, setPrompt] = useState(initialPrompt ?? '');
   const [formula, setFormula] = useState('sin(x)');
   const [formulaIntent, setFormulaIntent] = useState('');
@@ -4389,6 +4490,17 @@ export function CreatorWorkspace({
   const detail = detailQuery.data ?? pendingAnimation;
   const detailLoading =
     !hydrated || sessionPending || (!pendingAnimation && detailQuery.isLoading);
+  const detailProductionMode = detail
+    ? (
+        detail.parts as AnimationDetail['parts'] & {
+          productionMode?: AnimationProductionMode;
+        }
+      ).productionMode || 'explainer'
+    : undefined;
+
+  useEffect(() => {
+    if (detailProductionMode) setProductionMode(detailProductionMode);
+  }, [detail?.id, detailProductionMode]);
 
   useEffect(() => {
     if (
@@ -4520,7 +4632,6 @@ export function CreatorWorkspace({
     modelOptions.push({
       value: persistedUnavailableValue,
       label: copy.modelUnavailableShort,
-      description: copy.modelUnavailable,
       disabled: true,
     });
   }
@@ -4548,6 +4659,11 @@ export function CreatorWorkspace({
     const draft = readGuestCreatorDraft();
     if (draft) {
       setCreationMode(draft.creationMode);
+      setProductionMode(
+        draft.creationMode === 'description'
+          ? draft.productionMode
+          : 'explainer'
+      );
       setPrompt(draft.prompt);
       setFormula(draft.formula);
       setFormulaIntent(draft.formulaIntent);
@@ -4575,6 +4691,8 @@ export function CreatorWorkspace({
     const draft: GuestCreatorDraft = {
       savedAt: Date.now(),
       creationMode,
+      productionMode:
+        creationMode === 'description' ? productionMode : 'explainer',
       prompt,
       formula,
       formulaIntent,
@@ -4594,6 +4712,7 @@ export function CreatorWorkspace({
     guestDraftReady,
     mathObjectType,
     prompt,
+    productionMode,
     selectedTemplateId,
     subject,
     templateValues,
@@ -4749,6 +4868,13 @@ export function CreatorWorkspace({
     setSelectedId(next.id);
     setPrompt('');
     setFormulaIntent('');
+    setProductionMode(
+      (
+        next.parts as AnimationDetail['parts'] & {
+          productionMode?: AnimationProductionMode;
+        }
+      ).productionMode || 'explainer'
+    );
     queryClient.setQueryData(['animation', user?.id, next.id], next);
     queryClient.invalidateQueries({ queryKey: animationsQueryKey });
     queryClient.invalidateQueries({ queryKey: ['user-credits', 'balance'] });
@@ -4875,11 +5001,16 @@ export function CreatorWorkspace({
       parts: {
         subject: request.subject,
         prompt: request.prompt,
+        productionMode: request.productionMode,
+        simulationFamily: request.simulationFamily,
         modelSelection: {
           choice: request.modelChoice,
           model: request.model,
         },
         versions: [],
+      } as AnimationDetail['parts'] & {
+        productionMode: AnimationProductionMode;
+        simulationFamily?: 'ring_escape';
       },
       messages: [
         {
@@ -4914,6 +5045,13 @@ export function CreatorWorkspace({
           ...detail.parts,
           subject: request.subject,
           prompt: request.prompt,
+          productionMode: request.productionMode,
+          simulationScenario:
+            request.productionMode === 'simulation_short'
+              ? detail.parts.simulationScenario
+              : undefined,
+          simulationEvidence: undefined,
+          sourceFormula: request.formula?.trim() || undefined,
           modelSelection: {
             choice: request.modelChoice,
             model: request.model,
@@ -4953,6 +5091,7 @@ export function CreatorWorkspace({
       if (request.mode === 'template') {
         return apiPost<AnimationDetail>('/api/animations', {
           mode: request.mode,
+          productionMode: request.productionMode,
           templateId: request.templateId,
           values: request.values,
         });
@@ -4995,6 +5134,9 @@ export function CreatorWorkspace({
       return streamGeneration(`/api/animations/${selectedId}/message`, {
         prompt: request.prompt,
         subject: request.subject,
+        formula: request.formula,
+        productionMode: request.productionMode,
+        simulationFamily: request.simulationFamily,
         modelChoice: request.modelChoice,
         model: request.model,
       });
@@ -5021,7 +5163,13 @@ export function CreatorWorkspace({
 
   const retryProductionMutation = useMutation({
     mutationFn: () =>
-      apiPost<AnimationDetail>(`/api/animations/${selectedId}/approve`, {}),
+      apiPost<AnimationDetail>(`/api/animations/${selectedId}/approve`, {
+        productionMode: detailProductionMode || productionMode,
+        simulationFamily:
+          (detailProductionMode || productionMode) === 'simulation_short'
+            ? 'ring_escape'
+            : undefined,
+      }),
     onSuccess: acceptDetail,
     onError: (error: Error) => {
       queryClient.invalidateQueries({ queryKey: detailQueryKey });
@@ -5074,6 +5222,7 @@ export function CreatorWorkspace({
     setSelectedId(undefined);
     setPrompt('');
     setCreationMode('description');
+    setProductionMode('explainer');
     setFormulaIntent('');
     setMathObjectType(detectMathObjectType(formula));
     setMathTypeOverridden(false);
@@ -5092,6 +5241,7 @@ export function CreatorWorkspace({
     activeAnimationIdRef.current = undefined;
     setPendingAnimation(undefined);
     setSelectedId(id);
+    setProductionMode('explainer');
     setStreamingAnimationId(undefined);
     setStreamingText('');
     setPlanningPhase('understanding');
@@ -5121,6 +5271,10 @@ export function CreatorWorkspace({
       prompt: detail.parts.prompt || detail.prompt,
       subject: detail.subject,
       mode: 'description',
+      productionMode: detailProductionMode || 'explainer',
+      simulationFamily:
+        detailProductionMode === 'simulation_short' ? 'ring_escape' : undefined,
+      formula: detail.parts.sourceFormula,
       ...selectedModelRequest(),
     };
     beginOptimisticRevision(request);
@@ -5136,10 +5290,16 @@ export function CreatorWorkspace({
     }
     if (processing) return;
     const mode = detail ? 'description' : creationMode;
+    const selectedProductionMode = detail
+      ? detailProductionMode || productionMode
+      : mode === 'description'
+        ? productionMode
+        : 'explainer';
     if (mode === 'template') {
       if (!selectedTemplateId) return;
       createMutation.mutate({
         mode,
+        productionMode: 'explainer',
         templateId: selectedTemplateId,
         values: templateValues,
         prompt:
@@ -5171,6 +5331,11 @@ export function CreatorWorkspace({
       prompt: requestPrompt,
       subject,
       mode,
+      productionMode: selectedProductionMode,
+      simulationFamily:
+        selectedProductionMode === 'simulation_short'
+          ? 'ring_escape'
+          : undefined,
       formula: mode === 'formula' ? formula.trim() : undefined,
       intent: mode === 'formula' ? formulaIntent.trim() : undefined,
       mathObjectType: mode === 'formula' ? mathObjectType : undefined,
@@ -5214,7 +5379,12 @@ export function CreatorWorkspace({
           copy={copy}
           locale={locale}
           creationMode={creationMode}
-          onCreationModeChange={setCreationMode}
+          onCreationModeChange={(value) => {
+            setCreationMode(value);
+            if (value !== 'description') setProductionMode('explainer');
+          }}
+          productionMode={productionMode}
+          onProductionModeChange={setProductionMode}
           creditNotice={creditShortfallNotice}
           prompt={prompt}
           onPromptChange={setPrompt}
@@ -5296,7 +5466,12 @@ export function CreatorWorkspace({
             copy={copy}
             locale={locale}
             creationMode={creationMode}
-            onCreationModeChange={setCreationMode}
+            onCreationModeChange={(value) => {
+              setCreationMode(value);
+              if (value !== 'description') setProductionMode('explainer');
+            }}
+            productionMode={productionMode}
+            onProductionModeChange={setProductionMode}
             creditNotice={creditShortfallNotice}
             prompt={prompt}
             onPromptChange={setPrompt}

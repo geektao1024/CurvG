@@ -1,84 +1,45 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" fill="none">
   <defs>
-    <linearGradient id="brand" x1="88" y1="54" x2="168" y2="152" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#8589FF"/>
-      <stop offset="0.56" stop-color="#6268FA"/>
-      <stop offset="1" stop-color="#4650F5"/>
-    </linearGradient>
-    <linearGradient id="panel" x1="680" y1="78" x2="1090" y2="556" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFFFFF"/>
-      <stop offset="1" stop-color="#F0F1FF"/>
-    </linearGradient>
-    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
-      <path d="M28 0H0V28" stroke="#1B1C23" stroke-opacity="0.045"/>
-    </pattern>
-    <filter id="shadow" x="622" y="39" width="548" height="552" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#262A54" flood-opacity="0.12"/>
-    </filter>
+    <radialGradient id="paper" cx="0.5" cy="0.4" r="0.8">
+      <stop stop-color="#fffefb"/><stop offset=".6" stop-color="#f6f3ec"/><stop offset="1" stop-color="#ece7dc"/>
+    </radialGradient>
+    <clipPath id="panel"><rect x="640" y="70" width="490" height="490" rx="14"/></clipPath>
   </defs>
-
-  <rect width="1200" height="630" fill="#F7F7F4"/>
-  <rect width="1200" height="630" fill="url(#grid)"/>
-  <circle cx="1035" cy="20" r="270" fill="#7378FF" fill-opacity="0.08"/>
-  <circle cx="-20" cy="652" r="300" fill="#7378FF" fill-opacity="0.06"/>
-
-  <g transform="translate(72 62)">
-    <rect width="64" height="64" rx="16" fill="url(#brand)"/>
-    <path d="M46 18C40 13 32 12 26 14C17 16 13 23 13 32C13 42 20 49 30 50C38 51 44 47 48 43" stroke="#F7F7FC" stroke-width="7" stroke-linecap="round"/>
-    <rect x="37" y="32" width="5" height="5" rx="1" fill="#F7F7FC"/>
-    <rect x="44" y="35" width="5" height="5" rx="1" fill="#F7F7FC"/>
-    <text x="82" y="44" fill="#18191E" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="700" letter-spacing="-1">CurvG</text>
+  <rect width="1200" height="630" fill="url(#paper)"/>
+  <rect x="640" y="70" width="490" height="490" rx="14" fill="#fffefb" stroke="#1d2321" stroke-opacity=".12"/>
+  <g clip-path="url(#panel)">
+    <g stroke="#23272c" stroke-opacity=".08"><path d="M677.7 70V560" /><path d="M803.3 70V560" /><path d="M929.0 70V560" /><path d="M1054.6 70V560" /><path d="M640 505.6H1130" /><path d="M640 427.8H1130" /><path d="M640 350.0H1130" /><path d="M640 272.2H1130" /><path d="M640 194.4H1130" /><path d="M640 116.7H1130" /></g>
+    <path d="M640 505.6H1130M803.3 70V560" stroke="#4a5058" stroke-width="1.4"/>
+    <polyline points="640.0,374.1 642.5,378.0 644.9,381.9 647.4,385.7 649.8,389.4 652.2,393.1 654.7,396.7 657.1,400.3 659.6,403.8 662.0,407.2 664.5,410.6 666.9,413.9 669.4,417.2 671.9,420.4 674.3,423.5 676.8,426.6 679.2,429.6 681.6,432.6 684.1,435.5 686.5,438.4 689.0,441.1 691.5,443.9 693.9,446.6 696.4,449.2 698.8,451.7 701.2,454.2 703.7,456.6 706.1,459.0 708.6,461.3 711.0,463.6 713.5,465.8 716.0,467.9 718.4,470.0 720.9,472.0 723.3,474.0 725.8,475.9 728.2,477.7 730.6,479.5 733.1,481.3 735.5,482.9 738.0,484.5 740.5,486.1 742.9,487.6 745.4,489.0 747.8,490.4 750.2,491.7 752.7,492.9 755.1,494.1 757.6,495.3 760.0,496.3 762.5,497.3 765.0,498.3 767.4,499.2 769.9,500.0 772.3,500.8 774.8,501.5 777.2,502.2 779.6,502.8 782.1,503.3 784.5,503.8 787.0,504.2 789.5,504.6 791.9,504.9 794.4,505.2 796.8,505.3 799.2,505.5 801.7,505.5 804.1,505.6 806.6,505.5 809.0,505.4 811.5,505.2 814.0,505.0 816.4,504.7 818.9,504.4 821.3,504.0 823.8,503.5 826.2,503.0 828.6,502.4 831.1,501.8 833.5,501.1 836.0,500.3 838.5,499.5 840.9,498.6 843.4,497.7 845.8,496.7 848.2,495.6 850.7,494.5 853.1,493.3 855.6,492.1 858.0,490.8 860.5,489.5 863.0,488.0 865.4,486.6 867.9,485.0 870.3,483.5 872.8,481.8 875.2,480.1 877.6,478.3 880.1,476.5 882.5,474.6 885.0,472.7 887.5,470.7 889.9,468.6 892.4,466.5 894.8,464.3 897.2,462.1 899.7,459.8 902.1,457.4 904.6,455.0 907.0,452.6 909.5,450.0 912.0,447.4 914.4,444.8 916.8,442.1 919.3,439.3 921.8,436.5 924.2,433.6 926.7,430.6 929.1,427.6 931.5,424.6 934.0,421.4 936.5,418.2 938.9,415.0 941.4,411.7 943.8,408.3 946.2,404.9 948.7,401.4 951.1,397.9 953.6,394.3 956.0,390.6 958.5,386.9 960.9,383.2 963.4,379.3 965.8,375.4 968.3,371.5 970.8,367.5 973.2,363.4 975.7,359.3 978.1,355.1 980.5,350.8 983.0,346.5 985.5,342.1 987.9,337.7 990.4,333.2 992.8,328.7 995.2,324.1 997.7,319.4 1000.1,314.7 1002.6,309.9 1005.0,305.1 1007.5,300.2 1010.0,295.2 1012.4,290.2 1014.9,285.1 1017.3,280.0 1019.8,274.8 1022.2,269.5 1024.7,264.2 1027.1,258.8 1029.5,253.4 1032.0,247.9 1034.5,242.4 1036.9,236.8 1039.3,231.1 1041.8,225.4 1044.2,219.6 1046.7,213.7 1049.2,207.8 1051.6,201.9 1054.0,195.8 1056.5,189.8 1059.0,183.6 1061.4,177.4 1063.8,171.2 1066.3,164.8 1068.8,158.5 1071.2,152.0 1073.7,145.5 1076.1,139.0 1078.5,132.4 1081.0,125.7 1083.5,118.9 1085.9,112.2 1088.3,105.3 1090.8,98.4 1093.2,91.4 1095.7,84.4 1098.2,77.3 1100.6,70.2 1103.0,63.0 1105.5,55.7 1107.9,48.4 1110.4,41.0 1112.8,33.5 1115.3,26.0 1117.8,18.5 1120.2,10.9 1122.6,3.2 1125.1,-4.6 1127.5,-12.4 1130.0,-20.2" stroke="#1d2321" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+    <path d="M640.0 785.6L1130.0 178.9" stroke="#2f8f4e" stroke-width="2.2" stroke-dasharray="7 5"/>
+    <path d="M727.9 813.6L1130.0 42.0" stroke="#2f6fd0" stroke-width="2.4"/>
+    <path d="M929.0 427.8H1067.2V162.6" stroke="#5d6670" stroke-width="1.4" stroke-dasharray="5 4"/>
+    <circle cx="1067.2" cy="162.6" r="5" fill="#2f6fd0"/>
+    <circle cx="929.0" cy="427.8" r="12" fill="#c9800f" fill-opacity=".18"/>
+    <circle cx="929.0" cy="427.8" r="6.5" fill="#fffefb" stroke="#c9800f" stroke-width="3"/>
+    <text x="943.0" y="417.8" font-family="Times New Roman" font-style="italic" font-size="22" fill="#23272c">P</text>
+    <text x="1079.2" y="156.6" font-family="Times New Roman" font-style="italic" font-size="22" fill="#23272c">Q</text>
+    <text x="664" y="110" font-family="JetBrains Mono" font-weight="600" font-size="13" letter-spacing="3.5" fill="#9a5f08">03 / 04</text>
+    <text x="664" y="148" font-family="Noto Serif SC" font-weight="600" font-size="28" fill="#1d2321">Secant to tangent</text>
   </g>
-
-  <g transform="translate(72 196)">
-    <rect width="224" height="34" rx="17" fill="#ECECFF" stroke="#D9DAFF"/>
-    <circle cx="19" cy="17" r="4" fill="#6268FA"/>
-    <text x="34" y="22" fill="#4B50D6" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700" letter-spacing="1.1">REVIEWABLE AI WORKFLOW</text>
-  </g>
-
-  <text x="72" y="292" fill="#16171C" font-family="Inter, Arial, sans-serif" font-size="55" font-weight="700" letter-spacing="-2.6">From a math idea to</text>
-  <text x="72" y="358" fill="#16171C" font-family="Inter, Arial, sans-serif" font-size="55" font-weight="700" letter-spacing="-2.6">a scene you can inspect.</text>
-  <text x="72" y="439" fill="#5E606B" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="400">Check formulas, sequence, labels, and timing.</text>
-  <text x="72" y="471" fill="#5E606B" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="400">Then generate portable Manim Community code.</text>
-
-  <g transform="translate(72 548)">
-    <text x="0" y="0" fill="#73757F" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="600">IDEA</text>
-    <path d="M50 -5H92" stroke="#B8BAC4" stroke-width="1.5"/>
-    <path d="M88 -9L92 -5L88 -1" stroke="#B8BAC4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="110" y="0" fill="#73757F" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="600">SCENE PLAN</text>
-    <path d="M216 -5H258" stroke="#B8BAC4" stroke-width="1.5"/>
-    <path d="M254 -9L258 -5L254 -1" stroke="#B8BAC4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="276" y="0" fill="#4B50D6" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700">MANIM CODE</text>
-  </g>
-
-  <g filter="url(#shadow)">
-    <rect x="660" y="70" width="466" height="464" rx="30" fill="url(#panel)" stroke="#DADBEE"/>
-  </g>
-  <g transform="translate(700 110)">
-    <circle cx="7" cy="7" r="7" fill="#6268FA"/>
-    <text x="24" y="13" fill="#24252C" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="700">Scene plan</text>
-    <rect x="330" y="-4" width="56" height="28" rx="14" fill="#EEF8F0" stroke="#D2EAD7"/>
-    <text x="344" y="15" fill="#39734A" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700">READY</text>
-
-    <rect x="0" y="54" width="386" height="194" rx="18" fill="#14151B"/>
-    <path d="M32 208H354M65 80V222" stroke="#444753" stroke-width="1"/>
-    <path d="M66 174C103 85 145 83 181 174C217 265 259 263 296 174C315 129 333 106 354 106" stroke="#7E83FF" stroke-width="4" stroke-linecap="round"/>
-    <circle cx="181" cy="174" r="6" fill="#14151B" stroke="#AEB1FF" stroke-width="3"/>
-    <text x="78" y="105" fill="#F4F4FA" font-family="Georgia, serif" font-size="24" font-style="italic">y = sin(x)</text>
-    <text x="315" y="231" fill="#8D909D" font-family="Inter, Arial, sans-serif" font-size="11">x</text>
-    <text x="48" y="92" fill="#8D909D" font-family="Inter, Arial, sans-serif" font-size="11">y</text>
-
-    <g transform="translate(0 278)">
-      <circle cx="14" cy="14" r="14" fill="#ECECFF"/>
-      <text x="10" y="19" fill="#555BE0" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700">1</text>
-      <text x="42" y="12" fill="#26272E" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700">Establish axes and formula</text>
-      <text x="42" y="32" fill="#777985" font-family="Inter, Arial, sans-serif" font-size="12">Keep labels within the safe frame</text>
+  <g transform="translate(72 70)">
+    <rect width="56" height="56" rx="13" fill="#1d2321"/>
+    <g transform="scale(.875)">
+      <path d="M10 33H54M32 10V56" stroke="#f6f4ef" stroke-opacity=".12" stroke-width="1.4"/>
+      <path d="M42.71 21.11A16 16 0 1 0 48 33H36" stroke="#f6f4ef" stroke-width="5.6" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="42.71" cy="21.11" r="7.2" fill="#c9800f" fill-opacity=".28"/>
+      <circle cx="42.71" cy="21.11" r="4.1" fill="#1d2321" stroke="#f2a93b" stroke-width="2.6"/>
     </g>
-    <g transform="translate(0 340)">
-      <circle cx="14" cy="14" r="14" fill="#ECECFF"/>
-      <text x="10" y="19" fill="#555BE0" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700">2</text>
-      <text x="42" y="12" fill="#26272E" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="700">Trace one period of the curve</text>
-      <text x="42" y="32" fill="#777985" font-family="Inter, Arial, sans-serif" font-size="12">Review pacing before code generation</text>
-    </g>
+    <text x="74" y="38" font-family="Noto Serif SC" font-weight="600" font-size="32" fill="#1d2321">CurvG</text>
   </g>
+  <text x="72" y="236" font-family="JetBrains Mono" font-weight="600" font-size="15" letter-spacing="4" fill="#9a5f08">INTERACTIVE MATH · AI ANIMATION</text>
+  <text font-family="Noto Serif SC" font-weight="600" font-size="62" fill="#1d2321" letter-spacing=".5">
+    <tspan x="72" y="318">Math you can</tspan>
+    <tspan x="72" y="396">move, <tspan font-family="Instrument Serif" font-style="italic" font-weight="400" font-size="70" fill="#9a5f08">then film.</tspan></tspan>
+  </text>
+  <text font-family="Inter, PingFang SC, sans-serif" font-size="21" fill="#5f6763">
+    <tspan x="72" y="462">Drag the curve in a free interactive lab,</tspan>
+    <tspan x="72" y="492">then turn it into a narrated math video.</tspan>
+  </text>
+  <text x="72" y="566" font-family="JetBrains Mono" font-weight="500" font-size="15" fill="#5f6763">curvg.com</text>
 </svg>
