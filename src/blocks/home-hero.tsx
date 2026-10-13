@@ -108,6 +108,10 @@ export function HomeHero() {
             openLabel={m['home.hero.open']()}
             videoLabel={m['home.hero.video']()}
             dragHint={m['home.hero.drag_hint']()}
+            playLabel={m['home.hero.play']()}
+            pauseLabel={m['home.hero.pause']()}
+            prevLabel={m['home.hero.prev']()}
+            nextLabel={m['home.hero.next']()}
           />
         </div>
       </div>

@@ -267,7 +267,7 @@ export const pythagoreanTheoremRearrangement: Lab = {
     },
   ],
   resultTex: 'a^2 + b^2 = c^2',
-  related: ['unit-circle-sine'],
+  related: ['unit-circle-sine', 'vector-dot-product', 'inscribed-angle-theorem'],
   updated: '2026-10-12',
   videoPrompt: {
     en: 'Build a visual proof of the Pythagorean theorem by rearrangement: four right triangles inside a square of side a + b first leave a tilted c² square, then slide to leave a² and b², proving a² + b² = c².',

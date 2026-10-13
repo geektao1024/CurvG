@@ -76,11 +76,14 @@ Implemented and build-verified, awaiting deployment (2026-08-04):
 
 Implemented and build-verified, awaiting deployment (2026-10-12):
 
-- Interactive labs `/labs`: 24 bilingual chapters in 6 suites — math
+- Interactive labs `/labs`: 31 bilingual chapters in 7 suites — math
   (functions & calculus: transformations, exponentials & logs, unit circle,
   y = A sin(ωx + φ), derivatives, monotonicity & extrema, bisection, Riemann
   sums; conic sections: ellipse, parabola and focal chords, hyperbola and
-  asymptotes, eccentricity; geometry) and physics (motion: v–t
+  asymptotes, eccentricity; geometry: Pythagoras, inscribed angles,
+  similarity & homothety, vectors & the dot product; probability:
+  permutations & combinations, binomial, normal & 3σ, law of large numbers)
+  and physics (motion: v–t
   graphs, projectiles, circular motion, river crossing; forces & energy:
   inclined plane, mass on a spring, pendulum, energy conservation; waves:
   travelling waves, interference, Doppler effect) — with subject pages
@@ -102,9 +105,9 @@ Implemented and build-verified, awaiting deployment (2026-10-12):
 
 Not implemented yet:
 
-- Editorial scene pages (`/library/scenes/{slug}`). The library skeleton is in
-  the tree: content graph, hub/topic routes, navigation, and sitemap. Scene
-  seeds are not written, so scene URLs 404. See `docs/LIBRARY_PLAN.md`.
+- Most editorial scene pages (`/library/scenes/{slug}`). Two scenes are
+  public (`parabola-rise`, `permutations-vs-combinations`); the P1 target is
+  at least eight, plus P2 paths and filters. See `docs/LIBRARY_PLAN.md`.
 - The public gallery page. Gallery API routes exist; there is no gallery page
   route and no published entry in production. UGC gallery stays separate from
   the editorial library.

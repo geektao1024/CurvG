@@ -149,9 +149,19 @@
   }
 }
 
+/* 全局边框色放在 components 层而不是 base 层：开发服务器的首屏样式表会把
+   Tailwind 的 preflight 再追加一遍，其中 `border: 0 solid` 会把边框色重置成
+   currentColor（深色），水合前整页线框发黑。components 层总是压过 base 层，
+   与先后顺序无关；工具类在 utilities 层，仍可覆盖它。 */
+@layer components {
+  * {
+    @apply border-border;
+  }
+}
+
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
@@ -357,6 +367,63 @@
   .curvg-board-thumb {
     background: #fbfaf7;
     color-scheme: light;
+  }
+
+  /* 首页示例画板：切换时淡入；引导结束后，可拖动的点和播放按钮持续轻微脉动，
+     直到访客第一次动手。 */
+  .curvg-playground-in {
+    animation: curvg-playground-in 0.36s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  @keyframes curvg-playground-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+  .curvg-handle-ring {
+    animation: curvg-handle-ring 1.6s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+  }
+  @keyframes curvg-handle-ring {
+    0% {
+      transform: scale(0.6);
+      opacity: 0.75;
+    }
+    80%,
+    100% {
+      transform: scale(2.1);
+      opacity: 0;
+    }
+  }
+  /* 自动轮播的计时条：动画本身就是计时器，播完翻到下一个。 */
+  .curvg-pager-fill {
+    width: 0;
+    animation-name: curvg-pager-fill;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+  }
+  @keyframes curvg-pager-fill {
+    to {
+      width: 100%;
+    }
+  }
+  .curvg-play-nudge {
+    animation: curvg-play-nudge 1.6s ease-in-out infinite;
+  }
+  @keyframes curvg-play-nudge {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 0%, transparent);
+    }
+    50% {
+      box-shadow: 0 0 0 5px color-mix(in oklab, var(--primary) 22%, transparent);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .curvg-playground-in,
+    .curvg-handle-ring,
+    .curvg-play-nudge {
+      animation: none;
+    }
   }
 
   @keyframes curvg-corner-spin {

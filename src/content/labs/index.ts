@@ -3,6 +3,7 @@ import { parseBoardSpec } from '@/lib/board/spec';
 
 import { getPrimaryTrail } from '../library/graph';
 import type { LibraryLocale } from '../library/types';
+import { binomialDistribution } from './data/binomial-distribution';
 import { circularMotion } from './data/circular-motion';
 import { conicSectionsEccentricity } from './data/conic-sections-eccentricity';
 import { derivativeTangentSlope } from './data/derivative-tangent-slope';
@@ -12,18 +13,24 @@ import { energyConservation } from './data/energy-conservation';
 import { exponentialLogarithm } from './data/exponential-logarithm';
 import { hyperbolaAsymptotes } from './data/hyperbola-asymptotes';
 import { inclinedPlaneForces } from './data/inclined-plane-forces';
+import { inscribedAngleTheorem } from './data/inscribed-angle-theorem';
+import { lawOfLargeNumbers } from './data/law-of-large-numbers';
 import { monotonicityExtrema } from './data/monotonicity-extrema';
+import { normalDistribution } from './data/normal-distribution';
 import { parabolaFocalChord } from './data/parabola-focal-chord';
+import { permutationsCombinations } from './data/permutations-combinations';
 import { projectileMotion } from './data/projectile-motion';
 import { pythagoreanTheoremRearrangement } from './data/pythagorean-theorem-rearrangement';
 import { quadraticTransformations } from './data/quadratic-transformations';
 import { relativeMotionRiver } from './data/relative-motion-river';
 import { riemannSumArea } from './data/riemann-sum-area';
+import { similarityHomothety } from './data/similarity-homothety';
 import { simplePendulum } from './data/simple-pendulum';
 import { sinusoidalFunction } from './data/sinusoidal-function';
 import { springOscillator } from './data/spring-oscillator';
 import { uniformAccelerationVt } from './data/uniform-acceleration-vt';
 import { unitCircleSine } from './data/unit-circle-sine';
+import { vectorDotProduct } from './data/vector-dot-product';
 import { waveInterference } from './data/wave-interference';
 import { wavePropagation } from './data/wave-propagation';
 import { zerosBisection } from './data/zeros-bisection';
@@ -49,6 +56,13 @@ export const LABS: readonly Lab[] = [
   quadraticTransformations,
   conicSectionsEccentricity,
   pythagoreanTheoremRearrangement,
+  inscribedAngleTheorem,
+  similarityHomothety,
+  vectorDotProduct,
+  permutationsCombinations,
+  binomialDistribution,
+  normalDistribution,
+  lawOfLargeNumbers,
   uniformAccelerationVt,
   projectileMotion,
   circularMotion,
@@ -75,16 +89,16 @@ export const LAB_SUBJECTS: readonly LabSubject[] = [
     publication: 'public',
     name: { en: 'Mathematics', zh: '数学' },
     description: {
-      en: 'Functions, calculus, conic sections and geometry, each as a board you can drag.',
-      zh: '函数、微积分、圆锥曲线与几何，每个知识点都是一块可以拖动的画板。',
+      en: 'Functions, calculus, conic sections, geometry and probability, each as a board you can drag.',
+      zh: '函数、微积分、圆锥曲线、几何与概率，每个知识点都是一块可以拖动的画板。',
     },
     headline: {
       en: 'Interactive math labs: functions, calculus, conics, geometry and probability',
       zh: '数学交互实验：函数、微积分、圆锥曲线、几何与概率',
     },
     metaTitle: {
-      en: 'Interactive Math Labs — Functions, Calculus, Conics & Geometry | CurvG',
-      zh: '数学交互实验 — 函数、导数、圆锥曲线、几何在线演示 | CurvG',
+      en: 'Interactive Math Labs — Functions, Calculus, Conics, Geometry & Probability | CurvG',
+      zh: '数学交互实验 — 函数、导数、圆锥曲线、几何、概率在线演示 | CurvG',
     },
     metaDescription: {
       en: 'Free interactive math labs for high school and college: drag the board to explore graph transformations, derivatives and integrals, conic sections, proofs and probability, each with a guided walk-through and a quiz.',
@@ -161,7 +175,28 @@ export const LAB_SUITES: readonly LabSuite[] = [
       en: 'Proofs you can take apart by hand: move the pieces and see why the theorem has to hold.',
       zh: '能亲手拆开的证明：移动图形的各个部分，看定理为什么一定成立。',
     },
-    chapters: [pythagoreanTheoremRearrangement],
+    chapters: [
+      pythagoreanTheoremRearrangement,
+      inscribedAngleTheorem,
+      similarityHomothety,
+      vectorDotProduct,
+    ],
+  },
+  {
+    slug: 'probability',
+    publication: 'public',
+    subject: 'math',
+    name: { en: 'Probability & statistics', zh: '概率与统计' },
+    summary: {
+      en: 'Chance built up from counting: choose and arrange, add up the paths of repeated trials, read probability as area under the bell curve, and watch a frequency settle as the trials pile up.',
+      zh: '从计数搭起概率：先学会选和排，再数出重复试验的每条路径，把概率读成钟形曲线下的面积，最后看频率怎样随试验次数增加而稳定下来。',
+    },
+    chapters: [
+      permutationsCombinations,
+      binomialDistribution,
+      normalDistribution,
+      lawOfLargeNumbers,
+    ],
   },
   {
     slug: 'kinematics',

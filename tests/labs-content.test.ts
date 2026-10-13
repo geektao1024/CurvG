@@ -18,6 +18,11 @@ import {
   suitesForSubject,
   type Lab,
 } from '../src/content/labs';
+import {
+  LLN_DATA,
+  LLN_EPS,
+  LLN_NS,
+} from '../src/content/labs/data/law-of-large-numbers';
 import { getCategory } from '../src/content/library';
 import {
   dragTargets,
@@ -876,5 +881,282 @@ describe('lab guide claims', () => {
       Math.SQRT2,
       9
     );
+  });
+
+  it('inscribed angle: half the arc, wherever P is', () => {
+    const deg = Math.PI / 180;
+    const f = (tA: number, tB: number, tP: number) =>
+      at('inscribed-angle-theorem', {
+        tA: tA * deg,
+        tB: tB * deg,
+        tP: tP * deg,
+      });
+    const apb = '\\angle APB';
+    const arc = '\\overset{\\frown}{AB}';
+    const first = f(210, 330, 100);
+    close(readout(first, apb), 60, 1);
+    close(readout(first, arc), 120, 1);
+    close(readout(first, `${arc} \\div \\angle APB`), 2, 6);
+    close(readout(f(210, 330, 160), apb), 60, 6);
+    const opposite = f(210, 330, 30);
+    close(readout(opposite, '\\angle OPB'), 60, 6);
+    close(readout(opposite, apb), 60, 6);
+    const diameter = f(180, 0, 63);
+    close(readout(diameter, apb), 90, 6);
+    const right = diameter.readouts.find((r) => r.kind === 'status');
+    assert.ok(right && right.kind === 'status' && right.ok);
+    const below = f(210, 330, 270);
+    close(readout(below, apb), 120, 6);
+    close(readout(below, arc), 240, 6);
+    // Brute force: any chord, any P off it, any side of O.
+    for (const [tA, tB] of [
+      [10, 80],
+      [200, 40],
+      [300, 290],
+      [45, 225],
+    ]) {
+      for (let tP = 3; tP < 360; tP += 17) {
+        const frame = f(tA, tB, tP);
+        close(readout(frame, `${arc} \\div \\angle APB`), 2, 6);
+        close(readout(frame, '\\angle OPA'), readout(frame, '\\angle OAP'), 6);
+      }
+    }
+  });
+
+  it('homothety: sides times |k|, angles kept, area times k²', () => {
+    const f = (values: Record<string, number>) =>
+      at('similarity-homothety', { ox: -5, oy: -2, ax: -2, ay: 1, ...values });
+    const sides = ["|A'B'| / |AB|", "|B'C'| / |BC|", "|C'A'| / |CA|"];
+    const area = "S_{A'B'C'} / S_{ABC}";
+    const first = f({ k: 2 });
+    sides.forEach((label) => close(readout(first, label), 2, 6));
+    close(readout(first, '\\angle A'), 71.6, 1);
+    close(readout(first, "\\angle A'"), 71.6, 1);
+    close(readout(first, area), 4, 6);
+    close(readout(f({ k: 1.5 }), area), 2.25, 6);
+    const inside = f({ k: 1.5, ox: -1.5, oy: -0.3 });
+    sides.forEach((label) => close(readout(inside, label), 1.5, 6));
+    const flip = f({ k: -1, ox: -1.5, oy: -0.3 });
+    sides.forEach((label) => close(readout(flip, label), 1, 6));
+    close(readout(flip, area), 1, 6);
+    for (const k of [-1.5, -0.4, 0.3, 1, 2.5]) {
+      for (const [ox, oy] of [
+        [0, 0],
+        [6, -4],
+        [-2, 1.5],
+      ]) {
+        for (const [ax, ay] of [
+          [-2, 1],
+          [3, 4],
+          [-6, -3],
+        ]) {
+          const frame = f({ k, ox, oy, ax, ay });
+          sides.forEach((label) =>
+            close(readout(frame, label), Math.abs(k), 6)
+          );
+          close(readout(frame, area), k * k, 6);
+          close(readout(frame, "\\angle A'"), readout(frame, '\\angle A'), 6);
+        }
+      }
+    }
+  });
+
+  it('dot product: the angle formula and the coordinates agree', () => {
+    const f = (ax: number, ay: number, bx: number, by: number) =>
+      at('vector-dot-product', { ax, ay, bx, by });
+    const geo = '|\\vec a|\\,|\\vec b|\\cos\\theta';
+    const dot = 'x_1x_2 + y_1y_2';
+    const proj = '|\\vec b|\\cos\\theta';
+    const sum = '|\\vec a + \\vec b|';
+    const first = f(4, 1, 1.5, 3);
+    close(readout(first, '|\\vec a|'), 4.123, 3);
+    close(readout(first, '|\\vec b|'), 3.354, 3);
+    close(readout(first, '\\theta'), 49.4, 1);
+    close(readout(first, geo), 9, 6);
+    close(readout(first, dot), 9, 9);
+    close(readout(first, sum), 6.801, 3);
+    close(readout(first, '|\\vec a|') + readout(first, '|\\vec b|'), 7.477, 3);
+    const perp = f(4, 1, -1, 4);
+    close(readout(perp, '\\theta'), 90, 6);
+    close(readout(perp, dot), 0, 9);
+    close(readout(perp, proj), 0, 6);
+    close(readout(perp, sum) ** 2, 34, 6);
+    const obtuse = f(4, 1, -3, 1);
+    close(readout(obtuse, '\\theta'), 147.5, 1);
+    close(readout(obtuse, proj), -2.668, 3);
+    close(readout(obtuse, dot), -11, 9);
+    for (let i = 0; i < 40; i += 1) {
+      const v = [
+        7 * Math.sin(i * 1.3),
+        5 * Math.cos(i * 0.7),
+        6 * Math.cos(i * 2.1),
+        4 * Math.sin(i * 0.9 + 1),
+      ];
+      const frame = f(v[0], v[1], v[2], v[3]);
+      close(readout(frame, geo), readout(frame, dot), 6);
+      close(
+        readout(frame, sum) ** 2,
+        readout(frame, '|\\vec a|') ** 2 +
+          readout(frame, '|\\vec b|') ** 2 +
+          2 * readout(frame, dot),
+        6
+      );
+    }
+  });
+
+  it('combinations: slots, orders and Pascal agree', () => {
+    const f = (n: number, k: number) =>
+      at('permutations-combinations', { n, k });
+    const P = 'A_n^k = n(n-1)\\cdots(n-k+1)';
+    const C = '\\binom{n}{k}';
+    const rule = '\\binom{n-1}{k-1} + \\binom{n-1}{k}';
+    const sym = '\\binom{n}{n-k}';
+    const first = f(5, 3);
+    assert.equal(readout(first, P), 60);
+    assert.equal(readout(first, 'k!'), 6);
+    assert.equal(readout(first, C), 10);
+    assert.equal(readout(first, rule), 10);
+    assert.equal(readout(f(4, 2), C), 6);
+    assert.equal(readout(f(4, 3), C), 4);
+    assert.equal(readout(f(7, 2), C), 21);
+    assert.equal(readout(f(7, 5), C), 21);
+    assert.equal(readout(f(4, 0), C), 1);
+    assert.equal(readout(f(4, 0), 'k!'), 1);
+    assert.equal(readout(f(3, 5), C), 0);
+    const binom = (n: number, k: number): number =>
+      k < 0 || k > n ? 0 : k === 0 ? 1 : (binom(n - 1, k - 1) * n) / k;
+    for (let n = 1; n <= 7; n += 1) {
+      for (let k = 0; k <= 7; k += 1) {
+        const frame = f(n, k);
+        assert.equal(readout(frame, C), binom(n, k), `C(${n}, ${k})`);
+        assert.equal(readout(frame, rule), binom(n, k), `rule ${n}, ${k}`);
+        assert.equal(readout(frame, sym), binom(n, k), `sym ${n}, ${k}`);
+      }
+    }
+  });
+
+  it('binomial: bars, paths, mean and variance', () => {
+    const f = (n: number, p: number, k: number) =>
+      at('binomial-distribution', { n, p, k });
+    const first = f(10, 0.3, 3);
+    assert.equal(readout(first, '\\binom{n}{k}'), 120);
+    close(readout(first, 'p^k(1-p)^{n-k}'), 0.002224, 6);
+    close(readout(first, 'P(X = k)'), 0.2668, 4);
+    close(readout(first, '\\textstyle\\sum P'), 1, 9);
+    close(readout(first, '\\text{mean of bars}'), 3, 9);
+    close(readout(first, '\\text{variance of bars}'), 2.1, 9);
+    close(readout(f(20, 0.5, 10), 'P(X = k)'), 0.1762, 4);
+    close(readout(f(20, 0.05, 0), 'P(X = k)'), 0.3585, 4);
+    for (const n of [1, 4, 13, 20]) {
+      for (const p of [0.05, 0.37, 0.5, 0.95]) {
+        const frame = f(n, p, 0);
+        close(readout(frame, '\\textstyle\\sum P'), 1, 9);
+        close(readout(frame, '\\text{mean of bars}'), n * p, 9);
+        close(readout(frame, '\\text{variance of bars}'), n * p * (1 - p), 9);
+        // The amber bar (formula) sits on top of the blue bar (recurrence).
+        for (let k = 0; k <= n; k += 1) {
+          const bar = at('binomial-distribution', { n, p, k });
+          close(readout(bar, 'P(X = k)'), bar.values[`P${k}`], 12);
+        }
+      }
+    }
+  });
+
+  it('normal: the 68-95-99.7 areas for any mu and sigma', () => {
+    const f = (mu: number, sg: number, k: number) =>
+      at('normal-distribution', { mu, sg, k });
+    const band = 'P(\\mu - k\\sigma < X < \\mu + k\\sigma)';
+    close(readout(f(0, 1, 2), band), 0.9545, 4);
+    close(readout(f(0, 1, 1), band), 0.6827, 4);
+    close(readout(f(0, 1, 3), band), 0.9973, 4);
+    close(readout(f(0, 1, 3), '\\text{outside, one side}'), 0.00135, 5);
+    close(readout(f(1.5, 2, 1), band), 0.6827, 4);
+    close(
+      readout(f(1.5, 2, 1), 'f(\\mu) = \\tfrac{1}{\\sigma\\sqrt{2\\pi}}'),
+      0.1995,
+      4
+    );
+    close(
+      readout(f(0, 0.6, 1), 'f(\\mu) = \\tfrac{1}{\\sigma\\sqrt{2\\pi}}'),
+      0.6649,
+      4
+    );
+    // erf by its Taylor series, independent of the board's Simpson sums.
+    const erf = (x: number) => {
+      let term = x;
+      let sum = x;
+      for (let n = 1; n < 80; n += 1) {
+        term *= (-x * x) / n;
+        sum += term / (2 * n + 1);
+      }
+      return (2 / Math.sqrt(Math.PI)) * sum;
+    };
+    for (const mu of [-3, 0, 2.2]) {
+      for (const sg of [0.6, 1, 2.5]) {
+        close(readout(f(mu, sg, 1), '\\text{whole area}'), 1, 6);
+        for (const k of [0.5, 1, 1.96, 2, 3, 3.5]) {
+          close(readout(f(mu, sg, k), band), erf(k / Math.SQRT2), 5);
+        }
+      }
+    }
+  });
+
+  it('large numbers: the recorded runs re-simulate, and Chebyshev holds', () => {
+    const rand = (seed: number) => () => {
+      seed |= 0;
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    for (const [key, p] of [
+      ['coin', 1 / 2],
+      ['die', 1 / 6],
+    ] as const) {
+      const next = rand(20261013);
+      const off = LLN_NS.map(() => 0);
+      for (let r = 0; r < 1000; r += 1) {
+        let k = 0;
+        let j = 0;
+        for (let n = 1; n <= 1000; n += 1) {
+          if (next() < p) k += 1;
+          if (n !== LLN_NS[j]) continue;
+          if (Math.abs(k / n - p) >= LLN_EPS - 1e-12) off[j] += 1;
+          if (r < 3) close(LLN_DATA[key].runs[r][j], k / n, 4);
+          j += 1;
+        }
+      }
+      off.forEach((count, j) => close(LLN_DATA[key].off[j], count / 1000, 9));
+    }
+    const f = (die: number, i: number) =>
+      at('law-of-large-numbers', { die, i });
+    const share = '\\text{share of runs off by} \\ge 0.05';
+    const bound = '\\dfrac{p(1-p)}{n\\varepsilon^2}';
+    const blue = '\\bar X_n\\ \\text{(blue run)}';
+    close(readout(f(0, 4), 'n'), 10, 9);
+    close(readout(f(0, 4), blue), 0.7, 9);
+    close(readout(f(0, 4), share), 0.731, 9);
+    close(readout(f(0, 4), bound), 10, 9);
+    close(readout(f(0, 9), '\\sqrt{p(1-p)/n}'), 0.05, 9);
+    close(readout(f(0, 9), share), 0.382, 9);
+    close(readout(f(0, 9), bound), 1, 9);
+    close(readout(f(0, 14), share), 0, 9);
+    close(readout(f(0, 14), bound), 0.1, 9);
+    close(readout(f(1, 14), bound), 0.056, 3);
+    for (const die of [0, 1]) {
+      for (let i = 0; i < LLN_NS.length; i += 1) {
+        const frame = f(die, i);
+        assert.equal(readout(frame, 'n'), LLN_NS[i]);
+        const status = frame.readouts.find((r) => r.kind === 'status');
+        assert.ok(
+          status && status.kind === 'status' && status.ok,
+          `${die} ${i}`
+        );
+      }
+    }
+    // The guide's claim about the die after 1000 rolls.
+    for (const run of LLN_DATA.die.runs) {
+      assert.ok(Math.abs(run[14] - 1 / 6) < LLN_EPS);
+    }
   });
 });
