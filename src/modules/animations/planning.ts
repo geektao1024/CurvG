@@ -312,6 +312,13 @@ function validateSceneSemantics(scene: AnimationPlanningArtifacts['scene']) {
       visible.add(event.ref);
       continue;
     }
+    // A point may enter by travelling along its path: Manim adds the mobject
+    // when MoveAlongPath plays, so it is on screen for the whole motion.
+    // Production (2026-10-14) burned twelve scene repairs on exactly this.
+    if (event.op === 'move_along') {
+      visible.add(event.ref);
+      continue;
+    }
     if (REQUIRES_VISIBLE_SCENE_OPS.has(event.op) && !visible.has(event.ref)) {
       throw new Error(
         `Scene timeline event ${event.id} applies ${event.op} to ${event.ref} before it appears`
@@ -328,7 +335,6 @@ const REQUIRES_VISIBLE_SCENE_OPS = new Set([
   'emphasize',
   'spotlight',
   'glow',
-  'move_along',
   'transform',
 ]);
 

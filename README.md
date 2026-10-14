@@ -131,7 +131,8 @@ Delivery is designed around a valid artifact rather than a successful provider c
 - When upstream models are saturated, the Workflow queues and retries on a
   widening ladder (~17 minutes) with a live "retrying automatically" banner,
   instead of hard-failing in seconds. A third admin-configured
-  OpenAI-compatible failover route can be added behind KIE and Kuaipao.
+  OpenAI-compatible failover route can be added behind KIE GPT-6.1 Sol, the
+  only model in routing since 2026-10-14.
 - Initial code delivery is deterministic: the approved spec is compiled locally,
   so a successful planning response does not depend on a second model response
   containing 14k tokens of Python.

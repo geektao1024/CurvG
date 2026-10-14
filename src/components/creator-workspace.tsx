@@ -176,19 +176,21 @@ interface CreatorCuratedModelPreset {
 
 const CURATED_MODEL_PRESETS: CreatorCuratedModelPreset[] = [
   {
-    key: 'curvgLite',
-    provider: 'deepseek',
-    models: ['deepseek-v4-flash'],
-    tier: 'free',
-  },
-  {
     key: 'curvgPro',
     provider: 'kie',
-    models: ['gpt-5-6-luna'],
+    // Luna rows predate the 2026-10-14 switch; they keep the same label.
+    models: ['gpt-6-1-sol', 'gpt-5-6-luna'],
     tier: 'free',
   },
   // Retired public entries: kept so historical conversations that recorded
   // them still label correctly; the server no longer lists them.
+  {
+    key: 'curvgLite',
+    provider: 'deepseek',
+    models: ['deepseek-v4-flash'],
+    tier: 'free',
+    retired: true,
+  },
   {
     key: 'kieGpt56Sol',
     provider: 'kie',
@@ -205,10 +207,7 @@ const CURATED_MODEL_PRESETS: CreatorCuratedModelPreset[] = [
   },
 ];
 
-const DEFAULT_CREATOR_MODEL_VALUE = animationModelValue(
-  'deepseek',
-  'deepseek-v4-flash'
-);
+const DEFAULT_CREATOR_MODEL_VALUE = animationModelValue('kie', 'gpt-6-1-sol');
 
 interface CreatorSuggestionGroup {
   value: string;

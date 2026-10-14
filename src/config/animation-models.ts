@@ -6,25 +6,33 @@
  * endpoint. Unknown models fail closed instead of silently inheriting access
  * when an upstream platform adds new aliases.
  *
- * Public product tiers (2026-08-04): CurvG Lite = DeepSeek v4-flash with
- * thinking maxed, CurvG Pro = KIE GPT-5.6 Luna at max reasoning. Retired
- * catalog entries stay allowlisted with `publicCatalog: false` so historical
- * conversations that recorded them keep replaying and re-rendering.
+ * Single public model (2026-10-14): KIE GPT-6.1 Sol. DeepSeek and Kuaipao
+ * were removed from routing after 30 days without one delivered video (Kuaipao
+ * out of quota since mid-September, DeepSeek truncating). Retired entries stay
+ * allowlisted with `publicCatalog: false` only so historical conversations
+ * keep their labels; `resolveChatProvider` routes them to the public model.
  */
 export const animationModelPolicies = [
+  {
+    provider: 'kie',
+    model: 'gpt-6-1-sol',
+    presetKey: 'curvgPro',
+    requiredTier: 'free',
+    publicCatalog: true,
+  },
   {
     provider: 'deepseek',
     model: 'deepseek-v4-flash',
     presetKey: 'curvgLite',
     requiredTier: 'free',
-    publicCatalog: true,
+    publicCatalog: false,
   },
   {
     provider: 'kie',
     model: 'gpt-5-6-luna',
     presetKey: 'curvgPro',
     requiredTier: 'free',
-    publicCatalog: true,
+    publicCatalog: false,
   },
   {
     provider: 'kie',
@@ -45,10 +53,8 @@ export const animationModelPolicies = [
 export type AnimationModelPolicy = (typeof animationModelPolicies)[number];
 export type AnimationAccessTier = 'free' | 'starter' | 'pro';
 
-// New conversations default to CurvG Lite: fastest first impression while
-// both tiers are free; the telemetry table decides whether it keeps the slot.
-export const DEFAULT_ANIMATION_MODEL = 'deepseek-v4-flash';
-export const DEFAULT_ANIMATION_PROVIDER = 'deepseek';
+export const DEFAULT_ANIMATION_MODEL = 'gpt-6-1-sol';
+export const DEFAULT_ANIMATION_PROVIDER = 'kie';
 
 /**
  * Provider tuning is allowlisted just like model access. Pro (Luna) runs at
@@ -62,7 +68,7 @@ export function getAnimationReasoningEffort(
 ): 'max' | 'xhigh' | 'high' | undefined {
   if (model === 'gpt-5-6-luna') return 'max';
   if (model === 'deepseek-v4-flash') return 'high';
-  if (model === 'gpt-5-6-sol') return 'xhigh';
+  if (model === 'gpt-6-1-sol' || model === 'gpt-5-6-sol') return 'xhigh';
   return model === 'gemini-3.6-flash' ? 'high' : undefined;
 }
 
@@ -77,24 +83,18 @@ export function getAnimationCompositionReasoningEffort(
 ): 'max' | 'high' | 'medium' | undefined {
   if (model === 'gpt-5-6-luna') return 'max';
   if (model === 'deepseek-v4-flash') return 'high';
-  if (model === 'gpt-5-6-sol') return 'high';
+  if (model === 'gpt-6-1-sol' || model === 'gpt-5-6-sol') return 'high';
   return model === 'gemini-3.6-flash' ? 'medium' : undefined;
 }
 
 // Auto candidates in preference order; resolveChatProvider picks the first
-// with a configured credential. Luna trails Lite so a deployment window
-// without a DeepSeek key degrades Auto to Pro instead of failing every
-// default-tier request with 503.
+// with a configured credential. One target while KIE is the only vendor.
 export const FREE_AUTO_MODEL_TARGETS = [
-  { provider: 'deepseek', model: 'deepseek-v4-flash' },
-  { provider: 'kie', model: 'gpt-5-6-luna' },
+  { provider: 'kie', model: 'gpt-6-1-sol' },
 ] as const;
 
-// Keep the Pro Auto target identical during the focused comparison period so
-// subscription tier cannot silently change the model under evaluation.
 export const PRO_AUTO_MODEL_TARGETS = [
-  { provider: 'deepseek', model: 'deepseek-v4-flash' },
-  { provider: 'kie', model: 'gpt-5-6-luna' },
+  { provider: 'kie', model: 'gpt-6-1-sol' },
 ] as const;
 
 export function getAnimationModelPolicy(

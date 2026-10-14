@@ -8,9 +8,7 @@ import {
   type ChatCompletionInput,
   type ChatProvider,
 } from '@/core/ai/chat';
-import { DeepSeekChatProvider } from '@/core/ai/deepseek-chat';
 import { KieChatProvider } from '@/core/ai/kie-chat';
-import { KuaipaoChatProvider } from '@/core/ai/kuaipao-chat';
 import { HttpAnimationOrchestrator } from '@/core/animation-orchestrator';
 import { HttpAnimationRenderer } from '@/core/animation-renderer';
 import { db } from '@/core/db';
@@ -276,26 +274,6 @@ export function parseAnimationProductionRequest(
   };
 }
 
-function kuaipaoProvider(configs: ConfigMap) {
-  if (!configs.kuaipao_api_key) {
-    throw new AnimationApiError(
-      'Kuaipao chat provider is not configured',
-      'MODEL_UNAVAILABLE',
-      503
-    );
-  }
-  return new KuaipaoChatProvider({
-    apiKey: configs.kuaipao_api_key,
-    baseUrl: configs.kuaipao_base_url || 'https://kuaipao.pro/v1',
-    maxAttempts: 2,
-    // Slightly below the 300s scene per-target window so our own timeout
-    // classification fires before any platform-level five-minute cut; the
-    // per-stage deadline caps small stages well below this.
-    requestTimeoutMs: 290_000,
-    overallTimeoutMs: 600_000,
-  });
-}
-
 function kieProvider(configs: ConfigMap) {
   if (!configs.kie_api_key) {
     throw new AnimationApiError(
@@ -307,23 +285,6 @@ function kieProvider(configs: ConfigMap) {
   return new KieChatProvider({
     apiKey: configs.kie_api_key,
     baseUrl: configs.kie_base_url || 'https://api.kie.ai',
-    maxAttempts: 2,
-    requestTimeoutMs: 290_000,
-    overallTimeoutMs: 600_000,
-  });
-}
-
-function deepseekProvider(configs: ConfigMap) {
-  if (!configs.deepseek_api_key) {
-    throw new AnimationApiError(
-      'DeepSeek chat provider is not configured',
-      'MODEL_UNAVAILABLE',
-      503
-    );
-  }
-  return new DeepSeekChatProvider({
-    apiKey: configs.deepseek_api_key,
-    baseUrl: configs.deepseek_base_url || 'https://api.deepseek.com',
     maxAttempts: 2,
     requestTimeoutMs: 290_000,
     overallTimeoutMs: 600_000,
@@ -349,13 +310,10 @@ function backupProvider(configs: ConfigMap) {
 }
 
 export interface AnimationProviderTargetPlan {
-  provider: 'kuaipao' | 'kie' | 'deepseek' | 'backup';
+  provider: 'kie' | 'backup';
   model: string;
   reasoningEffort?: ChatCompletionInput['reasoningEffort'];
 }
-
-const KUAIPAO_RESILIENCE_MODEL = 'gpt-5.6-sol';
-const DEEPSEEK_RESILIENCE_MODEL = 'deepseek-v4-flash';
 
 function backupRouteConfigured(configs: ConfigMap) {
   return !!(
@@ -369,56 +327,21 @@ function backupRouteConfigured(configs: ConfigMap) {
  * Provider order is part of the product reliability contract and must never
  * depend on key insertion order or a client-supplied model alias.
  *
- * Cross-fallback chains (2026-08-04 decision):
- *   CurvG Lite  — DeepSeek v4-flash → Kuaipao GPT-5.6 Sol
- *   CurvG Pro   — KIE GPT-5.6 Luna → Kuaipao GPT-5.6 Sol → DeepSeek v4-flash
- * Every tier keeps at least two independent vendors, and DeepSeek carries
- * real production traffic daily so its health is measurable. A Pro request
- * recovered by DeepSeek still passes the same semantic, mathematical, and
- * visual gates — the quality bar does not move with the vendor.
- *
- * Honest scope of the Pro third leg: within one stage window it is reachable
- * only when an earlier leg fails fast (auth, 4xx/5xx, saturation). When both
- * lead legs consume their full per-target windows, the stage deadline expires
- * first and the queue ladder retries the whole stage — where an opened
- * circuit breaker can hand the next round to the remaining legs.
- *
- * The optional admin-configured OpenAI-compatible route stays last for both
- * tiers: resilience infrastructure, not a product surface.
+ * 2026-10-14: KIE GPT-6.1 Sol is the only vendor. The DeepSeek and Kuaipao
+ * legs were removed (no delivered video in 30 days; Kuaipao out of quota).
+ * The optional admin-configured OpenAI-compatible route stays as the only
+ * fallback: resilience infrastructure, not a product surface.
  */
 export function animationProviderTargetPlan(
   configs: ConfigMap,
   primary: Pick<AnimationModelPolicy, 'provider' | 'model'>
 ): AnimationProviderTargetPlan[] {
   const targets: AnimationProviderTargetPlan[] = [];
-  if (primary.provider === 'deepseek' && configs.deepseek_api_key) {
-    targets.push({
-      provider: 'deepseek',
-      // Honor the allowlisted model the user actually selected; the policy
-      // layer has already refused anything outside animationModelPolicies.
-      model: primary.model,
-      reasoningEffort: getAnimationReasoningEffort(primary.model),
-    });
-  }
   if (primary.provider === 'kie' && configs.kie_api_key) {
     targets.push({
       provider: 'kie',
       model: primary.model,
       reasoningEffort: getAnimationReasoningEffort(primary.model),
-    });
-  }
-  if (configs.kuaipao_api_key) {
-    targets.push({
-      provider: 'kuaipao',
-      model: KUAIPAO_RESILIENCE_MODEL,
-      reasoningEffort: 'high',
-    });
-  }
-  if (primary.provider !== 'deepseek' && configs.deepseek_api_key) {
-    targets.push({
-      provider: 'deepseek',
-      model: DEEPSEEK_RESILIENCE_MODEL,
-      reasoningEffort: 'high',
     });
   }
   if (backupRouteConfigured(configs)) {
@@ -473,9 +396,7 @@ function policyKey(policy: Pick<AnimationModelOption, 'provider' | 'model'>) {
 }
 
 function policyAvailable(policy: AnimationModelPolicy, configs: ConfigMap) {
-  if (policy.provider === 'kie') return !!configs.kie_api_key;
-  if (policy.provider === 'deepseek') return !!configs.deepseek_api_key;
-  return false;
+  return policy.provider === 'kie' && !!configs.kie_api_key;
 }
 
 function resilientProvider(
@@ -495,13 +416,9 @@ function resilientProvider(
     let provider = providers.get(spec.provider);
     if (!provider) {
       provider =
-        spec.provider === 'kuaipao'
-          ? kuaipaoProvider(configs)
-          : spec.provider === 'backup'
-            ? backupProvider(configs)
-            : spec.provider === 'deepseek'
-              ? deepseekProvider(configs)
-              : kieProvider(configs);
+        spec.provider === 'backup'
+          ? backupProvider(configs)
+          : kieProvider(configs);
       providers.set(spec.provider, provider);
     }
     return {
@@ -529,14 +446,9 @@ export async function listAnimationModels(
   // The product catalog is the intersection of the reviewed model allowlist
   // and a configured credential. We deliberately do not expose every model
   // returned by the upstream `/models` endpoint.
-  const deepseekOptions = configs.deepseek_api_key
-    ? policyOptions(viewerTier, 'deepseek')
-    : [];
-  const kieOptions = configs.kie_api_key
+  const discoveredOptions = configs.kie_api_key
     ? policyOptions(viewerTier, 'kie')
     : [];
-  // Lite first: it is the default tier and the picker preserves this order.
-  const discoveredOptions = [...deepseekOptions, ...kieOptions];
   const entitledTargets = new Set(
     discoveredOptions.filter((option) => option.entitled).map(policyKey)
   );
@@ -576,13 +488,14 @@ export async function resolveChatProvider(
   requestedModel?: string
 ): Promise<ProviderResolution> {
   const tier = await getAnimationAccessTier(userId);
-  // Historic animation rows may still carry an explicit Kuaipao selection.
-  // Public requests reject it, while trusted persisted rows migrate to the
-  // new Auto target so approval and repair are not permanently blocked.
-  const normalizedChoice =
-    (choice as string) === 'kie' || (choice as string) === 'deepseek'
-      ? (choice as 'kie' | 'deepseek')
-      : 'auto';
+  // Historic rows may carry a retired selection (DeepSeek, Kuaipao, an older
+  // KIE model). They migrate to the Auto target so approval and repair keep
+  // working on the one vendor still in routing.
+  const explicitPolicy =
+    (choice as string) === 'kie' && requestedModel
+      ? getAnimationModelPolicy('kie', requestedModel.trim())
+      : undefined;
+  const normalizedChoice = explicitPolicy?.publicCatalog ? 'kie' : 'auto';
   const decision = decideAnimationModelAccess({
     tier,
     choice: normalizedChoice,

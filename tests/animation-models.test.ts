@@ -21,14 +21,17 @@ import {
   parseModelChoice,
 } from '../src/routes/api/animations/-shared';
 
-test('the default free model is CurvG Lite on DeepSeek', () => {
-  const policy = getAnimationModelPolicy('deepseek', DEFAULT_ANIMATION_MODEL);
+test('the default model is KIE GPT-6.1 Sol', () => {
+  const policy = getAnimationModelPolicy('kie', DEFAULT_ANIMATION_MODEL);
 
   assert.ok(policy);
-  assert.equal(policy.model, 'deepseek-v4-flash');
-  assert.equal(policy.presetKey, 'curvgLite');
+  assert.equal(policy.model, 'gpt-6-1-sol');
+  assert.equal(policy.presetKey, 'curvgPro');
   assert.equal(policy.requiredTier, 'free');
+  assert.equal(policy.publicCatalog, true);
   assert.equal(canUseAnimationModel('free', policy), true);
+  assert.equal(getAnimationReasoningEffort('gpt-6-1-sol'), 'xhigh');
+  assert.equal(getAnimationCompositionReasoningEffort('gpt-6-1-sol'), 'high');
 });
 
 test('planning effort: Luna max, DeepSeek high, retired routes unchanged', () => {
@@ -58,39 +61,27 @@ test('composition effort: Pro keeps max (2026-08-04), others one tier below', ()
   assert.equal(getAnimationCompositionReasoningEffort('gpt-5.5'), undefined);
 });
 
-test('Auto resolves to Lite; explicit selections cover both public tiers', () => {
+test('Auto resolves to GPT-6.1 Sol; retired entries stay allowlisted', () => {
   const freeAuto = decideAnimationModelAccess({ tier: 'free', choice: 'auto' });
   assert.equal(freeAuto.allowed, true);
   if (freeAuto.allowed) {
-    assert.equal(freeAuto.policy.provider, 'deepseek');
+    assert.equal(freeAuto.policy.provider, 'kie');
     assert.equal(freeAuto.policy.model, DEFAULT_ANIMATION_MODEL);
   }
 
-  assert.equal(
-    decideAnimationModelAccess({
-      tier: 'free',
-      choice: 'deepseek',
-      requestedModel: 'deepseek-v4-flash',
-    }).allowed,
-    true
-  );
-  assert.equal(
-    decideAnimationModelAccess({
-      tier: 'free',
-      choice: 'kie',
-      requestedModel: 'gpt-5-6-luna',
-    }).allowed,
-    true
-  );
-  // Retired catalog entries stay allowlisted for historical rows.
-  assert.equal(
-    decideAnimationModelAccess({
-      tier: 'free',
-      choice: 'kie',
-      requestedModel: 'gpt-5-6-sol',
-    }).allowed,
-    true
-  );
+  // Retired catalog entries stay allowlisted so historical rows keep their
+  // labels; resolveChatProvider reroutes them to Auto.
+  for (const [choice, requestedModel] of [
+    ['deepseek', 'deepseek-v4-flash'],
+    ['kie', 'gpt-5-6-luna'],
+    ['kie', 'gpt-5-6-sol'],
+  ] as const) {
+    assert.equal(
+      decideAnimationModelAccess({ tier: 'free', choice, requestedModel })
+        .allowed,
+      true
+    );
+  }
 
   assert.deepEqual(
     decideAnimationModelAccess({
@@ -102,124 +93,40 @@ test('Auto resolves to Lite; explicit selections cover both public tiers', () =>
   );
 });
 
-test('the catalog holds the two public tiers plus retired hidden entries', () => {
-  assert.deepEqual(animationModelPolicies, [
-    {
-      provider: 'deepseek',
-      model: 'deepseek-v4-flash',
-      presetKey: 'curvgLite',
-      requiredTier: 'free',
-      publicCatalog: true,
-    },
-    {
-      provider: 'kie',
-      model: 'gpt-5-6-luna',
-      presetKey: 'curvgPro',
-      requiredTier: 'free',
-      publicCatalog: true,
-    },
-    {
-      provider: 'kie',
-      model: 'gpt-5-6-sol',
-      presetKey: 'kieGpt56Sol',
-      requiredTier: 'free',
-      publicCatalog: false,
-    },
-    {
-      provider: 'kie',
-      model: 'gemini-3.6-flash',
-      presetKey: 'kieGemini36Flash',
-      requiredTier: 'free',
-      publicCatalog: false,
-    },
+test('GPT-6.1 Sol is the only public catalog entry', () => {
+  assert.deepEqual(
+    animationModelPolicies
+      .filter((policy) => policy.publicCatalog)
+      .map((policy) => `${policy.provider}:${policy.model}`),
+    ['kie:gpt-6-1-sol']
+  );
+});
+
+test('KIE is the only vendor in the chain (2026-10-14)', () => {
+  const sol = animationModelPolicies[0];
+  const allKeys = {
+    deepseek_api_key: 'configured',
+    kuaipao_api_key: 'configured',
+    kie_api_key: 'configured',
+  };
+  assert.deepEqual(animationProviderTargetPlan(allKeys, sol), [
+    { provider: 'kie', model: 'gpt-6-1-sol', reasoningEffort: 'xhigh' },
   ]);
-});
-
-test('Lite chain: DeepSeek primary with Kuaipao recovery', () => {
-  const lite = animationModelPolicies[0];
+  // DeepSeek and Kuaipao keys left in admin settings never join the chain.
   assert.deepEqual(
     animationProviderTargetPlan(
-      {
-        deepseek_api_key: 'configured',
-        kuaipao_api_key: 'configured',
-        kie_api_key: 'configured',
-      },
-      lite
+      { deepseek_api_key: 'configured', kuaipao_api_key: 'configured' },
+      sol
     ),
-    [
-      {
-        provider: 'deepseek',
-        model: 'deepseek-v4-flash',
-        reasoningEffort: 'high',
-      },
-      {
-        provider: 'kuaipao',
-        model: 'gpt-5.6-sol',
-        reasoningEffort: 'high',
-      },
-    ]
+    []
   );
-  assert.deepEqual(
-    animationProviderTargetPlan({ deepseek_api_key: 'configured' }, lite),
-    [
-      {
-        provider: 'deepseek',
-        model: 'deepseek-v4-flash',
-        reasoningEffort: 'high',
-      },
-    ]
-  );
-});
-
-test('Pro chain: KIE Luna, Kuaipao recovery, DeepSeek last resort', () => {
-  const pro = animationModelPolicies[1];
-  assert.deepEqual(
-    animationProviderTargetPlan(
-      {
-        deepseek_api_key: 'configured',
-        kuaipao_api_key: 'configured',
-        kie_api_key: 'configured',
-      },
-      pro
-    ),
-    [
-      {
-        provider: 'kie',
-        model: 'gpt-5-6-luna',
-        reasoningEffort: 'max',
-      },
-      {
-        provider: 'kuaipao',
-        model: 'gpt-5.6-sol',
-        reasoningEffort: 'high',
-      },
-      {
-        provider: 'deepseek',
-        model: 'deepseek-v4-flash',
-        reasoningEffort: 'high',
-      },
-    ]
-  );
-  // Without a DeepSeek key the Pro chain degrades to the 2026-08-03 pair.
-  assert.deepEqual(
-    animationProviderTargetPlan(
-      { kie_api_key: 'configured', kuaipao_api_key: 'configured' },
-      pro
-    ).map((target) => target.provider),
-    ['kie', 'kuaipao']
-  );
+  const lite = getAnimationModelPolicy('deepseek', 'deepseek-v4-flash')!;
+  assert.deepEqual(animationProviderTargetPlan(allKeys, lite), []);
 });
 
 test('the backup route joins the plan last and only when fully configured', () => {
-  const pro = animationModelPolicies[1];
-  const base = {
-    kie_api_key: 'configured',
-    kuaipao_api_key: 'configured',
-    deepseek_api_key: 'configured',
-  };
-
-  // All three backup settings present: the route is appended after every
-  // first-party provider, never before them.
+  const sol = animationModelPolicies[0];
+  const base = { kie_api_key: 'configured' };
   const plan = animationProviderTargetPlan(
     {
       ...base,
@@ -227,11 +134,11 @@ test('the backup route joins the plan last and only when fully configured', () =
       animation_backup_api_key: 'configured',
       animation_backup_model: 'gpt-5.5',
     },
-    pro
+    sol
   );
   assert.deepEqual(
     plan.map((target) => target.provider),
-    ['kie', 'kuaipao', 'deepseek', 'backup']
+    ['kie', 'backup']
   );
   assert.deepEqual(plan.at(-1), {
     provider: 'backup',
@@ -254,10 +161,10 @@ test('the backup route joins the plan last and only when fully configured', () =
     };
     delete partial[missing];
     assert.deepEqual(
-      animationProviderTargetPlan(partial, pro).map(
+      animationProviderTargetPlan(partial, sol).map(
         (target) => target.provider
       ),
-      ['kie', 'kuaipao', 'deepseek'],
+      ['kie'],
       `expected inert backup route without ${missing}`
     );
   }

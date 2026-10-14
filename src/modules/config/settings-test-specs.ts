@@ -203,7 +203,7 @@ export const testSpecs: Record<string, TestSpec> = {
         name: 'model',
         label: 'Model',
         type: 'text',
-        defaultValue: 'gemini-3.6-flash',
+        defaultValue: 'gpt-6-1-sol',
         required: true,
       },
       {

@@ -369,6 +369,27 @@ test('scene checkpoints reject internally inconsistent scenes', () => {
   ];
   assert.throws(() => check(premature), /before it appears/);
 
+  // A point that enters by travelling along its path is on screen for the
+  // whole motion (Manim adds it when MoveAlongPath plays), so it is not a
+  // premature reference.
+  const travelling = structuredClone(base.scene);
+  travelling.timeline = [
+    {
+      ...structuredClone(shown),
+      id: `${shown.id}_travel`,
+      op: 'move_along' as const,
+      at: 0,
+    },
+    ...travelling.timeline,
+  ];
+  assert.doesNotThrow(() => {
+    try {
+      check(travelling);
+    } catch (error) {
+      if (/before it appears/.test(String(error))) throw error;
+    }
+  });
+
   // A formula declared but never brought on screen.
   const unshown = structuredClone(base.scene);
   const formula = unshown.objects.find((o) => o.kind === 'formula')!;

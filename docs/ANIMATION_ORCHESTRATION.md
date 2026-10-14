@@ -5,7 +5,7 @@
 ```mermaid
 flowchart TD
   A[CurvG Worker] --> B[(D1 animation and stage state)]
-  A --> C[Provider router: KIE then Kuaipao]
+  A --> C[Provider router: KIE GPT-6.1 Sol]
   A --> D[Cloudflare Workflow]
   D --> E[Deterministic IR to Manim compiler]
   D --> I[Cloudflare Sandbox Renderer]
@@ -87,28 +87,24 @@ deployment is asserted by this document.
 ## Provider routing
 
 `animationProviderTargetPlan` in `src/routes/api/animations/-shared.ts` is the
-single source of ordering. Since 2026-08-04 the public catalog is two branded
-tiers with cross-fallback chains; the admin-configured OpenAI-compatible
-backup route stays last for both:
+single source of ordering. Since 2026-10-14 the public catalog is one model,
+`kie/gpt-6-1-sol` (planning effort `xhigh`, composition `high`), followed only
+by the optional admin-configured OpenAI-compatible backup route.
 
-| Tier                 | Chain                                                                 |
-| -------------------- | --------------------------------------------------------------------- |
-| CurvG Lite (default) | `deepseek/deepseek-v4-flash` (thinking high) → `kuaipao/gpt-5.6-sol`  |
-| CurvG Pro            | `kie/gpt-5-6-luna` (max reasoning) → `kuaipao/gpt-5.6-sol` → DeepSeek |
+Why: in the 30 days before the switch, 108 users started 163 runs and none
+delivered a video. Kuaipao had $0.009 of quota left from mid-September, and it
+was the only fallback behind DeepSeek, so every DeepSeek truncation or slow
+scene ended the run. DeepSeek and Kuaipao adapters, admin settings and keys
+remain in the codebase but never join the chain.
 
-DeepSeek is a first-class provider (`src/core/ai/deepseek-chat.ts`, official
-Responses API, non-streaming, effort normalized to `high`). Retired catalog
-entries (`gpt-5-6-sol`, `gemini-3.6-flash`) keep `publicCatalog: false`
-allowlist rows so historical conversations replay, approve, and repair.
-Fallback legs are pinned to `high` effort and the failover layer caps a
-caller's stage effort at each target's ceiling — a Pro `max` never leaks into
-a leg whose upstream would reject it. Within one stage window the Pro third
-leg is reachable only on fast failures (auth, 4xx/5xx, saturation); slow
-dual-timeouts exhaust the window first and the queue ladder retries.
+Retired catalog entries (`deepseek-v4-flash`, `gpt-5-6-luna`, `gpt-5-6-sol`,
+`gemini-3.6-flash`) keep `publicCatalog: false` allowlist rows so historical
+conversations keep their labels; `resolveChatProvider` reroutes any non-public
+selection to Auto, so approve and repair on old rows run on GPT-6.1 Sol.
 
-The Auto selection resolves to the first tier with a configured credential
-(Lite, then Pro), so a deployment window without a DeepSeek key degrades Auto
-to Pro instead of failing default requests.
+Earlier chains (2026-08-04 to 2026-10-14): Lite = DeepSeek v4-flash → Kuaipao
+GPT-5.6 Sol; Pro = KIE GPT-5.6 Luna → Kuaipao → DeepSeek. Historical rows in
+`animation_planning_attempt` carry those providers.
 
 A stage row records only the provider that ultimately produced the artifact. A
 KIE attempt that fails and then succeeds on Kuaipao is stored as
