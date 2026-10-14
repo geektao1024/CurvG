@@ -2,6 +2,7 @@ import { createFileRoute, notFound } from '@tanstack/react-router';
 
 import { Link } from '@/core/i18n/navigation';
 import {
+  fitTitle,
   localizedLinks,
   localizedUrl,
   serializeJsonLd,
@@ -24,6 +25,7 @@ import {
 import {
   contentCount,
   LibraryBreadcrumb,
+  libraryBreadcrumbJsonLd,
   LibraryCurveGrid,
   libraryLocale,
   LibraryShell,
@@ -111,6 +113,7 @@ function LibraryTopicPage() {
             </div>
           ) : null}
           <LibraryCurveGrid
+            heading="h2"
             curves={curves}
             locale={lang}
             badgeFor={(curve: CurveDef) =>
@@ -142,31 +145,48 @@ export const Route = createFileRoute('/library/$hub/$topic')({
     const lang = libraryLocale(locale);
     const name = libraryText(topic.title, lang);
     const hubName = libraryText(hub.title, lang);
-    const title = m['library.topic.meta_title'](
-      { name, hub: hubName },
-      { locale: locale as never }
-    );
-    const description = libraryText(topic.description, lang);
+    const title = fitTitle([
+      m['library.topic.meta_title'](
+        { name, hub: hubName },
+        { locale: locale as never }
+      ),
+      m['library.hub.meta_title']({ name }, { locale: locale as never }),
+    ]);
     const path = `/library/${hub.id}/${topic.id}`;
     const seoLinks = localizedLinks({ path, locale });
     const curves = curvesInCategory(topic.id);
     const scenes = scenesForCategory(topic.id);
+    const description = m['library.topic.meta_description'](
+      {
+        description: libraryText(topic.description, lang),
+        count: curves.length + scenes.length,
+      },
+      { locale: locale as never }
+    );
     const robots =
       curves.length + scenes.length === 0
         ? [{ name: 'robots', content: 'noindex' }]
         : [];
-    const structuredData = {
-      '@context': 'https://schema.org',
-      '@type': 'ItemList',
-      name: title,
-      numberOfItems: curves.length,
-      itemListElement: curves.map((curve, index) => ({
-        '@type': 'ListItem',
-        position: index + 1,
-        name: curve.name[lang],
-        url: localizedUrl(`/curves/${curve.slug}`, locale),
-      })),
-    };
+    // Breadcrumb always; the item list only when there are curves to list.
+    const structuredData = [
+      libraryBreadcrumbJsonLd(getPrimaryTrail(topic.id), locale),
+      ...(curves.length > 0
+        ? [
+            {
+              '@context': 'https://schema.org',
+              '@type': 'ItemList',
+              name: title,
+              numberOfItems: curves.length,
+              itemListElement: curves.map((curve, index) => ({
+                '@type': 'ListItem',
+                position: index + 1,
+                name: curve.name[lang],
+                url: localizedUrl(`/curves/${curve.slug}`, locale),
+              })),
+            },
+          ]
+        : []),
+    ];
     return {
       meta: [
         { title },
@@ -175,15 +195,12 @@ export const Route = createFileRoute('/library/$hub/$topic')({
         ...socialMeta({ title, description, url: seoLinks.canonical }),
       ],
       links: seoLinks.links,
-      scripts:
-        curves.length > 0
-          ? [
-              {
-                type: 'application/ld+json',
-                children: serializeJsonLd(structuredData),
-              },
-            ]
-          : [],
+      scripts: [
+        {
+          type: 'application/ld+json',
+          children: serializeJsonLd(structuredData),
+        },
+      ],
     };
   },
   component: LibraryTopicPage,

@@ -46,9 +46,27 @@
 
 ## 4. 预留位
 
-- `Lab.video`：讲解视频做好后填 `src / poster / duration / uploaded`，页面自动出现播放器和 `VideoObject`。
+- 讲解视频：见 §4.1。成片发布后由 `labVideo(lab, lang)` 提供，页面自动出现播放器、字幕轨和 `VideoObject`。
 - `physics` 学科：只需新增实验集并把学科改成 `public`。
 - 新实验集：在 `LAB_SUITES` 加一项即可，Hub、sitemap、llms.txt、面包屑自动跟上。
+
+### 4.1 讲解视频（2026-10-13）
+
+每章的引导步骤就是视频脚本：`title` 是画面标题，`body` 是旁白（行内 TeX 会被转成口语），`set` 是这一步画板要去的参数。
+
+```bash
+pnpm dev                                   # 或任何能访问 /render/lab/* 的服务
+LAB_VIDEO_TTS=openai LAB_VIDEO_TTS_URL=… LAB_VIDEO_TTS_KEY=… LAB_VIDEO_TTS_MODEL=… \
+  LAB_VIDEO_VOICE_ZH=… LAB_VIDEO_VOICE_EN=… \
+  pnpm video:labs [--lang zh,en] [--aspect landscape,portrait] [slug …]
+pnpm video:labs:publish [--local] [--dry-run] [slug …]   # 上传 R2，更新 videos.generated.ts
+```
+
+- 产物在 `output/lab-videos/{slug}/`：`{lang}-{aspect}.mp4`、同名 `.jpg` 封面和 `.json` manifest，以及 `{lang}.vtt`。
+- 改了讲解文案要重新渲染：manifest 记录 `labUpdated`，与 `lab.updated` 不一致的成片不会被发布。
+- 不设 `LAB_VIDEO_TTS` 时用 macOS 系统语音出草稿，只用来检查时长和版式，发布脚本默认跳过。
+- 预览：浏览器打开 `/render/lab/{slug}?lang=zh&aspect=landscape` 会按估算时长循环播放。
+- 写讲解时：一句话说一件事，避免在 TeX 里堆复杂结构；`tests/lab-video.test.ts` 会检查所有配音稿和字幕不残留 TeX。
 
 ## 5. 新增章节检查表
 

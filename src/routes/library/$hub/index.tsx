@@ -23,6 +23,7 @@ import {
 import {
   ChildCategoryGrid,
   LibraryBreadcrumb,
+  libraryBreadcrumbJsonLd,
   LibraryCurveGrid,
   libraryLocale,
   LibraryShell,
@@ -122,29 +123,18 @@ export const Route = createFileRoute('/library/$hub/')({
       { name },
       { locale: locale as never }
     );
-    const description = libraryText(hub.description, lang);
+    const description = m['library.hub.meta_description'](
+      { description: libraryText(hub.description, lang) },
+      { locale: locale as never }
+    );
     const seoLinks = localizedLinks({
       path: `/library/${hub.id}`,
       locale,
     });
-    const structuredData = {
-      '@context': 'https://schema.org',
-      '@type': 'BreadcrumbList',
-      itemListElement: [
-        {
-          '@type': 'ListItem',
-          position: 1,
-          name: m['library.breadcrumb']({}, { locale: locale as never }),
-          item: localizedUrl('/library', locale),
-        },
-        {
-          '@type': 'ListItem',
-          position: 2,
-          name,
-          item: seoLinks.canonical,
-        },
-      ],
-    };
+    const structuredData = libraryBreadcrumbJsonLd(
+      getPrimaryTrail(hub.id),
+      locale
+    );
     return {
       meta: [
         { title },

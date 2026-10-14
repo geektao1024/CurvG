@@ -5,6 +5,8 @@ import {
   type CreatorWorkspaceCopy,
 } from '@/components/creator-workspace';
 
+import { SitePage } from './site-page';
+
 export function CreatorWorkspace({
   locale,
   initialAnimationId,
@@ -330,6 +332,13 @@ export function CreatorWorkspace({
       locale={locale}
       initialAnimationId={initialAnimationId}
       initialPrompt={initialPrompt}
+      guestShell={(content) => (
+        // Signed out, the creator is a public page like any other: site
+        // header and footer, document scroll, content in the stage frame.
+        <SitePage mainClassName="curvg-stage curvg-frame flex flex-col">
+          {content}
+        </SitePage>
+      )}
     />
   );
 }

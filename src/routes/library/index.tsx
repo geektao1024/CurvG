@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { Link } from '@/core/i18n/navigation';
 import {
+  breadcrumbJsonLd,
   localizedLinks,
   localizedUrl,
   serializeJsonLd,
@@ -9,6 +10,7 @@ import {
 } from '@/lib/seo';
 import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
+import { PageHero } from '@/components/page-hero';
 import {
   hubPreviewCurves,
   libraryText,
@@ -26,20 +28,21 @@ function LibraryIndexPage() {
 
   return (
     <LibraryShell>
-      <section className="curvg-stage curvg-frame relative border-b px-6 py-16 sm:px-10">
-        <p className="text-primary font-mono text-xs font-semibold tracking-[0.16em] uppercase">
-          {m['library.index.eyebrow']()}
-        </p>
-        <h1 className="curvg-heading mt-5 max-w-3xl text-4xl text-balance sm:text-5xl">
-          {m['library.index.h1']()}
-        </h1>
-        <p className="text-muted-foreground mt-5 max-w-2xl text-base leading-relaxed sm:text-lg">
-          {m['library.index.intro']()}
-        </p>
-        <p className="text-muted-foreground mt-3 max-w-2xl text-sm leading-relaxed">
-          {m['library.index.object_note']()}
-        </p>
-      </section>
+      <PageHero
+        crumbs={[
+          { href: '/', label: m['common.nav.home']() },
+          { href: '/library', label: m['library.breadcrumb']() },
+        ]}
+        crumbLabel={m['common.nav.breadcrumb']()}
+        eyebrow={m['library.index.eyebrow']()}
+        title={m['library.index.h1']()}
+        lead={
+          <>
+            <p>{m['library.index.intro']()}</p>
+            <p className="mt-3 text-sm">{m['library.index.object_note']()}</p>
+          </>
+        }
+      />
 
       {rootCategories.map((hub) => {
         const preview = hubPreviewCurves(hub.id, 3);
@@ -179,7 +182,25 @@ export const Route = createFileRoute('/library/')({
       scripts: [
         {
           type: 'application/ld+json',
-          children: serializeJsonLd(structuredData),
+          children: serializeJsonLd([
+            breadcrumbJsonLd(
+              [
+                {
+                  name: m['common.nav.home']({}, { locale: locale as never }),
+                  path: '/',
+                },
+                {
+                  name: m['library.breadcrumb'](
+                    {},
+                    { locale: locale as never }
+                  ),
+                  path: '/library',
+                },
+              ],
+              locale
+            ),
+            structuredData,
+          ]),
         },
       ],
     };

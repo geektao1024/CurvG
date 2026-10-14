@@ -67,18 +67,22 @@ export type Lab = {
   videoPrompt: LibraryText;
   /** ISO date of the last content change: sitemap lastmod, dateModified. */
   updated: string;
-  /**
-   * A rendered lesson video cut from this lab. Reserved: once set, the page
-   * shows the player and emits VideoObject structured data.
-   */
-  video?: LabVideo;
 };
 
+/**
+ * A narrated film cut from a lab's guide (`pnpm video:labs`), per language.
+ * Published films are listed in `videos.generated.ts`; the page shows the
+ * player and emits VideoObject structured data when one exists.
+ */
 export type LabVideo = {
-  /** Absolute or site-relative URL of the MP4. */
+  /** Site-relative URL of the MP4. */
   src: string;
   poster: string;
-  /** ISO 8601 duration, e.g. PT1M20S. */
+  /** WebVTT captions. */
+  captions: string;
+  /** Vertical cut for Shorts and Reels, when rendered. */
+  portrait?: string;
+  /** ISO 8601 duration, e.g. PT1M5S. */
   duration: string;
   uploaded: string;
 };

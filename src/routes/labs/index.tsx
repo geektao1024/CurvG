@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { Link } from '@/core/i18n/navigation';
 import {
+  breadcrumbJsonLd,
   localizedLinks,
   localizedUrl,
   serializeJsonLd,
@@ -11,6 +12,7 @@ import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
 import { LabSuiteCard } from '@/components/lab-card';
 import { LabSearch } from '@/components/lab-search';
+import { PageHero } from '@/components/page-hero';
 import {
   chapterPath,
   labSearchEntries,
@@ -34,17 +36,17 @@ function LabsIndexPage() {
 
   return (
     <LibraryShell>
-      <section className="curvg-stage curvg-frame border-b px-6 py-14 sm:px-10">
-        <p className="text-primary font-mono text-xs font-semibold tracking-[0.16em] uppercase">
-          {m['labs.index.eyebrow']()}
-        </p>
-        <h1 className="curvg-heading mt-4 max-w-3xl text-4xl text-balance sm:text-6xl">
-          {m['labs.index.title']()}
-        </h1>
-        <p className="text-muted-foreground mt-5 max-w-2xl text-base leading-relaxed sm:text-lg">
-          {m['labs.index.description']()}
-        </p>
-        <div className="mt-8 max-w-xl">
+      <PageHero
+        crumbs={[
+          { href: '/', label: m['common.nav.home']() },
+          { href: '/labs', label: m['labs.breadcrumb']() },
+        ]}
+        crumbLabel={m['common.nav.breadcrumb']()}
+        eyebrow={m['labs.index.eyebrow']()}
+        title={m['labs.index.title']()}
+        lead={m['labs.index.description']()}
+      >
+        <div className="max-w-xl">
           <LabSearch
             items={labSearchEntries(lang)}
             label={m['home.hero.search_label']()}
@@ -55,7 +57,7 @@ function LabsIndexPage() {
         <p className="text-muted-foreground mt-6 font-mono text-xs tracking-[0.14em] uppercase">
           {m['labs.index.count']({ count: publicLabs().length })}
         </p>
-      </section>
+      </PageHero>
 
       {subjects.map((subject) => (
         <section
@@ -117,6 +119,13 @@ export const Route = createFileRoute('/labs/')({
       )
     );
     const structuredData = [
+      breadcrumbJsonLd(
+        [
+          { name: m['common.nav.home']({}, opts), path: '/' },
+          { name: m['labs.breadcrumb']({}, opts), path: '/labs' },
+        ],
+        locale
+      ),
       {
         '@context': 'https://schema.org',
         '@type': 'CollectionPage',
@@ -126,7 +135,7 @@ export const Route = createFileRoute('/labs/')({
         inLanguage: lang === 'zh' ? 'zh-CN' : 'en',
         mainEntity: {
           '@type': 'ItemList',
-          name: m['labs.index.eyebrow']({}, opts),
+          name: m['labs.index.title']({}, opts),
           numberOfItems: items.length,
           itemListElement: items.map((item, index) => ({
             '@type': 'ListItem',

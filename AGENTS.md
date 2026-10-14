@@ -6,10 +6,14 @@ This is a **headless SaaS engine** — pre-wired business logic (payments, credi
 
 This repo is CurvG, not a blank template. Before changing public IA, the curve encyclopedia, or the gallery, read:
 
+- `docs/POSITIONING.md` — **positioning source of truth** (2026-10-14): watch / play / export; subject boundary (math first, physics only when math is the star, no other subjects); labs vs wonders split; licensing rules for borrowing from competitors (shapeof.world is AGPL + CC BY-NC: reference only, never copy). Read before adding any topic or section.
+
 - `docs/LIBRARY_PLAN.md` — editorial scene library `/library`. P0 skeleton is implemented (graph, hub/topic routes, curve object cards). Scene pages 404 until P1. Source of truth for the math content graph and the boundary with `/curves` and `/gallery`.
 - `docs/SITE_ARCHITECTURE_PLAN.md` — strategy. Its "library = UGC pile / two-layer IA" section is superseded by `LIBRARY_PLAN.md`.
 - `docs/CURVE_ENCYCLOPEDIA.md` — `/curves` contract. Do not fold it into `/library`.
 - `docs/LABS_PLAN.md` — `/labs` interactive labs: subject → suite → chapter IA, URL and redirect rules, per-chapter SEO (title, H1, structured data, share images), reserved slots (video, physics).
+- `docs/NAVIGATION.md` — top nav, dropdowns, page shells, breadcrumbs (visible + JSON-LD), hub page hero, internal/external link rules. Nav links come only from `siteNavLinks()` in `src/blocks/site-nav.ts`; hubs use `PageHero`, inner pages `PageBreadcrumbs` + `breadcrumbJsonLd`.
+- `docs/WONDERS_PLAN.md` — `/wonders` math wonders: dark animated stories, separate from the syllabus labs. Story = pure function of time (video-ready); copy numbers are pinned by `tests/wonders.test.ts`.
 - `docs/PROJECT_BRIEF.md` — project overview: positioning, user paths, status, boundaries, and the change log. Add an entry there when a change affects positioning, page structure, or maintainability.
 - `docs/DESIGN_SYSTEM.md` — visual rules. The "paper & amber" section at the top (2026-10-12) overrides older colour/type/logo notes.
 - `README.md` — what is deployed versus still missing, site map, generated assets.
@@ -390,7 +394,7 @@ const rows = await db()
 
 ### Public page scaffold
 
-Every public page except the lab workspace renders inside `SitePage` from `@/blocks/site-page` (shell + `Header` + `<main>` + `Footer`). Do not repeat the scaffold in a route. 404 and error screens use `StatusPage`; FAQs use `FaqList` from `@/components/faq-list`. Raster share images are generated (`pnpm og:labs`, `pnpm og:brand`), not hand-made.
+Every public page except the lab workspace and wonder stages renders inside `SitePage` from `@/blocks/site-page` (shell + `Header` + `<main>` + `Footer`). Do not repeat the scaffold in a route. 404 and error screens use `StatusPage`; FAQs use `FaqList` from `@/components/faq-list`. Raster share images are generated (`pnpm og:labs`, `pnpm og:brand`), not hand-made.
 
 ### Blocks vs Components
 

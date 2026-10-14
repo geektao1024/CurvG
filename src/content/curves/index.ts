@@ -50,3 +50,11 @@ export function getRelatedCurves(curve: CurveDef): CurveDef[] {
     .map((slug) => bySlug.get(slug))
     .filter((related): related is CurveDef => related !== undefined);
 }
+
+/** Static graph (public/curves) and share image (public/og/curves), from `pnpm og:curves`. */
+export function curveGraphImage(slug: string): string {
+  return `/curves/${slug}.svg`;
+}
+export function curveOgImage(slug: string, lang: 'en' | 'zh'): string {
+  return `/og/curves/${slug}.${lang}.png`;
+}

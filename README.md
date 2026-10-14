@@ -103,6 +103,14 @@ Implemented and build-verified, awaiting deployment (2026-10-12):
   Pricing), a homepage built around a live lab board and a topic search, and
   a footer "Free tools" column for the traffic pages.
 
+Built, not yet published:
+
+- Lab lesson films (`pnpm video:labs`): each chapter's guide steps drive a
+  narrated, captioned MP4 (16:9 and 9:16) rendered from the live board, no
+  model in the loop. Served from R2 via `/media/labs/*` once
+  `pnpm video:labs:publish` runs; waiting on a production TTS voice. See
+  `docs/LABS_PLAN.md` §4.1.
+
 Not implemented yet:
 
 - Most editorial scene pages (`/library/scenes/{slug}`). Two scenes are

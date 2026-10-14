@@ -10,6 +10,8 @@ export type BlogCardProps = {
   date?: string;
   authorName?: string;
   authorImage?: string;
+  /** h2 when the cards sit directly under the page H1. */
+  heading?: 'h2' | 'h3';
 };
 
 export function BlogCard({
@@ -20,6 +22,7 @@ export function BlogCard({
   date,
   authorName,
   authorImage,
+  heading: Heading = 'h3',
 }: BlogCardProps) {
   return (
     <Link
@@ -37,9 +40,9 @@ export function BlogCard({
         />
       )}
       <div className="flex flex-1 flex-col gap-3 p-6">
-        <h3 className="leading-snug font-medium group-hover:underline group-hover:underline-offset-4">
+        <Heading className="leading-snug font-medium group-hover:underline group-hover:underline-offset-4">
           {title}
-        </h3>
+        </Heading>
         {description && (
           <p className="text-muted-foreground line-clamp-3 text-sm leading-relaxed">
             {description}

@@ -22,6 +22,7 @@ import {
 
 import {
   LibraryBreadcrumb,
+  libraryBreadcrumbJsonLd,
   libraryLocale,
   LibraryShell,
 } from '../-library-page';
@@ -55,7 +56,14 @@ function ScenePage() {
     <LibraryShell>
       <article>
         <section className="curvg-stage curvg-frame border-b px-6 py-12 sm:px-10">
-          <LibraryBreadcrumb trail={trail} locale={lang} />
+          <LibraryBreadcrumb
+            trail={trail}
+            locale={lang}
+            current={{
+              href: `/library/scenes/${scene.slug}`,
+              label: libraryText(scene.title, lang),
+            }}
+          />
           <p className="text-primary mt-8 font-mono text-xs font-semibold tracking-[0.16em] uppercase">
             {m['library.scene.duration']({
               seconds: scene.durationSeconds,
@@ -251,35 +259,10 @@ export const Route = createFileRoute('/library/scenes/$slug')({
     const path = `/library/scenes/${scene.slug}`;
     const seoLinks = localizedLinks({ path, locale });
     const trail = getPrimaryTrail(scene.primaryCategoryId);
-    const structuredData = {
-      '@context': 'https://schema.org',
-      '@type': 'BreadcrumbList',
-      itemListElement: [
-        {
-          '@type': 'ListItem',
-          position: 1,
-          name: m['library.breadcrumb']({}, { locale: locale as never }),
-          item: localizedUrl('/library', locale),
-        },
-        ...trail.map((category, index) => ({
-          '@type': 'ListItem',
-          position: index + 2,
-          name: libraryText(category.title, lang),
-          item: localizedUrl(
-            index === 0
-              ? `/library/${category.id}`
-              : `/library/${trail[0].id}/${category.id}`,
-            locale
-          ),
-        })),
-        {
-          '@type': 'ListItem',
-          position: trail.length + 2,
-          name: libraryText(scene.title, lang),
-          item: seoLinks.canonical,
-        },
-      ],
-    };
+    const structuredData = libraryBreadcrumbJsonLd(trail, locale, {
+      name: libraryText(scene.title, lang),
+      path,
+    });
     return {
       meta: [
         { title },

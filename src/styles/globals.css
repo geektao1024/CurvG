@@ -1,6 +1,9 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import './lab-workspace.css';
+@import './lab-film.css';
+@import './wonders.css';
+@import './navigation.css';
 
 @custom-variant dark (&:is(.dark *));
 

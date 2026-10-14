@@ -1,11 +1,17 @@
 import { createFileRoute } from '@tanstack/react-router';
 
 import { envConfigs } from '@/config';
-import { localizedLinks, socialMeta } from '@/lib/seo';
+import {
+  breadcrumbJsonLd,
+  localizedLinks,
+  serializeJsonLd,
+  socialMeta,
+} from '@/lib/seo';
 import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
 import { SitePage } from '@/blocks/site-page';
 import { BlogCard } from '@/components/blog-card';
+import { PageHero } from '@/components/page-hero';
 import { formatPostDate } from '@/content/posts';
 import { getBlogPostsFn } from '@/content/posts/server';
 
@@ -42,6 +48,26 @@ export const Route = createFileRoute('/blog/')({
           : []),
       ],
       links: seoLinks.links,
+      scripts: [
+        {
+          type: 'application/ld+json',
+          children: serializeJsonLd(
+            breadcrumbJsonLd(
+              [
+                {
+                  name: m['common.nav.home']({}, { locale: locale as never }),
+                  path: '/',
+                },
+                {
+                  name: m['blog.breadcrumb']({}, { locale: locale as never }),
+                  path: '/blog',
+                },
+              ],
+              currentLocale
+            )
+          ),
+        },
+      ],
     };
   },
   component: BlogPage,
@@ -51,16 +77,17 @@ function BlogPage() {
   const { locale, posts } = Route.useLoaderData();
 
   return (
-    <SitePage mainClassName="px-4 py-16 sm:py-24">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-16 text-center">
-          <h1 className="font-serif text-4xl font-normal tracking-tight sm:text-5xl">
-            {m['blog.title']()}
-          </h1>
-          <p className="text-muted-foreground mx-auto mt-5 max-w-lg">
-            {m['blog.description']()}
-          </p>
-        </div>
+    <SitePage>
+      <PageHero
+        crumbs={[
+          { href: '/', label: m['common.nav.home']() },
+          { href: '/blog', label: m['blog.breadcrumb']() },
+        ]}
+        crumbLabel={m['common.nav.breadcrumb']()}
+        title={m['blog.title']()}
+        lead={m['blog.description']()}
+      />
+      <div className="curvg-stage curvg-frame px-6 py-12 sm:px-10">
         {posts.length === 0 ? (
           <p className="text-muted-foreground text-center">
             {m['blog.no_posts']()}
@@ -69,6 +96,7 @@ function BlogPage() {
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {posts.map((post) => (
               <BlogCard
+                heading="h2"
                 key={post.slug}
                 href={`/blog/${post.slug}`}
                 title={post.title}

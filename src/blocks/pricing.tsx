@@ -399,6 +399,7 @@ export function Pricing({
             </p>
           </div>
           <PricingTable
+            planHeading={Heading === 'h1' ? 'h2' : 'h3'}
             groups={groups}
             onCheckout={handleCheckout}
             loadingPlanId={loadingPlanId}

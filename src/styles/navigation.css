@@ -1,0 +1,159 @@
+/*
+ * Shared navigation pieces (docs/NAVIGATION.md): breadcrumbs, the hub page
+ * hero, and the site menu on immersive pages. Colours come from the theme
+ * tokens, so the same markup works on paper and under `.dark`.
+ */
+
+.curvg-crumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.45rem;
+  font-family: var(--font-code);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: var(--muted-foreground);
+}
+.curvg-crumbs li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+.curvg-crumbs li + li::before {
+  content: '/';
+  opacity: 0.45;
+}
+.curvg-crumbs a {
+  transition: color 0.15s;
+}
+.curvg-crumbs a:hover {
+  color: var(--primary);
+}
+.curvg-crumbs [aria-current='page'] {
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 28rem;
+}
+
+.curvg-page-eyebrow {
+  font-family: var(--font-code);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+.curvg-page-lead {
+  color: var(--muted-foreground);
+}
+.curvg-page-hero.is-dark {
+  background: radial-gradient(
+    50% 80% at 20% 0%,
+    rgba(120, 92, 255, 0.16),
+    transparent 70%
+  );
+}
+.curvg-page-hero.is-dark .curvg-page-eyebrow {
+  color: #b2a0ff;
+}
+
+/* Site menu on immersive pages. */
+.site-nav-menu {
+  position: relative;
+}
+.site-nav-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 2rem;
+  border-radius: 6px;
+  padding: 0 0.6rem;
+  font-size: 13px;
+  color: inherit;
+  opacity: 0.85;
+  transition:
+    background-color 0.15s,
+    opacity 0.15s;
+}
+.site-nav-menu-btn:hover,
+.site-nav-menu-btn[aria-expanded='true'] {
+  opacity: 1;
+  background: color-mix(in oklab, currentColor 8%, transparent);
+}
+.site-nav-menu-btn svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.site-nav-menu-panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 80;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.25rem 1rem;
+  width: min(40rem, calc(100vw - 2rem));
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  padding: 0.9rem;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 18px 40px -20px rgba(29, 35, 33, 0.45);
+  text-align: left;
+}
+.site-nav-menu-section {
+  min-width: 0;
+  padding: 0.25rem;
+}
+.site-nav-menu-top {
+  display: block;
+  border-radius: 0.4rem;
+  padding: 0.3rem 0.4rem;
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.site-nav-menu-top:hover,
+.site-nav-menu-panel a[data-current] {
+  color: var(--primary);
+}
+.site-nav-menu-panel ul {
+  margin-top: 0.15rem;
+}
+.site-nav-menu-panel ul a {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 0.35rem;
+  padding: 0.22rem 0.4rem;
+  font-size: 0.8rem;
+  color: var(--muted-foreground);
+}
+.site-nav-menu-panel ul a:hover {
+  color: var(--foreground);
+  background: var(--secondary);
+}
+.site-nav-menu-panel ul a.is-group {
+  font-family: var(--font-code);
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding-top: 0.5rem;
+}
+@media (max-width: 720px) {
+  .site-nav-menu-btn .lbl {
+    display: none;
+  }
+  .site-nav-menu-panel {
+    position: fixed;
+    top: 3.5rem;
+    right: 1rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: calc(100svh - 5rem);
+    overflow: auto;
+  }
+}

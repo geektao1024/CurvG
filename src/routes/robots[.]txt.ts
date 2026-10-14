@@ -10,8 +10,12 @@ export const Route = createFileRoute('/robots.txt')({
         const body = [
           'User-Agent: *',
           'Allow: /',
-          'Disallow: /admin',
-          'Disallow: /settings',
+          // Every locale prefix too: /zh/admin is the same page as /admin.
+          ...['', '/zh'].flatMap((prefix) => [
+            `Disallow: ${prefix}/admin`,
+            `Disallow: ${prefix}/settings`,
+            `Disallow: ${prefix}/render/`,
+          ]),
           'Disallow: /api/',
           '',
           `Sitemap: ${appUrl}/sitemap.xml`,

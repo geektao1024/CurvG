@@ -5,7 +5,7 @@ import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
 import { RichMath } from '@/components/rich-math';
 import { SectionHeading } from '@/components/section-heading';
-import { getLab, labPath, labVideoHref } from '@/content/labs';
+import { getLab, labPath, labVideo, labVideoHref } from '@/content/labs';
 
 /** The lab whose guide is shown, and a rendered sample of the same curve. */
 const LAB = 'quadratic-transformations';
@@ -16,14 +16,15 @@ const SAMPLE = {
 
 /**
  * Homepage conversion band: a lab's guided steps beside a rendered video,
- * so the free lab and the paid video read as one thing. Swap SAMPLE for the
- * lab's own lesson video once production renders one (`lab.video`).
+ * so the free lab and the paid video read as one thing. Shows the lab's
+ * own narrated film once it is published, the gallery sample until then.
  */
 export function HomeLabVideo() {
   const lang = getLocale() === 'zh' ? 'zh' : 'en';
   const lab = getLab(LAB);
   if (!lab) return null;
-  const video = lab.video ?? SAMPLE;
+  const film = labVideo(lab, lang);
+  const video = film ?? SAMPLE;
 
   return (
     <section id="lab-to-video">
@@ -68,7 +69,8 @@ export function HomeLabVideo() {
                 src={video.src}
                 poster={video.poster}
                 controls
-                muted
+                // The sample is silent; a lab film is narrated.
+                muted={!film}
                 playsInline
                 preload="none"
                 aria-label={m['home.video.aria']()}

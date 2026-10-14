@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { Link } from '@/core/i18n/navigation';
 import {
+  breadcrumbJsonLd,
   localizedLinks,
   localizedUrl,
   serializeJsonLd,
@@ -11,6 +12,7 @@ import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
 import { SitePage } from '@/blocks/site-page';
 import { CurveThumb } from '@/components/curve-preview';
+import { PageHero } from '@/components/page-hero';
 import {
   CURVE_CATEGORY_ORDER,
   CURVES,
@@ -32,17 +34,16 @@ function CurvesIndexPage() {
 
   return (
     <SitePage>
-      <section className="curvg-stage curvg-frame relative border-b px-6 py-16 sm:px-10">
-        <p className="text-primary font-mono text-xs font-semibold tracking-[0.16em] uppercase">
-          {m['curves.index.eyebrow']()}
-        </p>
-        <h1 className="curvg-heading mt-5 max-w-3xl text-4xl text-balance sm:text-5xl">
-          {m['curves.index.h1']()}
-        </h1>
-        <p className="text-muted-foreground mt-5 max-w-2xl text-base leading-relaxed sm:text-lg">
-          {m['curves.index.intro']({ count: CURVES.length })}
-        </p>
-      </section>
+      <PageHero
+        crumbs={[
+          { href: '/', label: m['common.nav.home']() },
+          { href: '/curves', label: m['curves.breadcrumb']() },
+        ]}
+        crumbLabel={m['common.nav.breadcrumb']()}
+        eyebrow={m['curves.index.eyebrow']()}
+        title={m['curves.index.h1']()}
+        lead={m['curves.index.intro']({ count: CURVES.length })}
+      />
 
       {CURVE_CATEGORY_ORDER.map((category) => {
         const curves = getCurvesByCategory(category);
@@ -126,7 +127,22 @@ export const Route = createFileRoute('/curves/')({
       scripts: [
         {
           type: 'application/ld+json',
-          children: serializeJsonLd(structuredData),
+          children: serializeJsonLd([
+            breadcrumbJsonLd(
+              [
+                {
+                  name: m['common.nav.home']({}, { locale: locale as never }),
+                  path: '/',
+                },
+                {
+                  name: m['curves.breadcrumb']({}, { locale: locale as never }),
+                  path: '/curves',
+                },
+              ],
+              locale
+            ),
+            structuredData,
+          ]),
         },
       ],
     };

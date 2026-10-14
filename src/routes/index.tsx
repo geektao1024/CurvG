@@ -5,6 +5,7 @@ import {
   localizedLinks,
   localizedUrl,
   serializeJsonLd,
+  siteJsonLd,
   socialMeta,
 } from '@/lib/seo';
 import { m } from '@/paraglide/messages.js';
@@ -59,6 +60,7 @@ export const Route = createFileRoute('/')({
     const structuredData = {
       '@context': 'https://schema.org',
       '@graph': [
+        ...siteJsonLd(locale),
         {
           '@type': 'WebApplication',
           '@id': `${urlFor(locale)}#app`,

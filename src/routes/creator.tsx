@@ -1,6 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router';
 
-import { localizedLinks, socialMeta } from '@/lib/seo';
+import { envConfigs } from '@/config';
+import {
+  absoluteUrl,
+  breadcrumbJsonLd,
+  localizedLinks,
+  serializeJsonLd,
+  socialMeta,
+} from '@/lib/seo';
 import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
 import { CreatorWorkspace } from '@/blocks/creator-workspace';
@@ -52,6 +59,44 @@ export const Route = createFileRoute('/creator')({
         }),
       ],
       links: seoLinks.links,
+      scripts: [
+        {
+          type: 'application/ld+json',
+          children: serializeJsonLd([
+            {
+              '@context': 'https://schema.org',
+              '@type': 'WebApplication',
+              name: title,
+              url: seoLinks.canonical,
+              description,
+              applicationCategory: 'EducationalApplication',
+              operatingSystem: 'Web',
+              isAccessibleForFree: true,
+              provider: {
+                '@type': 'Organization',
+                '@id': `${absoluteUrl('/')}#organization`,
+                name: envConfigs.app_name,
+              },
+            },
+            breadcrumbJsonLd(
+              [
+                {
+                  name: m['common.nav.home']({}, { locale: locale as never }),
+                  path: '/',
+                },
+                {
+                  name: m['landing.nav.create'](
+                    {},
+                    { locale: locale as never }
+                  ),
+                  path: '/creator',
+                },
+              ],
+              locale
+            ),
+          ]),
+        },
+      ],
     };
   },
   component: CreatorPage,

@@ -7,11 +7,14 @@ export function LibraryCurveCard({
   locale,
   badge,
   ariaLabel,
+  heading: Heading = 'h3',
 }: {
   curve: CurveDef;
   locale: 'en' | 'zh';
   badge?: string;
   ariaLabel: string;
+  /** h2 when the grid sits directly under the page H1. */
+  heading?: 'h2' | 'h3';
 }) {
   return (
     <Link
@@ -27,9 +30,9 @@ export function LibraryCurveCard({
             {badge}
           </p>
         ) : null}
-        <h3 className="group-hover:text-primary text-lg font-semibold tracking-tight transition-colors">
+        <Heading className="group-hover:text-primary text-lg font-semibold tracking-tight transition-colors">
           {curve.name[locale]}
-        </h3>
+        </Heading>
         <p className="text-muted-foreground mt-2 line-clamp-2 text-sm leading-relaxed">
           {curve.short[locale]}
         </p>

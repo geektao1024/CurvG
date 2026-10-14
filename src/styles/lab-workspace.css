@@ -1206,6 +1206,18 @@
     .lw-lang {
       margin-left: auto;
     }
+    /* The site menu sits first on the right; the language pill only needs
+       its icon on phones, and button labels give way. */
+    .lw-sitemenu {
+      margin-left: auto;
+    }
+    .lw-sitemenu + .lw-lang {
+      margin-left: 0;
+    }
+    .lw-tbtns .lw-tb .lbl,
+    .lw-account .lbl {
+      display: none;
+    }
     .lw-nav {
       flex-direction: row;
       overflow-x: auto;

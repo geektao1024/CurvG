@@ -100,3 +100,70 @@ export function socialMeta({
 export function serializeJsonLd(value: unknown): string {
   return JSON.stringify(value).replace(/</g, '\\u003c');
 }
+
+/**
+ * BreadcrumbList for a page (docs/NAVIGATION.md §4). Pass the same items as
+ * the visible breadcrumb, home first; paths are locale-free.
+ */
+export function breadcrumbJsonLd(
+  items: readonly { name: string; path: string }[],
+  locale: string
+) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items.map((item, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: item.name,
+      item: localizedUrl(item.path, locale),
+    })),
+  };
+}
+
+/**
+ * Display width of a title as search results measure it, roughly: CJK and
+ * full-width characters count double. Google shows about 60 units.
+ */
+export function titleWidth(text: string): number {
+  let width = 0;
+  for (const ch of text) {
+    width += /[\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef\u3000-\u303f]/.test(ch)
+      ? 2
+      : 1;
+  }
+  return width;
+}
+
+/** The first candidate that fits in a search result, else the shortest. */
+export function fitTitle(candidates: readonly string[], max = 62): string {
+  const fit = candidates.find((title) => titleWidth(title) <= max);
+  if (fit) return fit;
+  return [...candidates].sort((a, b) => titleWidth(a) - titleWidth(b))[0];
+}
+
+/**
+ * The site and its publisher, for the home page (Google reads the site name
+ * from WebSite on the home page). Other pages reference them by `@id`.
+ */
+export function siteJsonLd(locale: string) {
+  const home = absoluteUrl('/');
+  return [
+    {
+      '@type': 'Organization',
+      '@id': `${home}#organization`,
+      name: envConfigs.app_name,
+      url: home,
+      logo: absoluteUrl('/apple-touch-icon.png'),
+    },
+    {
+      '@type': 'WebSite',
+      '@id': `${home}#website`,
+      name: envConfigs.app_name,
+      alternateName: new URL(home).hostname.replace(/^www\./, ''),
+      url: home,
+      inLanguage: locale === 'zh' ? 'zh-CN' : 'en',
+      publisher: { '@id': `${home}#organization` },
+    },
+  ];
+}

@@ -49,7 +49,7 @@ import {
 import { QuizCard } from '@/components/lab-quiz';
 import { LocaleSelector } from '@/components/locale-selector';
 import { InlineTex, RichMath } from '@/components/rich-math';
-import type { Lab } from '@/content/labs';
+import type { Lab, LabVideo } from '@/content/labs';
 import { libraryText, type LibraryLocale } from '@/content/library';
 
 /**
@@ -98,9 +98,11 @@ export type WorkspaceLabels = {
   incorrect: string;
   related: string;
   relatedLabs: string;
+  relatedWonders: string;
   relatedCurves: string;
   relatedLibrary: string;
   video: string;
+  captions: string;
   makeVideo: string;
   ctaTitle: string;
   ctaBody: string;
@@ -109,7 +111,7 @@ export type WorkspaceLabels = {
 
 /** A link out of the lab: another lab, a curve page or a library topic. */
 export type WorkspaceLink = {
-  kind: 'lab' | 'curve' | 'library';
+  kind: 'lab' | 'wonder' | 'curve' | 'library';
   href: string;
   label: string;
   note?: string;
@@ -179,7 +181,9 @@ export function LabWorkspace({
   tags,
   related,
   videoHref,
+  film,
   account,
+  siteMenu,
 }: {
   /** Site identity: the workspace is a CurvG tool, not a separate product. */
   logo: { src: string; name: string };
@@ -195,8 +199,12 @@ export function LabWorkspace({
   tags: readonly string[];
   related: readonly WorkspaceLink[];
   videoHref: string;
+  /** The chapter's narrated film, once published. */
+  film?: LabVideo;
   /** Sign-in link or the user menu. */
   account: ReactNode;
+  /** The site's top-level navigation (SiteNavMenu), shared with every page. */
+  siteMenu?: ReactNode;
 }) {
   const router = useRouter();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -283,6 +291,7 @@ export function LabWorkspace({
           ))}
         </nav>
 
+        {siteMenu}
         <LocaleSelector
           variant="pill"
           switchLabel={labels.switchLanguage}
@@ -388,6 +397,7 @@ export function LabWorkspace({
         showLabels={showLabels}
         showGrid={showGrid}
         videoHref={videoHref}
+        film={film}
         tags={tags}
         related={related}
         footer={
@@ -423,6 +433,7 @@ type ChapterViewProps = {
   showLabels: boolean;
   showGrid: boolean;
   videoHref: string;
+  film?: LabVideo;
   tags: readonly string[];
   related: readonly WorkspaceLink[];
   footer: ReactNode;
@@ -442,6 +453,7 @@ function ChapterView({
   showLabels,
   showGrid,
   videoHref,
+  film,
   tags,
   related,
   footer,
@@ -632,17 +644,24 @@ function ChapterView({
 
           <ResultCard tex={lab.resultTex} readouts={frame.readouts} />
 
-          {lab.video ? (
+          {film ? (
             <section className="lw-sect">
               <h2 className="lw-subh">{labels.video}</h2>
               <video
                 className="lw-video"
-                src={lab.video.src}
-                poster={lab.video.poster}
+                poster={film.poster}
                 controls
                 preload="none"
                 playsInline
-              />
+              >
+                <source src={film.src} type="video/mp4" />
+                <track
+                  kind="captions"
+                  src={film.captions}
+                  srcLang={locale}
+                  label={labels.captions}
+                />
+              </video>
             </section>
           ) : null}
 
@@ -1098,6 +1117,7 @@ function RelatedLinks({
 }) {
   const groups = [
     { kind: 'lab', title: labels.relatedLabs },
+    { kind: 'wonder', title: labels.relatedWonders },
     { kind: 'curve', title: labels.relatedCurves },
     { kind: 'library', title: labels.relatedLibrary },
   ] as const;

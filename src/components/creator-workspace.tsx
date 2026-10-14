@@ -1950,9 +1950,12 @@ function Welcome({
         )}
 
         {creationMode === 'description' && (
-          <div className="mt-28 w-full max-w-4xl sm:mt-40">
+          <div className="mt-16 w-full max-w-4xl sm:mt-20">
+            {/* md:mr-60 keeps a column free on the right for the assistant
+                figure, which sits on the composer's top edge; it never covers
+                the mode cards. */}
             <fieldset
-              className="bg-card/72 border-border/80 mb-4 rounded-2xl border p-2 shadow-sm backdrop-blur-sm"
+              className="bg-card/72 border-border/80 mb-4 rounded-2xl border p-2 shadow-sm backdrop-blur-sm md:mr-60"
               disabled={processing}
             >
               <legend className="text-muted-foreground px-2 font-mono text-[9px] font-semibold tracking-[0.13em] uppercase">
@@ -2021,7 +2024,7 @@ function Welcome({
                 loading="lazy"
                 fetchPriority="low"
                 decoding="async"
-                className="pointer-events-none absolute top-0 right-10 z-20 hidden h-72 w-auto -translate-y-[67%] object-contain drop-shadow-[0_20px_24px_rgba(29,35,33,0.16)] select-none md:block dark:brightness-[0.92]"
+                className="pointer-events-none absolute top-0 right-6 z-20 hidden h-60 w-auto -translate-y-[72%] object-contain drop-shadow-[0_20px_24px_rgba(29,35,33,0.16)] select-none md:block dark:brightness-[0.92]"
               />
               <PromptComposer
                 copy={copy}
@@ -4378,11 +4381,18 @@ export function CreatorWorkspace({
   locale,
   initialAnimationId,
   initialPrompt,
+  guestShell,
 }: {
   copy: CreatorWorkspaceCopy;
   locale: string;
   initialAnimationId?: string;
   initialPrompt?: string;
+  /**
+   * Page shell for signed-out visitors (and while the session loads): the
+   * site page with header and footer, so the page scrolls and frames like
+   * every other public page. Without it, a bare header is used.
+   */
+  guestShell?: (content: ReactNode) => ReactNode;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -5370,56 +5380,62 @@ export function CreatorWorkspace({
   }
 
   if (!hydrated || sessionPending || !user) {
+    const welcome = (
+      <Welcome
+        copy={copy}
+        locale={locale}
+        creationMode={creationMode}
+        onCreationModeChange={(value) => {
+          setCreationMode(value);
+          if (value !== 'description') setProductionMode('explainer');
+        }}
+        productionMode={productionMode}
+        onProductionModeChange={setProductionMode}
+        creditNotice={creditShortfallNotice}
+        prompt={prompt}
+        onPromptChange={setPrompt}
+        onSubmit={submit}
+        subject={subject}
+        onSubjectChange={setSubject}
+        modelValue={modelValue}
+        modelOptions={modelOptions}
+        modelsLoading={hasHydratedUser && modelsQuery.isLoading}
+        modelsError={hasHydratedUser && modelsQuery.isError}
+        viewerTier={catalog?.viewerTier}
+        onRetryModels={() => void modelsQuery.refetch()}
+        onModelChange={handleModelChange}
+        processing={processing}
+        user={false}
+        formula={formula}
+        onFormulaChange={(value) => {
+          setFormula(value);
+          if (!mathTypeOverridden)
+            setMathObjectType(detectMathObjectType(value));
+        }}
+        formulaIntent={formulaIntent}
+        onFormulaIntentChange={setFormulaIntent}
+        mathObjectType={mathObjectType}
+        onMathObjectTypeChange={(value) => {
+          setMathObjectType(value);
+          setMathTypeOverridden(true);
+        }}
+        templates={templatesQuery.data ?? []}
+        templatesLoading={templatesQuery.isLoading}
+        selectedTemplateId={selectedTemplateId}
+        onSelectedTemplateIdChange={setSelectedTemplateId}
+        templateValues={templateValues}
+        onTemplateValuesChange={setTemplateValues}
+      />
+    );
+    if (guestShell) return guestShell(welcome);
     return (
-      <div className="curvg-stage curvg-frame bg-background flex h-svh min-h-0 flex-col overflow-hidden">
+      <div className="bg-background flex h-svh min-h-0 flex-col overflow-hidden">
         {hydrated && !sessionPending && !user && (
           <GuestWorkspaceHeader copy={copy} />
         )}
-        <Welcome
-          copy={copy}
-          locale={locale}
-          creationMode={creationMode}
-          onCreationModeChange={(value) => {
-            setCreationMode(value);
-            if (value !== 'description') setProductionMode('explainer');
-          }}
-          productionMode={productionMode}
-          onProductionModeChange={setProductionMode}
-          creditNotice={creditShortfallNotice}
-          prompt={prompt}
-          onPromptChange={setPrompt}
-          onSubmit={submit}
-          subject={subject}
-          onSubjectChange={setSubject}
-          modelValue={modelValue}
-          modelOptions={modelOptions}
-          modelsLoading={hasHydratedUser && modelsQuery.isLoading}
-          modelsError={hasHydratedUser && modelsQuery.isError}
-          viewerTier={catalog?.viewerTier}
-          onRetryModels={() => void modelsQuery.refetch()}
-          onModelChange={handleModelChange}
-          processing={processing}
-          user={false}
-          formula={formula}
-          onFormulaChange={(value) => {
-            setFormula(value);
-            if (!mathTypeOverridden)
-              setMathObjectType(detectMathObjectType(value));
-          }}
-          formulaIntent={formulaIntent}
-          onFormulaIntentChange={setFormulaIntent}
-          mathObjectType={mathObjectType}
-          onMathObjectTypeChange={(value) => {
-            setMathObjectType(value);
-            setMathTypeOverridden(true);
-          }}
-          templates={templatesQuery.data ?? []}
-          templatesLoading={templatesQuery.isLoading}
-          selectedTemplateId={selectedTemplateId}
-          onSelectedTemplateIdChange={setSelectedTemplateId}
-          templateValues={templateValues}
-          onTemplateValuesChange={setTemplateValues}
-        />
+        <div className="curvg-stage curvg-frame flex min-h-0 flex-1 flex-col">
+          {welcome}
+        </div>
       </div>
     );
   }

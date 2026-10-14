@@ -1,0 +1,703 @@
+/*
+ * Math wonders (/wonders): the dark stage. Deliberately unlike the paper
+ * labs: night background, glowing strokes, glass panels. Everything here is
+ * scoped under .wonder-* so it never leaks into the paper site.
+ */
+
+.wonder-page {
+  --w-bg: #06070c;
+  --w-ink: #eceaf4;
+  --w-dim: rgba(236, 234, 244, 0.62);
+  --w-faint: rgba(236, 234, 244, 0.38);
+  --w-line: rgba(255, 255, 255, 0.09);
+  --w-glass: rgba(14, 16, 26, 0.72);
+  --w-cyan: #6ee7ff;
+  --w-violet: #b2a0ff;
+  --w-amber: #ffb84d;
+  background: var(--w-bg);
+  color: var(--w-ink);
+  min-height: 100vh;
+  color-scheme: dark;
+}
+
+.wonder-page ::selection {
+  background: rgba(110, 231, 255, 0.28);
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────────── */
+
+.wonder-top {
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.1rem 1.5rem;
+  pointer-events: none;
+}
+.wonder-top > * {
+  pointer-events: auto;
+}
+.wonder-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--font-code);
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--w-dim);
+}
+.wonder-home {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--w-ink);
+}
+.wonder-brand .curvg-crumbs {
+  letter-spacing: 0;
+  text-transform: none;
+}
+.wonder-brand img {
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 0.4rem;
+}
+.wonder-brand a:hover {
+  color: var(--w-ink);
+}
+.wonder-brand .sep {
+  opacity: 0.4;
+}
+.wonder-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.wonder-nav > a {
+  border-radius: 999px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.8rem;
+  color: var(--w-dim);
+  transition:
+    color 0.2s,
+    background-color 0.2s;
+}
+.wonder-nav > a:hover {
+  color: var(--w-ink);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Stage ───────────────────────────────────────────────────────────── */
+
+.wonder-stage {
+  position: relative;
+  height: 100svh;
+  min-height: 560px;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      60% 55% at 30% 45%,
+      rgba(120, 92, 255, 0.13),
+      transparent 70%
+    ),
+    radial-gradient(
+      45% 45% at 78% 60%,
+      rgba(40, 170, 220, 0.08),
+      transparent 70%
+    ),
+    var(--w-bg);
+}
+.wonder-viewport {
+  position: absolute;
+  inset: 0;
+}
+.wonder-viewport::after {
+  /* Scrims: keep the title and captions readable over bright pictures. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      70% 55% at 0% 0%,
+      rgba(6, 7, 12, 0.88),
+      rgba(6, 7, 12, 0.62) 45%,
+      transparent 78%
+    ),
+    linear-gradient(to bottom, rgba(6, 7, 12, 0.55), transparent 12%),
+    linear-gradient(to top, rgba(6, 7, 12, 0.75), transparent 24%);
+}
+.wonder-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: pan-y;
+}
+.wonder-canvas.is-pannable {
+  cursor: grab;
+  touch-action: none;
+}
+.wonder-canvas.is-pannable:active {
+  cursor: grabbing;
+}
+@media (pointer: coarse) {
+  /* One finger still scrolls the page; sideways drags and pinches pan/zoom. */
+  .wonder-canvas.is-pannable {
+    touch-action: pan-y;
+  }
+}
+.wonder-canvas.is-drawing {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+/* Title block, top left over the canvas. */
+.wonder-head {
+  position: absolute;
+  z-index: 3;
+  top: 4.6rem;
+  left: 1.5rem;
+  max-width: min(32rem, 40vw);
+  pointer-events: none;
+}
+.wonder-head a {
+  pointer-events: auto;
+}
+.wonder-eyebrow {
+  font-family: var(--font-code);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--w-violet);
+}
+.wonder-head h1 {
+  margin-top: 0.8rem;
+  font-family: var(--font-heading, serif);
+  font-size: clamp(1.5rem, 2.2vw, 2.1rem);
+  font-weight: 600;
+  line-height: 1.22;
+  color: var(--w-ink);
+  text-wrap: balance;
+}
+.wonder-head p {
+  margin-top: 0.8rem;
+  font-size: 0.88rem;
+  line-height: 1.7;
+  color: var(--w-dim);
+}
+.wonder-why {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 1rem;
+  border: 1px solid var(--w-line);
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.78rem;
+  color: var(--w-ink);
+  background: rgba(255, 255, 255, 0.04);
+  transition: background-color 0.2s;
+}
+.wonder-why:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.wonder-why svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+/* Caption: the narration line, low and centred like subtitles. */
+.wonder-caption {
+  position: absolute;
+  z-index: 3;
+  /* Centred with auto margins, not translate: a shrink-to-fit box placed at
+     left: 50% would only get half the width on phones. */
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  bottom: 6.2rem;
+  text-align: center;
+  font-family: var(--font-heading, serif);
+  font-size: clamp(1.05rem, 1.7vw, 1.45rem);
+  line-height: 1.6;
+  color: var(--w-ink);
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.9),
+    0 0 24px rgba(6, 7, 12, 0.9);
+  text-wrap: balance;
+  pointer-events: none;
+  width: fit-content;
+  max-width: min(46rem, calc(100% - 3rem));
+  border-radius: 0.9rem;
+  padding: 0.45rem 1rem;
+  background: rgba(6, 7, 12, 0.42);
+  backdrop-filter: blur(8px);
+  animation: wonder-caption-in 0.7s ease-out both;
+}
+.wonder-caption.is-notice {
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: var(--w-cyan);
+}
+@keyframes wonder-caption-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* Story bar. */
+.wonder-bar {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  bottom: 1.6rem;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border: 1px solid var(--w-line);
+  border-radius: 999px;
+  padding: 0.35rem 0.5rem 0.35rem 0.35rem;
+  background: var(--w-glass);
+  backdrop-filter: blur(14px);
+}
+.wonder-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 999px;
+  color: #10121a;
+  background: var(--w-ink);
+  transition: transform 0.15s;
+}
+.wonder-icon-btn:hover {
+  transform: scale(1.06);
+}
+.wonder-icon-btn svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.wonder-track {
+  position: relative;
+  width: clamp(9rem, 26vw, 20rem);
+  height: 3px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.12);
+}
+.wonder-track-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--w-violet), var(--w-cyan));
+}
+.wonder-tick {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin-left: -4.5px;
+  margin-top: -4.5px;
+  border-radius: 99px;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  background: var(--w-bg);
+  transition:
+    transform 0.15s,
+    border-color 0.2s;
+}
+.wonder-tick:hover {
+  transform: scale(1.4);
+}
+.wonder-tick.is-past {
+  border-color: var(--w-cyan);
+}
+.wonder-text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  color: var(--w-dim);
+  transition: color 0.2s;
+}
+.wonder-text-btn:hover {
+  color: var(--w-ink);
+}
+.wonder-text-btn svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+/* Parameters: a glass card on the right. */
+.wonder-panel {
+  position: absolute;
+  z-index: 4;
+  top: 4.6rem;
+  right: 1.5rem;
+  width: 16.5rem;
+  border: 1px solid var(--w-line);
+  border-radius: 1rem;
+  padding: 1rem;
+  background: var(--w-glass);
+  backdrop-filter: blur(14px);
+}
+.wonder-panel-title,
+.wonder-panel-label {
+  font-family: var(--font-code);
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--w-faint);
+}
+.wonder-panel-label {
+  margin-top: 1rem;
+}
+.wonder-readouts {
+  margin-top: 0.6rem;
+  display: grid;
+  gap: 0.35rem;
+}
+.wonder-readouts div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.82rem;
+  color: var(--w-dim);
+}
+.wonder-readouts strong {
+  font-family: var(--font-code);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--w-cyan);
+  font-variant-numeric: tabular-nums;
+}
+.wonder-readouts strong.is-amber {
+  color: var(--w-amber);
+}
+.wonder-chips {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.wonder-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid var(--w-line);
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
+  color: var(--w-dim);
+  transition:
+    color 0.2s,
+    background-color 0.2s,
+    border-color 0.2s;
+}
+.wonder-chip:hover {
+  color: var(--w-ink);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.wonder-chip[aria-pressed='true'] {
+  color: #10121a;
+  background: var(--w-amber);
+  border-color: var(--w-amber);
+}
+.wonder-chip svg {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+.wonder-panel-hint {
+  margin-top: 0.9rem;
+  font-size: 0.74rem;
+  line-height: 1.6;
+  color: var(--w-faint);
+}
+.wonder-slider {
+  display: block;
+  margin-top: 1rem;
+}
+.wonder-slider span {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--w-dim);
+}
+.wonder-slider output {
+  font-family: var(--font-code);
+  color: var(--w-violet);
+}
+.wonder-slider input {
+  width: 100%;
+  margin-top: 0.5rem;
+  accent-color: var(--w-violet);
+}
+.wonder-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+  font-size: 0.8rem;
+  color: var(--w-dim);
+  cursor: pointer;
+}
+.wonder-toggle input {
+  accent-color: var(--w-violet);
+}
+
+/* ── Article below the stage ─────────────────────────────────────────── */
+
+.wonder-article {
+  position: relative;
+  border-top: 1px solid var(--w-line);
+  padding: 5rem 1.5rem 6rem;
+}
+.wonder-article-inner {
+  margin: 0 auto;
+  max-width: 44rem;
+}
+.wonder-takeaway {
+  border-left: 2px solid var(--w-cyan);
+  padding: 0.2rem 0 0.2rem 1.1rem;
+  font-family: var(--font-heading, serif);
+  font-size: 1.3rem;
+  line-height: 1.65;
+  color: var(--w-ink);
+}
+.wonder-section {
+  margin-top: 3.5rem;
+  scroll-margin-top: 2rem;
+}
+.wonder-section h2 {
+  font-family: var(--font-heading, serif);
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: var(--w-ink);
+}
+.wonder-section h2 .num {
+  margin-right: 0.6rem;
+  font-family: var(--font-display, serif);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--w-violet);
+}
+.wonder-prose {
+  margin-top: 1rem;
+  font-size: 1rem;
+  line-height: 1.85;
+  color: var(--w-dim);
+}
+.wonder-prose strong {
+  color: var(--w-ink);
+}
+.wonder-prose .katex {
+  color: var(--w-ink);
+}
+.wonder-prose .katex-display {
+  margin: 1.4rem 0;
+  border: 1px solid var(--w-line);
+  border-radius: 0.8rem;
+  padding: 1rem 0.5rem;
+  background: rgba(255, 255, 255, 0.025);
+}
+.wonder-faq {
+  margin-top: 1.2rem;
+  border-top: 1px solid var(--w-line);
+}
+.wonder-faq details {
+  border-bottom: 1px solid var(--w-line);
+}
+.wonder-faq summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  cursor: pointer;
+  list-style: none;
+  padding: 1.1rem 0;
+  font-weight: 600;
+  color: var(--w-ink);
+}
+.wonder-faq summary::-webkit-details-marker {
+  display: none;
+}
+.wonder-faq summary::after {
+  content: '+';
+  color: var(--w-violet);
+  transition: transform 0.25s;
+}
+.wonder-faq details[open] summary::after {
+  transform: rotate(45deg);
+}
+.wonder-faq p {
+  padding-bottom: 1.1rem;
+  line-height: 1.8;
+  color: var(--w-dim);
+}
+.wonder-links {
+  margin-top: 1.2rem;
+  display: grid;
+  gap: 0.6rem;
+}
+.wonder-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid var(--w-line);
+  border-radius: 0.8rem;
+  padding: 0.9rem 1.1rem;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+.wonder-link:hover {
+  border-color: rgba(110, 231, 255, 0.4);
+  background: rgba(110, 231, 255, 0.04);
+}
+.wonder-link .kind {
+  font-family: var(--font-code);
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--w-faint);
+}
+.wonder-link .title {
+  color: var(--w-ink);
+}
+.wonder-link .note {
+  font-size: 0.85rem;
+  color: var(--w-dim);
+}
+.wonder-sources {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: var(--w-faint);
+}
+.wonder-sources a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.wonder-sources a:hover {
+  color: var(--w-ink);
+}
+
+/* ── Hub cards (also used inside the paper site) ─────────────────────── */
+
+.wonder-card {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.1rem;
+  background: #090a12;
+  color: #eceaf4;
+  transition:
+    transform 0.25s,
+    border-color 0.25s;
+}
+.wonder-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(110, 231, 255, 0.35);
+}
+.wonder-poster {
+  aspect-ratio: 16 / 10;
+  background:
+    radial-gradient(
+      60% 70% at 50% 50%,
+      rgba(120, 92, 255, 0.2),
+      transparent 70%
+    ),
+    #07080d;
+}
+.wonder-poster svg {
+  width: 100%;
+  height: 100%;
+}
+.wonder-card-body {
+  padding: 1.1rem 1.25rem 1.3rem;
+}
+.wonder-card-body .meta {
+  font-family: var(--font-code);
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #b2a0ff;
+}
+.wonder-card-body h2,
+.wonder-card-body h3 {
+  margin-top: 0.6rem;
+  font-family: var(--font-heading, serif);
+  font-size: 1.2rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.wonder-card-body p {
+  margin-top: 0.5rem;
+  font-size: 0.86rem;
+  line-height: 1.7;
+  color: rgba(236, 234, 244, 0.62);
+}
+
+/* ── Small screens: canvas on top, the panel flows below it ──────────── */
+
+@media (max-width: 820px) {
+  .wonder-stage {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+  .wonder-viewport {
+    position: relative;
+    height: 82svh;
+    min-height: 520px;
+  }
+  .wonder-head {
+    top: 3.8rem;
+    left: 1rem;
+    right: 1rem;
+    max-width: none;
+  }
+  .wonder-head p {
+    display: none;
+  }
+  .wonder-top {
+    padding: 0.9rem 1rem;
+  }
+  .wonder-nav a.optional {
+    display: none;
+  }
+  .wonder-caption {
+    bottom: 5rem;
+  }
+  .wonder-panel {
+    position: relative;
+    top: auto;
+    right: auto;
+    width: auto;
+    margin: 0 1rem 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wonder-caption {
+    animation: none;
+  }
+}

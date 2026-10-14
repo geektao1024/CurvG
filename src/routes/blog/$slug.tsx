@@ -1,11 +1,11 @@
 import { createFileRoute, notFound } from '@tanstack/react-router';
 import { MDXProvider } from '@mdx-js/react';
-import { ArrowLeft, Calendar } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 
-import { Link } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
 import {
   absoluteUrl,
+  breadcrumbJsonLd,
   DEFAULT_SOCIAL_IMAGE_PATH,
   localizedLinks,
   serializeJsonLd,
@@ -16,6 +16,7 @@ import { getLocale } from '@/paraglide/runtime.js';
 import { SitePage } from '@/blocks/site-page';
 import { MarkdownContent } from '@/components/markdown-content';
 import { mdxComponents } from '@/components/mdx-components';
+import { PageBreadcrumbs } from '@/components/page-breadcrumbs';
 import { formatPostDate, loadLocalPost } from '@/content/posts';
 import { getBlogPostFn } from '@/content/posts/server';
 
@@ -95,7 +96,23 @@ export const Route = createFileRoute('/blog/$slug')({
       scripts: [
         {
           type: 'application/ld+json',
-          children: serializeJsonLd(structuredData),
+          children: serializeJsonLd([
+            breadcrumbJsonLd(
+              [
+                {
+                  name: m['common.nav.home']({}, { locale: locale as never }),
+                  path: '/',
+                },
+                {
+                  name: m['blog.breadcrumb']({}, { locale: locale as never }),
+                  path: '/blog',
+                },
+                { name: post.title, path },
+              ],
+              locale
+            ),
+            structuredData,
+          ]),
         },
       ],
     };
@@ -112,15 +129,16 @@ function BlogPostPage() {
     post.source === 'local' ? loadLocalPost(post.slug, locale)?.default : null;
 
   return (
-    <SitePage mainClassName="px-6 py-12 md:px-8 md:py-16">
+    <SitePage mainClassName="curvg-stage curvg-frame px-6 py-12 md:px-8 md:py-16">
       <article className="mx-auto max-w-3xl">
-        <Link
-          href="/blog"
-          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-2 text-sm font-medium transition-colors"
-        >
-          <ArrowLeft className="size-4" />
-          {m['blog.back_to_blog']()}
-        </Link>
+        <PageBreadcrumbs
+          label={m['common.nav.breadcrumb']()}
+          items={[
+            { href: '/', label: m['common.nav.home']() },
+            { href: '/blog', label: m['blog.breadcrumb']() },
+            { href: `/blog/${post.slug}`, label: post.title },
+          ]}
+        />
 
         <header className="border-border mt-8 mb-6 border-b pb-6">
           <h1 className="text-foreground text-3xl font-semibold tracking-tight md:text-4xl">

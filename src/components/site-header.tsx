@@ -30,8 +30,15 @@ export interface NavMenuLink {
   note?: string;
 }
 
+export interface NavMenuGroup {
+  title?: string;
+  /** The group title links to the next-level hub (e.g. a subject page). */
+  href?: string;
+  links: NavMenuLink[];
+}
+
 export interface NavMenu {
-  groups: { title?: string; links: NavMenuLink[] }[];
+  groups: NavMenuGroup[];
   footer?: NavMenuLink;
 }
 
@@ -39,10 +46,22 @@ export interface NavMenu {
 const isExternalHref = (href: string) => /^https?:\/\//.test(href);
 
 /** A nav link is current on its own page and anything under it (/labs/…). */
-function isCurrent(href: string, pathname: string) {
+export function isCurrent(href: string, pathname: string) {
   if (href.includes('#') || isExternalHref(href)) return false;
   if (href === '/') return pathname === '/';
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/** A top-level item is current anywhere in its section, dropdown included. */
+export function menuCurrent(link: NavLink, pathname: string) {
+  return (
+    isCurrent(link.href, pathname) ||
+    !!link.menu?.groups.some(
+      (group) =>
+        (group.href && isCurrent(group.href, pathname)) ||
+        group.links.some((item) => isCurrent(item.href, pathname))
+    )
+  );
 }
 
 export function SiteHeader({
@@ -55,6 +74,7 @@ export function SiteHeader({
   toggleThemeLabel = 'Toggle theme',
   userFallback = 'User',
   framed = false,
+  showThemeToggle = true,
 }: {
   navLinks?: NavLink[];
   ctaHref?: string;
@@ -65,6 +85,8 @@ export function SiteHeader({
   toggleThemeLabel?: string;
   userFallback?: string;
   framed?: boolean;
+  /** Off on pages with a fixed theme, where the toggle would do nothing. */
+  showThemeToggle?: boolean;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -133,12 +155,7 @@ export function SiteHeader({
                   key={link.href}
                   link={link}
                   menu={link.menu}
-                  current={
-                    isCurrent(link.href, pathname) ||
-                    link.menu.groups.some((group) =>
-                      group.links.some((item) => isCurrent(item.href, pathname))
-                    )
-                  }
+                  current={menuCurrent(link, pathname)}
                   isCurrent={(href) => isCurrent(href, pathname)}
                 />
               );
@@ -185,7 +202,7 @@ export function SiteHeader({
         {/* Desktop actions */}
         <div className="hidden items-center gap-3 lg:flex">
           <LocaleSelector switchLabel={switchLanguageLabel} />
-          <ThemeToggle label={toggleThemeLabel} />
+          {showThemeToggle ? <ThemeToggle label={toggleThemeLabel} /> : null}
           <span className="bg-border h-5 w-px" aria-hidden />
           {user ? (
             <SiteUserMenu
@@ -245,27 +262,58 @@ export function SiteHeader({
                   <Link
                     href={link.href}
                     target={link.external ? '_blank' : undefined}
-                    aria-current={pathname === link.href ? 'page' : undefined}
+                    aria-current={
+                      menuCurrent(link, pathname) ? 'page' : undefined
+                    }
                     className="text-muted-foreground hover:bg-accent hover:text-foreground aria-[current=page]:bg-accent aria-[current=page]:text-primary block rounded-md px-3 py-2.5 text-[15px] transition-colors"
                   >
                     {link.label}
                   </Link>
                   {link.menu ? (
                     <div className="border-border mt-1 ml-3 flex flex-col border-l pl-2">
-                      {link.menu.groups
-                        .flatMap((group) => group.links)
-                        .map((item) => (
-                          <Link
-                            key={item.href}
-                            href={item.href}
-                            aria-current={
-                              pathname === item.href ? 'page' : undefined
-                            }
-                            className="text-muted-foreground hover:text-foreground aria-[current=page]:text-primary rounded-md px-3 py-2 text-sm transition-colors"
-                          >
-                            {item.label}
-                          </Link>
-                        ))}
+                      {link.menu.groups.map((group, gi) => (
+                        <div key={group.title ?? gi} className="flex flex-col">
+                          {group.title ? (
+                            group.href ? (
+                              <Link
+                                href={group.href}
+                                aria-current={
+                                  pathname === group.href ? 'page' : undefined
+                                }
+                                className="text-muted-foreground aria-[current=page]:text-primary px-3 pt-2 pb-1 font-mono text-[11px] font-semibold tracking-[0.14em] uppercase"
+                              >
+                                {group.title}
+                              </Link>
+                            ) : (
+                              <p className="text-muted-foreground px-3 pt-2 pb-1 font-mono text-[11px] font-semibold tracking-[0.14em] uppercase">
+                                {group.title}
+                              </p>
+                            )
+                          ) : null}
+                          {group.links.map((item) => (
+                            <Link
+                              key={item.href}
+                              href={item.href}
+                              aria-current={
+                                isCurrent(item.href, pathname)
+                                  ? 'page'
+                                  : undefined
+                              }
+                              className="text-muted-foreground hover:text-foreground aria-[current=page]:text-primary rounded-md px-3 py-2 text-sm transition-colors"
+                            >
+                              {item.label}
+                            </Link>
+                          ))}
+                        </div>
+                      ))}
+                      {link.menu.footer ? (
+                        <Link
+                          href={link.menu.footer.href}
+                          className="text-primary rounded-md px-3 py-2 text-sm font-medium"
+                        >
+                          {link.menu.footer.label}
+                        </Link>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -274,7 +322,7 @@ export function SiteHeader({
           </nav>
           <div className="border-border mt-3 flex items-center gap-2 border-t pt-3">
             <LocaleSelector switchLabel={switchLanguageLabel} />
-            <ThemeToggle label={toggleThemeLabel} />
+            {showThemeToggle ? <ThemeToggle label={toggleThemeLabel} /> : null}
             <div className="flex-1" />
             {user ? (
               <SiteUserMenu
@@ -344,13 +392,22 @@ function NavDropdown({
         <div
           className={cn(
             'bg-popover text-popover-foreground rounded-xl border p-2 shadow-[0_18px_40px_-20px_rgba(29,35,33,0.45)]',
-            wide ? 'w-[34rem]' : 'w-72'
+            wide ? 'w-[34rem]' : 'w-80'
           )}
         >
           <div className={cn('grid gap-1', wide && 'grid-cols-2')}>
             {menu.groups.map((group, i) => (
               <div key={group.title ?? i} className="p-1">
-                {group.title ? (
+                {group.title && group.href ? (
+                  <Link
+                    href={group.href}
+                    data-current={isCurrent(group.href) || undefined}
+                    className="text-muted-foreground hover:text-primary data-[current]:text-primary inline-flex items-center gap-1 px-2.5 pt-1.5 pb-1 font-mono text-[10px] font-semibold tracking-[0.16em] uppercase transition-colors"
+                  >
+                    {group.title}
+                    <ArrowRight className="size-3" aria-hidden />
+                  </Link>
+                ) : group.title ? (
                   <p className="text-muted-foreground px-2.5 pt-1.5 pb-1 font-mono text-[10px] font-semibold tracking-[0.16em] uppercase">
                     {group.title}
                   </p>

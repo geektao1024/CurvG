@@ -34,7 +34,8 @@ import { vectorDotProduct } from './data/vector-dot-product';
 import { waveInterference } from './data/wave-interference';
 import { wavePropagation } from './data/wave-propagation';
 import { zerosBisection } from './data/zeros-bisection';
-import type { Lab, LabSubject, LabSuite } from './types';
+import type { Lab, LabSubject, LabSuite, LabVideo } from './types';
+import { PUBLISHED_LAB_FILMS } from './videos.generated';
 
 export type {
   Lab,
@@ -97,8 +98,8 @@ export const LAB_SUBJECTS: readonly LabSubject[] = [
       zh: '数学交互实验：函数、微积分、圆锥曲线、几何与概率',
     },
     metaTitle: {
-      en: 'Interactive Math Labs — Functions, Calculus, Conics, Geometry & Probability | CurvG',
-      zh: '数学交互实验 — 函数、导数、圆锥曲线、几何、概率在线演示 | CurvG',
+      en: 'Interactive Math Labs: Calculus, Conics, Geometry | CurvG',
+      zh: '数学交互实验 — 函数、导数、圆锥曲线、几何、概率 | CurvG',
     },
     metaDescription: {
       en: 'Free interactive math labs for high school and college: drag the board to explore graph transformations, derivatives and integrals, conic sections, proofs and probability, each with a guided walk-through and a quiz.',
@@ -118,8 +119,8 @@ export const LAB_SUBJECTS: readonly LabSubject[] = [
       zh: '物理交互实验：运动、力与能量、振动与波',
     },
     metaTitle: {
-      en: 'Interactive Physics Simulations — Motion, Forces, Oscillations & Waves | CurvG',
-      zh: '物理交互实验 — 运动学、受力分析、简谐振动与波在线模拟 | CurvG',
+      en: 'Physics Simulations: Motion, Forces & Waves | CurvG',
+      zh: '物理交互实验 — 运动学、受力分析、简谐振动与波 | CurvG',
     },
     metaDescription: {
       en: 'Free interactive physics labs: set balls, slopes, springs and waves in motion and watch the v–t graph, the forces and the energy change, each with a guided walk-through and a quiz.',
@@ -373,6 +374,30 @@ export function latestLabs(count: number): Lab[] {
   return [...publicLabs()]
     .sort((a, b) => b.updated.localeCompare(a.updated))
     .slice(0, count);
+}
+
+function isoDuration(seconds: number): string {
+  const total = Math.round(seconds);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `PT${m ? `${m}M` : ''}${s}S`;
+}
+
+/** The narrated film of this chapter in one language, once published. */
+export function labVideo(lab: Lab, lang: LibraryLocale): LabVideo | undefined {
+  const film = PUBLISHED_LAB_FILMS[lab.slug]?.[lang];
+  if (!film) return undefined;
+  const base = `/media/labs/${lab.slug}`;
+  // The digest busts the one-day media cache after a re-render.
+  const v = `?v=${film.sha256.slice(0, 8)}`;
+  return {
+    src: `${base}/${lang}-landscape.mp4${v}`,
+    poster: `${base}/${lang}-landscape.jpg${v}`,
+    captions: `${base}/${lang}.vtt${v}`,
+    portrait: film.portrait ? `${base}/${lang}-portrait.mp4${v}` : undefined,
+    duration: isoDuration(film.duration),
+    uploaded: film.uploaded,
+  };
 }
 
 /** The creator, prefilled with this chapter's video prompt. */

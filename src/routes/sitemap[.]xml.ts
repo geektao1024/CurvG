@@ -19,6 +19,7 @@ import {
   getLocalPosts,
   type BlogPost,
 } from '@/content/posts';
+import { publicWonders, wonderPath } from '@/content/wonders';
 
 type Entry = {
   path: string;
@@ -80,6 +81,21 @@ const STATIC_ENTRIES: Entry[] = [
       path: labPath(lab),
       availableLocales: ALL_LOCALES,
       lastModified: lab.updated,
+      changeFrequency: 'monthly',
+      priority: 0.8,
+    })
+  ),
+  {
+    path: '/wonders',
+    availableLocales: ALL_LOCALES,
+    changeFrequency: 'weekly',
+    priority: 0.8,
+  },
+  ...publicWonders().map(
+    (wonder): Entry => ({
+      path: wonderPath(wonder),
+      availableLocales: ALL_LOCALES,
+      lastModified: wonder.updated,
       changeFrequency: 'monthly',
       priority: 0.8,
     })

@@ -81,6 +81,7 @@ export function PricingTable({
   billingPeriodLabel,
   includedLabel,
   notIncludedLabel,
+  planHeading: PlanHeading = 'h3',
 }: {
   groups: PricingGroup[];
   onCheckout?: (plan: PricingPlan) => void;
@@ -93,6 +94,8 @@ export function PricingTable({
   billingPeriodLabel?: string;
   includedLabel?: string;
   notIncludedLabel?: string;
+  /** Plan name level: one below the section's own heading. */
+  planHeading?: 'h2' | 'h3';
 }) {
   const [activeGroup, setActiveGroup] = useState(
     groups[1]?.key || groups[0]?.key || ''
@@ -178,9 +181,9 @@ export function PricingTable({
             >
               <div className="flex min-h-[21rem] flex-col gap-6 p-5 md:min-h-96 md:p-10">
                 <div className="flex min-h-7 items-start justify-between gap-3">
-                  <h3 className="text-xl leading-7 font-semibold md:text-2xl">
+                  <PlanHeading className="text-xl leading-7 font-semibold md:text-2xl">
                     {plan.name}
-                  </h3>
+                  </PlanHeading>
                   {plan.badge && (
                     <span className="bg-primary/10 text-primary shrink-0 rounded-[4px] px-1.5 py-0.5 text-xs leading-5 font-medium">
                       {plan.badge}

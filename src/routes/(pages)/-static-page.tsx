@@ -1,9 +1,15 @@
 import type { ComponentType } from 'react';
 import { notFound, useLoaderData } from '@tanstack/react-router';
 
-import { localizedLinks, socialMeta } from '@/lib/seo';
+import {
+  breadcrumbJsonLd,
+  localizedLinks,
+  serializeJsonLd,
+  socialMeta,
+} from '@/lib/seo';
 import { m } from '@/paraglide/messages.js';
 import { baseLocale, getLocale } from '@/paraglide/runtime.js';
+import { PageBreadcrumbs } from '@/components/page-breadcrumbs';
 
 type PageMeta = {
   title: string;
@@ -32,6 +38,11 @@ function loadPage(slug: string, locale: string): PageModule | null {
 
 type LoaderData = { meta: PageMeta; slug: string; locale: string };
 
+/** Page titles carry the brand ("… | CurvG"); breadcrumbs do not. */
+function pageName(title: string): string {
+  return title.replace(/\s*[|｜].*$/, '');
+}
+
 // Shared route options for static MDX pages. Each page gets its own
 // explicit route file (e.g. privacy-policy.tsx) so static segments
 // always outrank dynamic ones — add a new page by creating the MDX
@@ -59,6 +70,23 @@ export function staticPageRouteOptions(slug: string) {
           }),
         ],
         links: seoLinks.links,
+        scripts: [
+          {
+            type: 'application/ld+json',
+            children: serializeJsonLd(
+              breadcrumbJsonLd(
+                [
+                  {
+                    name: m['common.nav.home']({}, { locale: locale as never }),
+                    path: '/',
+                  },
+                  { name: pageName(meta.title), path: `/${slug}` },
+                ],
+                locale
+              )
+            ),
+          },
+        ],
       };
     },
     component: StaticPage,
@@ -75,7 +103,14 @@ function StaticPage() {
 
   return (
     <article>
-      <header className="border-border mb-6 border-b pb-5">
+      <PageBreadcrumbs
+        label={m['common.nav.breadcrumb']()}
+        items={[
+          { href: '/', label: m['common.nav.home']() },
+          { href: `/${slug}`, label: pageName(meta.title) },
+        ]}
+      />
+      <header className="border-border mt-8 mb-6 border-b pb-5">
         <h1 className="curvg-heading text-foreground text-3xl md:text-4xl">
           {meta.title}
         </h1>

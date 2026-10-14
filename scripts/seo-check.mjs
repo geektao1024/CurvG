@@ -6,7 +6,8 @@ const baseUrl = (process.env.SEO_BASE_URL || 'http://localhost:3000').replace(
 );
 const articleSlug = 'ai-manim-animation-workflow';
 
-const pagePaths = [
+// One or two pages of every page type, in both locales (docs/NAVIGATION.md).
+const englishPaths = [
   '/',
   '/creator',
   '/pricing',
@@ -14,14 +15,25 @@ const pagePaths = [
   '/terms-of-service',
   '/blog',
   `/blog/${articleSlug}`,
-  '/zh',
-  '/zh/creator',
-  '/zh/pricing',
-  '/zh/privacy-policy',
-  '/zh/terms-of-service',
-  '/zh/blog',
-  `/zh/blog/${articleSlug}`,
+  '/labs',
+  '/labs/math',
+  '/labs/functions',
+  '/labs/functions/derivative-tangent-slope',
+  '/wonders',
+  '/wonders/fourier-epicycles',
+  '/wonders/mandelbrot-set',
+  '/curves',
+  '/curves/cardioid',
+  '/library',
+  '/library/calculus',
 ];
+const pagePaths = [
+  ...englishPaths,
+  ...englishPaths.map((path) => (path === '/' ? '/zh' : `/zh${path}`)),
+];
+// Pages outside the section tree carry no breadcrumb (docs/NAVIGATION.md §4).
+const NO_BREADCRUMB = new Set(['/', '/zh', '/pricing', '/zh/pricing']);
+const checkedImages = new Map();
 
 const failures = [];
 
@@ -94,7 +106,40 @@ async function checkPage(path) {
   if (twitterCard !== 'summary_large_image') {
     fail(path, 'twitter:card is not summary_large_image');
   }
-  if (!/<h1\b/i.test(html)) fail(path, 'SSR source has no H1');
+  const h1Count = (html.match(/<h1\b/gi) || []).length;
+  if (h1Count !== 1) fail(path, `SSR source has ${h1Count} H1 (want 1)`);
+
+  // Google shows ~60 display units; CJK characters count double.
+  const width = [...(title ?? '')].reduce(
+    (sum, ch) =>
+      sum +
+      (/[\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef\u3000-\u303f]/.test(ch)
+        ? 2
+        : 1),
+    0
+  );
+  if (width > 70) fail(path, `title is ${width} units wide (keep ≤ 70)`);
+
+  const alternates = tags(html, 'link')
+    .filter((attrs) => attrs.rel?.toLowerCase() === 'alternate')
+    .map((attrs) => attrs.hreflang);
+  for (const locale of ['en', 'zh', 'x-default']) {
+    if (!alternates.includes(locale)) fail(path, `missing ${locale} hreflang`);
+  }
+
+  if (!NO_BREADCRUMB.has(path) && !html.includes('"@type":"BreadcrumbList"')) {
+    fail(path, 'missing BreadcrumbList structured data');
+  }
+
+  if (ogImage) {
+    const imagePath = new URL(ogImage, baseUrl).pathname;
+    if (!checkedImages.has(imagePath)) {
+      const res = await fetch(`${baseUrl}${imagePath}`);
+      checkedImages.set(imagePath, res.ok);
+    }
+    if (!checkedImages.get(imagePath))
+      fail(path, `og:image ${imagePath} not found`);
+  }
 
   if (path.endsWith('/creator') || path === '/creator') {
     const hasEntryModes = /From template/.test(html) || /从模板/.test(html);
@@ -169,6 +214,11 @@ try {
     if (!/^Sitemap: https?:\/\//m.test(body)) {
       fail('/robots.txt', 'missing absolute sitemap URL');
     }
+    for (const path of ['/admin', '/settings', '/zh/admin', '/zh/settings']) {
+      if (!body.includes(`Disallow: ${path}`)) {
+        fail('/robots.txt', `does not disallow ${path}`);
+      }
+    }
   });
 
   await checkTextEndpoint('/sitemap.xml', (body) => {
@@ -180,6 +230,11 @@ try {
     }
     if (!body.includes(`/blog/${articleSlug}`)) {
       fail('/sitemap.xml', 'missing the new article');
+    }
+    for (const pathname of ['/labs', '/wonders', '/curves', '/library']) {
+      if (!body.includes(`${pathname}</loc>`)) {
+        fail('/sitemap.xml', `missing section hub ${pathname}`);
+      }
     }
   });
 

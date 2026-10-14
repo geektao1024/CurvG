@@ -3,11 +3,12 @@ import { getLocale } from '@/paraglide/runtime.js';
 import { SiteFooter, type FooterColumn } from '@/components/site-footer';
 import { chapterPath, publicSuites } from '@/content/labs';
 import { libraryText } from '@/content/library';
+import { publicWonders, wonderPath } from '@/content/wonders';
 
 export function Footer() {
   const lang = getLocale() === 'zh' ? 'zh' : 'en';
-  // Labs first; the free tools column holds the traffic pages (as mathos
-  // does), so they stay linked site-wide without taking a nav slot.
+  // Same sections as the top nav (docs/NAVIGATION.md §6): labs, wonders,
+  // create (with the keyword landing pages), resources, legal.
   const columns: FooterColumn[] = [
     {
       title: m['landing.nav.labs'](),
@@ -20,23 +21,26 @@ export function Footer() {
       ],
     },
     {
-      title: m['landing.footer.free_tools'](),
+      title: m['landing.nav.wonders'](),
       links: [
-        { label: m['landing.footer.labs'](), href: '/labs' },
-        { label: m['landing.footer.curve_explorer'](), href: '/curves' },
+        ...publicWonders().map((wonder) => ({
+          label: libraryText(wonder.name, lang),
+          href: wonderPath(wonder),
+        })),
+        { label: m['landing.footer.wonders_all'](), href: '/wonders' },
+      ],
+    },
+    {
+      title: m['landing.footer.create'](),
+      links: [
+        { label: m['landing.nav.create'](), href: '/creator' },
+        { label: m['landing.footer.pricing'](), href: '/pricing' },
+        { label: m['landing.nav.faq'](), href: '/#faq' },
         { label: m['landing.footer.tool'](), href: '/math-animation-tool' },
         {
           label: m['landing.footer.free_creator'](),
           href: '/free-math-video-creator',
         },
-      ],
-    },
-    {
-      title: m['landing.footer.product'](),
-      links: [
-        { label: m['landing.nav.create'](), href: '/creator' },
-        { label: m['landing.footer.pricing'](), href: '/pricing' },
-        { label: m['landing.nav.faq'](), href: '/#faq' },
         {
           label: m['landing.footer.manim_alternative'](),
           href: '/manim-alternative',
@@ -46,6 +50,7 @@ export function Footer() {
     {
       title: m['landing.footer.resources'](),
       links: [
+        { label: m['landing.footer.curve_explorer'](), href: '/curves' },
         { label: m['landing.footer.library'](), href: '/library' },
         { label: m['landing.footer.blog'](), href: '/blog' },
         {

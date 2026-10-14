@@ -97,6 +97,18 @@ function RootComponent() {
   const analytics = Route.useLoaderData();
   const pathname = usePathname();
   const isCreatorWorkspace = pathname === '/creator';
+  // Wonder stages are full-bleed canvases; the support bubble would sit on them.
+  const isWonderStage = pathname.startsWith('/wonders/');
+  // Film frames for headless capture: no toasts, sign-in prompts or widgets.
+  const isRender = pathname.startsWith('/render/');
+
+  if (isRender) {
+    return (
+      <QueryClientProvider client={getQueryClient()}>
+        <Outlet />
+      </QueryClientProvider>
+    );
+  }
 
   return (
     <QueryClientProvider client={getQueryClient()}>
@@ -120,7 +132,7 @@ function RootComponent() {
             src={analytics.plausibleSrc || undefined}
           />
         ) : null}
-        {!isCreatorWorkspace && (
+        {!isCreatorWorkspace && !isWonderStage && (
           <CustomerService
             crispWebsiteId={analytics?.crispWebsiteId || undefined}
             tawkPropertyId={analytics?.tawkPropertyId || undefined}

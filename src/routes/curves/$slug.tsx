@@ -2,11 +2,15 @@ import { createFileRoute, notFound } from '@tanstack/react-router';
 import { ArrowRight, WandSparkles } from 'lucide-react';
 
 import { Link } from '@/core/i18n/navigation';
+import { plainMath } from '@/lib/plain-math';
 import {
+  absoluteUrl,
+  breadcrumbJsonLd,
   localizedLinks,
   localizedUrl,
   serializeJsonLd,
   socialMeta,
+  titleWidth,
 } from '@/lib/seo';
 import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
@@ -14,9 +18,16 @@ import { SitePage } from '@/blocks/site-page';
 import { CurveExplorer, CurveThumb } from '@/components/curve-preview';
 import { LabCard } from '@/components/lab-card';
 import { MathTex } from '@/components/math-tex';
-import { getCurve, getRelatedCurves } from '@/content/curves';
+import { PageBreadcrumbs } from '@/components/page-breadcrumbs';
+import {
+  curveGraphImage,
+  curveOgImage,
+  getCurve,
+  getRelatedCurves,
+} from '@/content/curves';
 import { labsForCurve } from '@/content/labs';
 import { libraryText, scenesForCurve } from '@/content/library';
+import { wonderPath, wondersForCurve } from '@/content/wonders';
 
 import { labCardLabels } from '../labs/-labs-page';
 
@@ -38,19 +49,20 @@ function CurveDetailPage() {
   const related = getRelatedCurves(curve);
   const scenes = scenesForCurve(curve.slug);
   const labs = labsForCurve(curve.slug);
+  const wonders = wondersForCurve(curve.slug);
 
   return (
     <SitePage>
       <article>
         <section className="curvg-stage curvg-frame border-b px-6 py-12 sm:px-10">
-          <nav aria-label="Breadcrumb">
-            <Link
-              href="/curves"
-              className="text-muted-foreground hover:text-primary font-mono text-xs tracking-[0.14em] uppercase transition-colors"
-            >
-              ← {m['curves.detail.breadcrumb_home']()}
-            </Link>
-          </nav>
+          <PageBreadcrumbs
+            label={m['common.nav.breadcrumb']()}
+            items={[
+              { href: '/', label: m['common.nav.home']() },
+              { href: '/curves', label: m['curves.breadcrumb']() },
+              { href: `/curves/${curve.slug}`, label: curve.name[lang] },
+            ]}
+          />
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <h1 className="curvg-heading text-4xl text-balance sm:text-5xl">
               {curve.name[lang]}
@@ -63,7 +75,8 @@ function CurveDetailPage() {
             {curve.short[lang]}
           </p>
 
-          <div className="mt-10 grid gap-6 lg:grid-cols-[3fr_2fr]">
+          {/* min-w-0: a long equation scrolls inside its card instead of widening the page. */}
+          <div className="mt-10 grid gap-6 lg:grid-cols-[3fr_2fr] [&>*]:min-w-0">
             <CurveExplorer
               curve={curve}
               locale={lang}
@@ -118,15 +131,33 @@ function CurveDetailPage() {
           <h2 id="curve-about" className="curvg-heading text-2xl sm:text-3xl">
             {m['curves.detail.about']({ name: curve.name[lang] })}
           </h2>
-          <div className="mt-6 max-w-3xl space-y-4">
-            {curve.intro[lang].map((paragraph) => (
-              <p
-                key={paragraph.slice(0, 32)}
-                className="text-muted-foreground text-base leading-relaxed"
-              >
-                {paragraph}
-              </p>
-            ))}
+          <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,48rem)_18rem] lg:items-start">
+            <div className="max-w-3xl space-y-4">
+              {curve.intro[lang].map((paragraph) => (
+                <p
+                  key={paragraph.slice(0, 32)}
+                  className="text-muted-foreground text-base leading-relaxed"
+                >
+                  {paragraph}
+                </p>
+              ))}
+            </div>
+            {/* A real image file, so image search can index the graph
+              (the interactive one above is inline SVG). */}
+            <figure className="bg-card overflow-hidden rounded-2xl border">
+              <img
+                src={curveGraphImage(curve.slug)}
+                alt={m['curves.detail.graph_alt']({ name: curve.name[lang] })}
+                width={800}
+                height={600}
+                loading="lazy"
+                decoding="async"
+                className="block h-auto w-full"
+              />
+              <figcaption className="text-muted-foreground border-t px-4 py-2.5 text-xs">
+                {m['curves.detail.figure']({ name: curve.name[lang] })}
+              </figcaption>
+            </figure>
           </div>
 
           <h2 className="curvg-heading mt-12 text-2xl sm:text-3xl">
@@ -211,6 +242,30 @@ function CurveDetailPage() {
           </section>
         )}
 
+        {wonders.length > 0 && (
+          <section className="curvg-stage curvg-frame border-b px-6 py-12 sm:px-10">
+            <h2 className="curvg-heading text-2xl sm:text-3xl">
+              {m['curves.detail.wonders']()}
+            </h2>
+            <div className="mt-8 grid gap-4 sm:grid-cols-2">
+              {wonders.map((wonder) => (
+                <Link
+                  key={wonder.slug}
+                  href={wonderPath(wonder)}
+                  className="group bg-card hover:border-primary/50 flex flex-col gap-1.5 rounded-2xl border p-5 transition-colors"
+                >
+                  <span className="text-primary font-mono text-[11px] tracking-[0.14em] uppercase">
+                    {libraryText(wonder.name, lang)}
+                  </span>
+                  <span className="font-heading group-hover:text-primary text-lg leading-snug transition-colors">
+                    {libraryText(wonder.question, lang)}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
         {related.length > 0 && (
           <section
             className="curvg-stage curvg-frame border-b px-6 py-12 sm:px-10"
@@ -267,34 +322,62 @@ export const Route = createFileRoute('/curves/$slug')({
       { name: curve.name[lang] },
       { locale: locale as never }
     );
-    const description = `${curve.short[lang]} ${m['curves.detail.meta_suffix']({}, { locale: locale as never })}`;
+    // Lead with what the searcher asked for (the curve and its formula),
+    // then one concrete fact (arc length, area…) if it still fits a snippet.
+    const opts = { locale: locale as never };
+    const short = plainMath(curve.short[lang]);
+    const fact = plainMath(curve.properties[lang][0] ?? '');
+    const tag = m['curves.detail.meta_tag']({}, opts);
+    const suffix = m['curves.detail.meta_suffix']({}, opts);
+    // Chinese sentences run on without spaces.
+    const join = (...parts: string[]) => parts.join(lang === 'zh' ? '' : ' ');
+    const description =
+      [join(short, fact, tag), join(short, suffix), join(short, tag)].find(
+        (text) => titleWidth(text) <= 320
+      ) ?? short;
+    const image = curveOgImage(slug, lang);
     const seoLinks = localizedLinks({ path: `/curves/${slug}`, locale });
-    const structuredData = {
-      '@context': 'https://schema.org',
-      '@type': 'BreadcrumbList',
-      itemListElement: [
+    const breadcrumb = breadcrumbJsonLd(
+      [
         {
-          '@type': 'ListItem',
-          position: 1,
-          name: m['curves.detail.breadcrumb_home'](
-            {},
-            { locale: locale as never }
-          ),
-          item: localizedUrl('/curves', locale),
+          name: m['common.nav.home']({}, { locale: locale as never }),
+          path: '/',
         },
         {
-          '@type': 'ListItem',
-          position: 2,
-          name: curve.name[lang],
-          item: seoLinks.canonical,
+          name: m['curves.breadcrumb']({}, { locale: locale as never }),
+          path: '/curves',
         },
+        { name: curve.name[lang], path: `/curves/${slug}` },
       ],
+      locale
+    );
+    const resource = {
+      '@context': 'https://schema.org',
+      '@type': 'LearningResource',
+      name: curve.name[lang],
+      description,
+      url: seoLinks.canonical,
+      image: absoluteUrl(curveGraphImage(slug)),
+      inLanguage: lang === 'zh' ? 'zh-CN' : 'en',
+      learningResourceType: ['Interactive simulation', 'Reference'],
+      isAccessibleForFree: true,
+      teaches: curve.properties[lang].map(plainMath),
     };
+    const structuredData = [breadcrumb, resource];
     return {
       meta: [
         { title },
         { name: 'description', content: description },
-        ...socialMeta({ title, description, url: seoLinks.canonical }),
+        ...socialMeta({
+          title,
+          description,
+          url: seoLinks.canonical,
+          image,
+          imageAlt: m['curves.detail.graph_alt'](
+            { name: curve.name[lang] },
+            opts
+          ),
+        }),
       ],
       links: seoLinks.links,
       scripts: [

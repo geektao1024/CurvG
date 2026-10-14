@@ -11,13 +11,14 @@ import {
 import { rootCategories } from '@/content/library';
 import { libraryText } from '@/content/library/types';
 import { getLocalPosts, mergePosts } from '@/content/posts';
+import { publicWonders, wonderPath } from '@/content/wonders';
 
 const STATIC_PAGES: { path: string; title: string; description: string }[] = [
   {
     path: '',
-    title: 'AI Math Animation Maker',
+    title: 'CurvG — Interactive Math Labs, Animations & Explainer Videos',
     description:
-      'Create math animations online: describe a concept, review the scene plan and Manim Community code, then render an MP4 in the cloud. Free to start.',
+      'Home: interactive labs you can drag, animated math wonders, the curve encyclopedia, and the Creator for Manim explainer videos.',
   },
   {
     path: '/creator',
@@ -80,9 +81,11 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
 ];
 
 const PRODUCT_DESCRIPTION =
-  'CurvG is an AI math animation maker built on Manim Community. It turns a written explanation goal into a reviewable scene plan, portable Manim Community code, and a cloud-rendered MP4 video.';
+  'CurvG turns math into animations you can watch, play with and export: free interactive math and physics labs, animated math wonders (Fourier series, the Mandelbrot set, the Lorenz attractor, phyllotaxis), a 30-curve encyclopedia, and a Creator that plans Manim Community explainer videos.';
 
 const PRODUCT_FACTS = [
+  'The labs, math wonders and curve encyclopedia are free and run in the browser; numbers shown on them are computed live and pinned by tests.',
+  'Subjects: mathematics first; physics only where the mathematics is the subject (motion, oscillations, waves, chaos).',
   'CurvG does not claim that AI output is automatically mathematically correct.',
   'The Creator can generate a scene plan and Manim code that users can review, copy, and download.',
   'Direct code editing and compilation in the browser are not currently available.',
@@ -152,6 +155,15 @@ export const Route = createFileRoute('/llms.txt')({
               '',
             ]),
           ]),
+          '## Math Wonders',
+          '',
+          'Animated stories about striking math phenomena, each followed by a playable stage. Separate from the syllabus-ordered labs.',
+          '',
+          ...publicWonders().map(
+            (wonder) =>
+              `- [${libraryText(wonder.question, 'en')}](${app_url}${wonderPath(wonder)}): ${libraryText(wonder.summary, 'en')}`
+          ),
+          '',
         ];
 
         if (posts.length > 0) {

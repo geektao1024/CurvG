@@ -1,0 +1,253 @@
+/*
+ * Lab film frames (/render/lab/*): the lab workspace's paper & amber look at
+ * a fixed video resolution. Rendered by a capture script, never shown in the
+ * site chrome. No transitions: every frame is a pure function of time.
+ */
+
+@layer components {
+  .lf {
+    --lf-bg: #f6f4ef;
+    --lf-paper: #fffefb;
+    --lf-ink: #1d2321;
+    --lf-text: #2a302e;
+    --lf-muted: #5f6763;
+    --lf-line: rgba(29, 35, 33, 0.1);
+    --lf-accent: #c9800f;
+    --lf-accent-bg: rgba(201, 128, 15, 0.1);
+    --lf-sans:
+      'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Inter Variable',
+      system-ui, sans-serif;
+    --lf-serif: 'Instrument Serif', 'Noto Serif SC', 'Songti SC', serif;
+    --lf-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+
+    position: relative;
+    display: grid;
+    overflow: hidden;
+    background: var(--lf-bg);
+    color: var(--lf-text);
+    font-family: var(--lf-sans);
+  }
+
+  .lf * {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  .lf-landscape {
+    grid-template-columns: 1140px 1fr;
+    gap: 56px;
+    padding: 70px 72px 70px 60px;
+  }
+
+  .lf-portrait {
+    grid-template-rows: 1000px 1fr;
+    gap: 48px;
+    padding: 120px 40px 90px;
+  }
+
+  .lf-board {
+    overflow: hidden;
+    border: 1px solid var(--lf-line);
+    border-radius: 28px;
+    background: var(--lf-paper);
+    box-shadow:
+      0 1px 2px rgba(29, 35, 33, 0.04),
+      0 24px 48px -32px rgba(29, 35, 33, 0.4);
+  }
+
+  .lf-side {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+  }
+
+  .lf-portrait .lf-side {
+    padding: 0 24px;
+  }
+
+  .lf-brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-family: var(--lf-mono);
+    font-size: 22px;
+    color: var(--lf-muted);
+  }
+
+  .lf-brand i {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    background: var(--lf-accent);
+  }
+
+  .lf-brand b {
+    color: var(--lf-ink);
+    font-weight: 600;
+  }
+
+  .lf-brand b {
+    flex: none;
+  }
+
+  .lf-brand span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .lf-brand span::before {
+    content: '·';
+    margin-right: 14px;
+  }
+
+  .lf-panel {
+    margin-top: 64px;
+  }
+
+  .lf-portrait .lf-panel {
+    margin-top: 36px;
+  }
+
+  .lf-kicker {
+    font-family: var(--lf-mono);
+    font-size: 22px;
+    letter-spacing: 0.04em;
+    color: var(--lf-accent);
+    text-transform: uppercase;
+  }
+
+  .lf-question,
+  .lf-title {
+    margin: 22px 0 0;
+    font-family: var(--lf-serif);
+    font-weight: 500;
+    color: var(--lf-ink);
+    line-height: 1.12;
+  }
+
+  .lf-question {
+    font-size: 64px;
+  }
+
+  .lf-title {
+    font-size: 56px;
+  }
+
+  .lf-body {
+    margin-top: 30px;
+    font-size: 30px;
+    line-height: 1.6;
+    color: var(--lf-text);
+  }
+
+  .lf-body p + p {
+    margin-top: 16px;
+  }
+
+  .lf-body .katex {
+    font-size: 1.05em;
+  }
+
+  .lf-points {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 40px;
+    padding: 0;
+    list-style: none;
+  }
+
+  .lf-points li {
+    padding: 8px 18px;
+    border: 1px solid var(--lf-line);
+    border-radius: 999px;
+    background: var(--lf-paper);
+    font-size: 24px;
+    color: var(--lf-muted);
+  }
+
+  .lf-url {
+    display: inline-block;
+    margin-top: 40px;
+    padding: 16px 28px;
+    border-radius: 16px;
+    background: var(--lf-ink);
+    color: #fffefb;
+    font-family: var(--lf-mono);
+    font-size: 26px;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .lf-readouts {
+    margin-top: auto;
+    padding: 24px 28px;
+    border: 1px solid var(--lf-line);
+    border-radius: 20px;
+    background: var(--lf-paper);
+  }
+
+  .lf-result {
+    display: block;
+    font-size: 30px;
+    color: var(--lf-ink);
+  }
+
+  .lf-readouts dl {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    margin: 18px 0 0;
+  }
+
+  .lf-readouts dl > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 24px;
+  }
+
+  .lf-readouts dt {
+    color: var(--lf-muted);
+  }
+
+  .lf-readouts dd {
+    margin: 0;
+    font-family: var(--lf-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--lf-ink);
+  }
+
+  .lf-readouts .hl dd {
+    color: var(--lf-accent);
+    font-weight: 600;
+  }
+
+  .lf-progress {
+    display: flex;
+    gap: 8px;
+    margin-top: 28px;
+  }
+
+  .lf-panel + .lf-progress {
+    margin-top: auto;
+  }
+
+  .lf-progress span {
+    position: relative;
+    height: 6px;
+    flex: 1;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--lf-line);
+  }
+
+  .lf-progress i {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: var(--lf-accent);
+  }
+}

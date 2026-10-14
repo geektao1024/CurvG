@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react';
 
 import { Link } from '@/core/i18n/navigation';
+import { breadcrumbJsonLd } from '@/lib/seo';
 import { m } from '@/paraglide/messages.js';
 import { SitePage } from '@/blocks/site-page';
 import { LibraryCurveCard } from '@/components/library-curve-card';
+import { PageBreadcrumbs } from '@/components/page-breadcrumbs';
 import type { CurveDef } from '@/content/curves';
 import { labsForCategory } from '@/content/labs';
 import {
@@ -22,35 +24,54 @@ export function LibraryShell({ children }: { children: ReactNode }) {
   return <SitePage>{children}</SitePage>;
 }
 
+/** BreadcrumbList matching `LibraryBreadcrumb` (home first). */
+export function libraryBreadcrumbJsonLd(
+  trail: readonly LibraryCategory[],
+  locale: string,
+  current?: { path: string; name: string }
+) {
+  const lang = libraryLocale(locale);
+  const opts = { locale: locale as never };
+  return breadcrumbJsonLd(
+    [
+      { name: m['common.nav.home']({}, opts), path: '/' },
+      { name: m['library.breadcrumb']({}, opts), path: '/library' },
+      ...trail.map((category) => ({
+        name: libraryText(category.title, lang),
+        path: libraryPath(category),
+      })),
+      ...(current ? [current] : []),
+    ],
+    locale
+  );
+}
+
+/**
+ * Home / 资源库 / hub / topic [/ current]. The last item is the current page;
+ * pass `current` for pages below the trail (scene pages).
+ */
 export function LibraryBreadcrumb({
   trail,
   locale,
+  current,
 }: {
   trail: readonly LibraryCategory[];
   locale: 'en' | 'zh';
+  current?: { href: string; label: string };
 }) {
   return (
-    <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2">
-      <Link
-        href="/library"
-        className="text-muted-foreground hover:text-primary font-mono text-xs tracking-[0.14em] uppercase transition-colors"
-      >
-        {m['library.breadcrumb']()}
-      </Link>
-      {trail.map((category) => (
-        <span key={category.id} className="flex items-center gap-2">
-          <span className="text-muted-foreground font-mono text-xs" aria-hidden>
-            /
-          </span>
-          <Link
-            href={libraryPath(category)}
-            className="text-muted-foreground hover:text-primary font-mono text-xs tracking-[0.14em] uppercase transition-colors"
-          >
-            {libraryText(category.title, locale)}
-          </Link>
-        </span>
-      ))}
-    </nav>
+    <PageBreadcrumbs
+      label={m['common.nav.breadcrumb']()}
+      items={[
+        { href: '/', label: m['common.nav.home']() },
+        { href: '/library', label: m['library.breadcrumb']() },
+        ...trail.map((category) => ({
+          href: libraryPath(category),
+          label: libraryText(category.title, locale),
+        })),
+        ...(current ? [current] : []),
+      ]}
+    />
   );
 }
 
@@ -58,10 +79,13 @@ export function LibraryCurveGrid({
   curves,
   locale,
   badgeFor,
+  heading,
 }: {
   curves: readonly CurveDef[];
   locale: 'en' | 'zh';
   badgeFor?: (curve: CurveDef) => string | undefined;
+  /** Card title level; h2 when the grid sits directly under the H1. */
+  heading?: 'h2' | 'h3';
 }) {
   if (curves.length === 0) {
     return (
@@ -78,6 +102,7 @@ export function LibraryCurveGrid({
           curve={curve}
           locale={locale}
           badge={badgeFor?.(curve)}
+          heading={heading}
           ariaLabel={m['curves.detail.preview_aria']({
             name: curve.name[locale],
           })}

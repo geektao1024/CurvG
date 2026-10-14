@@ -3,6 +3,7 @@ import { ArrowRight } from 'lucide-react';
 
 import { Link } from '@/core/i18n/navigation';
 import {
+  breadcrumbJsonLd,
   localizedLinks,
   localizedUrl,
   serializeJsonLd,
@@ -11,6 +12,7 @@ import {
 import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
 import { LabCard } from '@/components/lab-card';
+import { PageBreadcrumbs } from '@/components/page-breadcrumbs';
 import {
   chapterPath,
   getSubject,
@@ -42,22 +44,16 @@ function SubjectPage({ id }: { id: LabSubjectId }) {
 
   return (
     <LibraryShell>
-      <section className="curvg-stage curvg-frame border-b px-6 py-14 sm:px-10">
-        <nav aria-label="Breadcrumb" className="text-muted-foreground text-sm">
-          <Link
-            href="/labs"
-            className="hover:text-foreground transition-colors"
-          >
-            {m['labs.breadcrumb']()}
-          </Link>
-          <span className="mx-2" aria-hidden>
-            /
-          </span>
-          <span className="text-foreground">
-            {libraryText(subject.name, lang)}
-          </span>
-        </nav>
-        <h1 className="curvg-heading mt-5 max-w-4xl text-4xl text-balance sm:text-5xl">
+      <section className="curvg-stage curvg-frame border-b px-6 pt-10 pb-12 sm:px-10">
+        <PageBreadcrumbs
+          label={m['common.nav.breadcrumb']()}
+          items={[
+            { href: '/', label: m['common.nav.home']() },
+            { href: '/labs', label: m['labs.breadcrumb']() },
+            { href: subjectPath(id), label: libraryText(subject.name, lang) },
+          ]}
+        />
+        <h1 className="curvg-heading mt-8 max-w-4xl text-4xl text-balance sm:text-5xl">
           {libraryText(subject.headline, lang)}
         </h1>
         <p className="text-muted-foreground mt-5 max-w-2xl text-base leading-relaxed sm:text-lg">
@@ -193,24 +189,14 @@ export function subjectRouteOptions(id: LabSubjectId) {
             })),
           },
         },
-        {
-          '@context': 'https://schema.org',
-          '@type': 'BreadcrumbList',
-          itemListElement: [
-            {
-              '@type': 'ListItem',
-              position: 1,
-              name: m['labs.breadcrumb']({}, opts),
-              item: localizedUrl('/labs', locale),
-            },
-            {
-              '@type': 'ListItem',
-              position: 2,
-              name: libraryText(subject.name, lang),
-              item: seoLinks.canonical,
-            },
+        breadcrumbJsonLd(
+          [
+            { name: m['common.nav.home']({}, opts), path: '/' },
+            { name: m['labs.breadcrumb']({}, opts), path: '/labs' },
+            { name: libraryText(subject.name, lang), path: subjectPath(id) },
           ],
-        },
+          locale
+        ),
       ];
       return {
         meta: [

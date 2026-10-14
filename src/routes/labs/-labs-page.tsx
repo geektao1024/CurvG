@@ -5,17 +5,21 @@ import { Link } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
 import {
   absoluteUrl,
+  breadcrumbJsonLd,
+  fitTitle,
   localizedLinks,
   localizedUrl,
   serializeJsonLd,
   socialMeta,
 } from '@/lib/seo';
 import { m } from '@/paraglide/messages.js';
+import { siteNavLinks } from '@/blocks/site-nav';
 import {
   LabWorkspace,
   type WorkspaceLabels,
   type WorkspaceLink,
 } from '@/components/lab-workspace';
+import { SiteNavMenu } from '@/components/site-nav-menu';
 import { SiteUserMenu } from '@/components/site-user-menu';
 import { getCurve } from '@/content/curves';
 import {
@@ -25,6 +29,7 @@ import {
   labBoard,
   labOgImage,
   labPath,
+  labVideo,
   labVideoHref,
   subjectOf,
   suiteForLab,
@@ -39,6 +44,7 @@ import {
   libraryText,
   type LibraryLocale,
 } from '@/content/library';
+import { wonderPath, wondersForLab } from '@/content/wonders';
 
 import { libraryLocale } from '../library/-library-page';
 
@@ -95,9 +101,11 @@ function workspaceLabels(boardTitle: string): WorkspaceLabels {
     incorrect: m['labs.quiz.incorrect'](),
     related: m['labs.related.title'](),
     relatedLabs: m['labs.related.labs'](),
+    relatedWonders: m['labs.related.wonders'](),
     relatedCurves: m['labs.related.curves'](),
     relatedLibrary: m['labs.related.library'](),
     video: m['labs.ws.video'](),
+    captions: m['labs.ws.captions'](),
     makeVideo: m['labs.ws.make_video'](),
     ctaTitle: m['labs.cta.title'](),
     ctaBody: m['labs.cta.body'](),
@@ -137,6 +145,15 @@ function relatedLinks(lab: Lab, lang: LibraryLocale): WorkspaceLink[] {
       note: libraryText(other.title, lang),
     });
   }
+  // Wonders that send readers here get a link back (docs/NAVIGATION.md §6).
+  for (const wonder of wondersForLab(lab.slug)) {
+    links.push({
+      kind: 'wonder',
+      href: wonderPath(wonder),
+      label: libraryText(wonder.name, lang),
+      note: libraryText(wonder.question, lang),
+    });
+  }
   for (const slug of lab.curveSlugs ?? []) {
     const curve = getCurve(slug);
     if (curve) {
@@ -165,7 +182,7 @@ function relatedLinks(lab: Lab, lang: LibraryLocale): WorkspaceLink[] {
   return links;
 }
 
-function WorkspaceAccount() {
+export function WorkspaceAccount() {
   const { data: session } = useSession();
   const user = session?.user;
   if (user) {
@@ -232,7 +249,15 @@ export function WorkspacePage({
       ]}
       related={relatedLinks(lab, lang)}
       videoHref={labVideoHref(lab, lang)}
+      film={labVideo(lab, lang)}
       account={<WorkspaceAccount />}
+      siteMenu={
+        <SiteNavMenu
+          links={siteNavLinks()}
+          label={m['common.nav.site_menu']()}
+          className="lw-sitemenu"
+        />
+      }
     />
   );
 }
@@ -253,10 +278,19 @@ export function workspaceHead(target: WorkspaceTarget, locale: string) {
   const chapterName = libraryText(lab.chapterTitle, lang);
   const suiteName = libraryText(suite.name, lang);
   const labTitle = libraryText(lab.title, lang);
-  const title = m['labs.ws.meta_title'](
-    { chapter: chapterName, title: labTitle },
-    opts
-  );
+  // Chinese lab titles often open with the chapter name ("向量加法与数量积：
+  // …"); drop it after "{chapter}交互实验 —" so the title does not repeat.
+  const titleRest = labTitle.startsWith(chapterName)
+    ? labTitle.slice(chapterName.length).replace(/^[：:\s]+/, '')
+    : labTitle;
+  const title = fitTitle([
+    m['labs.ws.meta_title'](
+      { chapter: chapterName, title: titleRest || labTitle },
+      opts
+    ),
+    `${labTitle} | ${envConfigs.app_name}`,
+    m['labs.ws.meta_title_short']({ chapter: chapterName }, opts),
+  ]);
   const description = libraryText(lab.summary, lang);
   const path = chapterPath(suite, lab);
   const suitePath = chapterPath(suite, suite.chapters[0]);
@@ -330,52 +364,32 @@ export function workspaceHead(target: WorkspaceTarget, locale: string) {
     })),
   };
 
-  const breadcrumb = {
-    '@context': 'https://schema.org',
-    '@type': 'BreadcrumbList',
-    itemListElement: [
+  const breadcrumb = breadcrumbJsonLd(
+    [
+      { name: m['common.nav.home']({}, opts), path: '/' },
+      { name: m['labs.breadcrumb']({}, opts), path: '/labs' },
       {
-        '@type': 'ListItem',
-        position: 1,
-        name: m['labs.breadcrumb']({}, opts),
-        item: localizedUrl('/labs', locale),
-      },
-      {
-        '@type': 'ListItem',
-        position: 2,
         name: libraryText(subjectOf(suite).name, lang),
-        item: localizedUrl(`/labs/${suite.subject}`, locale),
+        path: `/labs/${suite.subject}`,
       },
       // The opening chapter shares the suite URL, so the trail stops there.
-      {
-        '@type': 'ListItem',
-        position: 3,
-        name: suiteName,
-        item: localizedUrl(suitePath, locale),
-      },
-      ...(isOpening
-        ? []
-        : [
-            {
-              '@type': 'ListItem',
-              position: 4,
-              name: chapterName,
-              item: seoLinks.canonical,
-            },
-          ]),
+      { name: suiteName, path: suitePath },
+      ...(isOpening ? [] : [{ name: chapterName, path }]),
     ],
-  };
+    locale
+  );
 
-  const video = lab.video
+  const film = labVideo(lab, lang);
+  const video = film
     ? {
         '@context': 'https://schema.org',
         '@type': 'VideoObject',
         name: labTitle,
         description,
-        thumbnailUrl: absoluteUrl(lab.video.poster),
-        contentUrl: absoluteUrl(lab.video.src),
-        uploadDate: lab.video.uploaded,
-        duration: lab.video.duration,
+        thumbnailUrl: absoluteUrl(film.poster),
+        contentUrl: absoluteUrl(film.src),
+        uploadDate: film.uploaded,
+        duration: film.duration,
         inLanguage,
       }
     : null;
