@@ -67,3 +67,14 @@ export function mathReviewNeedsOnlyScene(review: AnimationMathReview): boolean {
     review.issues.every((issue) => issue.scope === 'visual')
   );
 }
+
+/**
+ * Product rule (2026-10-16): only mathematical findings block a video.
+ * Visual-only findings (the dossier is right but the scene shows it less
+ * than fully) get one scene revision and then ship as warnings. Unscoped
+ * findings count as mathematics.
+ */
+export function mathReviewBlocks(review: AnimationMathReview): boolean {
+  if (isAnimationMathReviewApproved(review)) return false;
+  return review.issues.some((issue) => issue.scope !== 'visual');
+}

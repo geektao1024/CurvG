@@ -8,7 +8,10 @@ import {
 } from '../src/core/ai/chat';
 import type { AnimationOrchestrationPlan } from '../src/core/animation-orchestrator';
 import { animationFailureCodeFromHttpStatus } from '../src/lib/animation';
-import { mathReviewNeedsOnlyScene } from '../src/lib/animation-math';
+import {
+  mathReviewBlocks,
+  mathReviewNeedsOnlyScene,
+} from '../src/lib/animation-math';
 import {
   buildDeterministicAnimationPlanningProfile,
   buildDeterministicCycloidArtifacts,
@@ -1656,4 +1659,31 @@ test('only all-visual audit findings skip re-planning', () => {
   );
   // Unscoped findings count as mathematics: fail toward the full revision.
   assert.equal(mathReviewNeedsOnlyScene(review([issue()])), false);
+});
+
+test('only mathematical audit findings block a video', () => {
+  const review = (scopes: ('mathematics' | 'visual' | undefined)[]) => ({
+    status: 'needs_revision' as const,
+    summary: 's',
+    checkedClaims: ['c'],
+    issues: scopes.map((scope) => ({
+      severity: 'major' as const,
+      ...(scope ? { scope } : {}),
+      claim: 'c',
+      problem: 'p',
+      correction: 'x',
+    })),
+  });
+  assert.equal(mathReviewBlocks(review(['visual', 'visual'])), false);
+  assert.equal(mathReviewBlocks(review(['visual', 'mathematics'])), true);
+  assert.equal(mathReviewBlocks(review([undefined])), true);
+  assert.equal(
+    mathReviewBlocks({
+      status: 'approved',
+      summary: 's',
+      checkedClaims: ['c'],
+      issues: [],
+    }),
+    false
+  );
 });

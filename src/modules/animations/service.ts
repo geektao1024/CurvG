@@ -46,7 +46,7 @@ import {
 } from '@/lib/animation';
 import {
   animationMathReviewSchema,
-  isAnimationMathReviewApproved,
+  mathReviewBlocks,
   parseAnimationMathReview,
   type AnimationMathReview,
 } from '@/lib/animation-math';
@@ -247,7 +247,7 @@ Object IDs, shot IDs, and timeline IDs must be unique. Formula part IDs must be 
 
 const MATH_REVIEW_SYSTEM_PROMPT = `You are CurvG's independent mathematical reviewer. Audit a proposed animation specification skeptically before any code is generated.
 
-Verify the exact core claim, definitions and domains, every derivation step, formulas and plotted expressions, invariants, limiting or special cases, and whether each proposed visual actually proves rather than merely suggests its claim. Use the declared checks and independently recompute enough of them to expose contradictions. When a claim depends on a parameter varying over time, require an explicit timeline action that varies it; one static sample cannot establish a statement about motion, tracing, projection across a domain, or "for every" parameter value. In this IR a point moves with a move_along event. A line or arrow whose startRef or endRef names a point is redrawn from that point every frame, so it follows the point exactly; projection makes it a drop line from the point to an axis. That attachment is the declarative contract for a dynamic secant, connector or projection, and acceptance wording alone does not establish it. A line without refs stays fixed. Do not ask a line to move_along a fixed segment. Do not review aesthetics, wording length, text policy, colours or layout (other gates check those), and do not repair the specification yourself.
+Verify the exact core claim, definitions and domains, every derivation step, formulas and plotted expressions, invariants, limiting or special cases, and whether each proposed visual actually proves rather than merely suggests its claim. Use the declared checks and independently recompute enough of them to expose contradictions. When a claim depends on a parameter varying over time, require an explicit timeline action that varies it; one static sample cannot establish a statement about motion, tracing, projection across a domain, or "for every" parameter value. In this IR a point moves with a move_along event. A line or arrow whose startRef or endRef names a point is redrawn from that point every frame, so it follows the point exactly; projection makes it a drop line from the point to an axis. That attachment is the declarative contract for a dynamic secant, connector or projection, and acceptance wording alone does not establish it. A line without refs stays fixed. Do not ask a line to move_along a fixed segment. A tracker is one animated parameter t changed by set_value events: a point with trackerRef is at (xExpr(t), yExpr(t)), a readout displays expr(t) live, a riemann object shows round(t) rectangles of expr(x) on its domain, and a trace draws the path of its point. Objects bound to the same tracker are synchronized every frame by construction; treat that binding as the evidence of a shared parameter. Do not review aesthetics, wording length, text policy, colours or layout (other gates check those), and do not repair the specification yourself.
 
 Return JSON only:
 {
@@ -557,10 +557,7 @@ export async function generateAnimationSpec(params: {
           deadlineAt: params.deadlineAt,
         }),
     });
-    if (
-      planned.mathReview &&
-      !isAnimationMathReviewApproved(planned.mathReview)
-    ) {
+    if (planned.mathReview && mathReviewBlocks(planned.mathReview)) {
       throw new AnimationMathAuditError(planned.mathReview);
     }
     params.onPhase?.('finalizing');
@@ -630,8 +627,7 @@ export async function generateAnimationSpec(params: {
   });
   for (
     let repairAttempt = 1;
-    repairAttempt <= MAX_MATH_SPEC_REPAIRS &&
-    !isAnimationMathReviewApproved(mathReview);
+    repairAttempt <= MAX_MATH_SPEC_REPAIRS && mathReviewBlocks(mathReview);
     repairAttempt += 1
   ) {
     params.onPhase?.('structuring');
@@ -663,7 +659,7 @@ export async function generateAnimationSpec(params: {
       deadlineAt: params.deadlineAt,
     });
   }
-  if (!isAnimationMathReviewApproved(mathReview)) {
+  if (mathReviewBlocks(mathReview)) {
     throw new AnimationMathAuditError(mathReview);
   }
   params.onPhase?.('finalizing');
@@ -3016,8 +3012,7 @@ export async function composeAnimationMathematicalRepair(params: {
   });
   for (
     let repairAttempt = 1;
-    repairAttempt <= MAX_MATH_SPEC_REPAIRS &&
-    !isAnimationMathReviewApproved(mathReview);
+    repairAttempt <= MAX_MATH_SPEC_REPAIRS && mathReviewBlocks(mathReview);
     repairAttempt += 1
   ) {
     const repairInput: ChatCompletionInput = {
@@ -3048,7 +3043,7 @@ export async function composeAnimationMathematicalRepair(params: {
       deadlineAt,
     });
   }
-  if (!isAnimationMathReviewApproved(mathReview)) {
+  if (mathReviewBlocks(mathReview)) {
     throw new AnimationMathAuditError(mathReview);
   }
   const composed = await composeOrchestratedAnimationCode({

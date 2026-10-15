@@ -21,6 +21,7 @@ import type {
 } from '@/lib/animation';
 import {
   isAnimationMathReviewApproved,
+  mathReviewBlocks,
   mathReviewNeedsOnlyScene,
   type AnimationMathReview,
 } from '@/lib/animation-math';
@@ -47,6 +48,7 @@ import {
   type SceneTargetedRepairItem,
 } from '@/lib/animation-pipeline';
 import { md5 } from '@/lib/hash';
+import { compileAnimationSpec } from '@/lib/manim-compiler';
 import { stripNullFields, toStrictJsonSchema } from '@/lib/strict-json-schema';
 import { parseStructuredJsonObject } from '@/lib/structured-json';
 
@@ -228,7 +230,7 @@ const STAGE_ROLES: Record<AnimationPlanningStageName, string> = {
   storyboard:
     'Translate the approved learning and mathematics artifacts into 3-6 non-overlapping shots. Begin with a hook at 0 and end with payoff or memory exactly at durationSeconds. term-tour emphasis requires a moving-camera scene; never combine term-tour with static. When a claim depends on a quantity varying (a limit, a traced locus, a projection across a domain), the mechanism shot must show that variation as motion covering every case the claim covers (a two-sided limit approaches from both sides), and its acceptance must require every connector to stay attached to the moving point throughout the motion.',
   scene:
-    'Declare the concrete visual objects and timed actions that realize every storyboard acceptance condition and the mathematical visual proof. Preserve every storyboard shot id exactly, create an object for every focusRef, and keep every timeline event inside its referenced shot. Every formula object must reference one mathDossier formula through formulaId; the pipeline derives its parts and expr from the dossier mechanically, so never author LaTeX in the scene and never render the same formula through two objects. Parametric curves require safe xExpr, yExpr and an increasing domain for t. Realize every varying quantity the storyboard requires as move_along motion of a point, on each side the claim covers; never replace motion with a single static sample. A line or arrow follows a moving point only when its startRef/endRef names that point (start/end stay its initial coordinates); use projection for a drop line from a point to an axis. A line without refs never moves with a point. move_along travels the whole pathRef from its domain start to its end (reverse: true for end to start); to approach a point from one side, travel an undrawn curve whose domain covers only that side.',
+    'Declare the concrete visual objects and timed actions that realize every storyboard acceptance condition and the mathematical visual proof. Preserve every storyboard shot id exactly, create an object for every focusRef, and keep every timeline event inside its referenced shot. Every formula object must reference one mathDossier formula through formulaId; the pipeline derives its parts and expr from the dossier mechanically, so never author LaTeX in the scene and never render the same formula through two objects. Parametric curves require safe xExpr, yExpr and an increasing domain for t. Realize every varying quantity the storyboard requires as move_along motion of a point, on each side the claim covers; never replace motion with a single static sample. A line or arrow follows a moving point only when its startRef/endRef names that point (start/end stay its initial coordinates); use projection for a drop line from a point to an axis. A line without refs never moves with a point. move_along travels the whole pathRef from its domain start to its end (reverse: true for end to start); to approach a point from one side, travel an undrawn curve whose domain covers only that side. For a quantity the claim varies (h -> 0, n increasing, an angle sweeping), declare one tracker (initial value) and animate it with set_value; a point with trackerRef sits at (xExpr(t), yExpr(t)), a readout shows expr(t) live, a riemann object draws round(t) rectangles, and a trace draws the path of a point. Everything bound to one tracker moves together every frame, so linked views (a circle point and its graph point, a secant and its live slope) stay synchronized.',
 };
 
 export interface PersistentAnimationPlanningContext {
@@ -564,7 +566,7 @@ const PLAN_SHARED_RULES = `Rules:
 - Never ask the user a question. When the request is incomplete, make the smallest reasonable assumption and state it in assumptions and summary.
 - Keep prose concise and visual evidence observable. Prefer the minimum complete set of nodes, beats, formulas and shots; do not pad lists.
 - Storyboard focusRef values name objects the scene step will create; keep them short and descriptive.
-- An independent mathematical audit follows. It rejects visuals that merely suggest a claim: anything stated for a varying quantity must be shown varying, over every case the claim covers. The scene can attach a line's endpoints to a moving point, so plan secants and connectors that follow the point.`;
+- An independent mathematical audit follows. It rejects visuals that merely suggest a claim: anything stated for a varying quantity must be shown varying, over every case the claim covers. The scene can attach a line's endpoints to a moving point and drive points, live numeric readouts, Riemann rectangles and traced paths from one animated parameter, so plan shots that show the variation itself.`;
 
 function planPrompt(params: {
   prompt: string;
@@ -1531,8 +1533,12 @@ async function generatePersistentAnimationSpecStrict(
       spec = composeAnimationSpecFromArtifacts(
         artifacts as AnimationPlanningArtifacts
       );
+      // Compile now: an unsupported expression name used to surface only
+      // after the audit, failing a finished plan (2026-10-16 smoke run).
+      compileAnimationSpec(spec);
       break;
     } catch (error) {
+      spec = undefined;
       integrationError = error;
       if (repair === MAX_INTEGRATION_REPAIRS) throw error;
       console.warn('[animation-planning] repairing integration contract', {
@@ -1563,17 +1569,22 @@ async function generatePersistentAnimationSpecStrict(
   if (!mathReview && planning.audit) {
     mathReview = await planning.audit(spec);
   }
+  // Visual-only findings get one scene revision, then ship as warnings;
+  // mathematical findings keep the full revision budget and still block.
+  let visualRevisions = 0;
   for (
     let revision = 0;
     planning.audit &&
     mathReview &&
     !isAnimationMathReviewApproved(mathReview) &&
-    revision < MAX_MATH_REVISIONS;
+    revision < MAX_MATH_REVISIONS &&
+    (mathReviewBlocks(mathReview) || visualRevisions < 1);
     revision += 1
   ) {
     // Visual-only findings keep the approved plan and redo just the scene;
     // re-planning for them doubled each revision on a slow upstream.
     const sceneOnly = mathReviewNeedsOnlyScene(mathReview);
+    if (sceneOnly) visualRevisions += 1;
     result = await runFromStageStrict({
       planning,
       artifacts,
@@ -1590,13 +1601,29 @@ async function generatePersistentAnimationSpecStrict(
     spec = composeAnimationSpecFromArtifacts(
       artifacts as AnimationPlanningArtifacts
     );
+    try {
+      compileAnimationSpec(spec);
+    } catch (error) {
+      // Classified as retryable invalid output, so the Workflow queue retries.
+      throw new Error(
+        `Scene validation failed after revision: ${planningFailureSummary(error)}`,
+        { cause: error }
+      );
+    }
     mathReview = await planning.audit(spec);
   }
 
-  if (mathReview && !isAnimationMathReviewApproved(mathReview)) {
+  if (mathReview && mathReviewBlocks(mathReview)) {
     throw new Error(
       `Strict mathematical audit was not approved: ${mathReview.summary}`
     );
+  }
+  if (mathReview && !isAnimationMathReviewApproved(mathReview)) {
+    console.info('[animation-planning] shipped with visual audit warnings', {
+      chatId: planning.context.chatId,
+      runId: planning.context.runId,
+      warnings: mathReview.issues.map((issue) => issue.problem.slice(0, 200)),
+    });
   }
 
   return {

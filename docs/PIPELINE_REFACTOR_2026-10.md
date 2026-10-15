@@ -51,7 +51,41 @@
 - 没有使用新字段的规格编译结果与之前完全相同（原有测试全部通过）。
 - 已用本地 Manim 渲染验证：点沿抛物线向切点逼近、割线与垂线全程跟随，最后的切线正好切在 (1,1)。
 
-## 4. 验证
+## 3.1 第二轮（2026-10-16）：OpenCode、参数绑定、审核
+
+### 模型路线
+
+- 新增 OpenCode 推理网关（`src/core/ai/opencode-chat.ts`，Anthropic Messages，`https://opencode.ai/inference/v1`）上的
+  **Claude Haiku 5.5**（$0.10 / $0.50 每百万 token）。探测：每次 1–5 秒、零失败；同一天 KIE 经历了吞吐减半和维护停服。
+- 配了 `opencode_api_key`（后台 AI → OpenCode，或 Worker secret `OPENCODE_API_KEY`）时，规划链路是
+  **OpenCode Haiku 5.5 → KIE gpt-6-luna**，两家供应商互为兜底；没配则只用 KIE。生产已于 2026-10-16 配置。
+- Anthropic 的结构化输出对可选参数和联合类型有数量上限，规划 schema 过不去，所以这条线不用 schema 约束，
+  靠提示词里的字段合同 + zod 校验 + 修复轮。按类型的字段表（`SCENE_OBJECT_KINDS` / `SCENE_TIMELINE_OPS`）
+  同时生成 KIE 的严格 schema 和提示词里的合同文字，两边不会对不上。
+- Haiku 5.5 用 `medium`：`high` 时一次规划要 1.7–2.4 万输出 token，场景撞上限。
+- 不用 Sonnet 5.5（产品决定：成本）。
+
+### 审核
+
+- **投影 bug**：数学审核拿到的规格投影缺 `label`、`xExpr`/`yExpr`/`domain`、弧角、矩阵值和全部时间信息，
+  审核据此判"路径未定义""文字为空""没有时间"。已改为传入全部证据字段（只去掉颜色、重要度这类样式）。
+- **只有数学问题阻断**（产品决定）：审核问题带 `scope`（`mathematics` / `visual`）。只涉及画面的问题先只重做一次场景，
+  仍有则带警告放行并记日志；任何数学问题或未标范围的问题仍然阻断（`mathReviewBlocks`）。
+
+### IR：参数绑定
+
+| 能力     | IR                                                            | 编译                                      |
+| -------- | ------------------------------------------------------------- | ----------------------------------------- |
+| 参数     | `kind: tracker`，`initial`                                    | `ValueTracker`                            |
+| 参数动画 | `op: set_value`，`value`                                      | `tracker.animate.set_value(v)`            |
+| 绑定点   | point + `trackerRef` + `xExpr`/`yExpr`（t 的函数）            | `always_redraw` 的 Dot                    |
+| 实时读数 | `kind: readout`，`trackerRef`、`expr`、`position`、`decimals` | `always_redraw` 的 Text + `DecimalNumber` |
+| 黎曼和   | `kind: riemann`，`trackerRef`、`expr`、`domain`、`sample`     | `get_riemann_rectangles`，n = round(t)    |
+| 轨迹     | `kind: trace`，`traceRef`（点）                               | `TracedPath`，构建时加入场景              |
+
+规则：tracker 不可见，只能被 `set_value` 操作；绑定点不能再 `move_along`；所有逐帧重画的对象出场用无位移的 FadeIn，
+变换用 ReplacementTransform。本地 Manim 验证：h→0 时割线随点逼近切线、n 从 1 到 32 的矩形细分、
+单位圆上的点与正弦曲线上的点由同一个 θ 驱动并描出完整正弦波。
 
 - 单元测试 593 项通过；`pnpm build` 通过。
 - 冒烟测试（`scripts/smoke-animation-plan.ts`，真实 KIE + 本地数据库，跑完整规划 → 场景 → 数学审核 → Manim 编译）：

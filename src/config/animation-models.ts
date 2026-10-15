@@ -85,7 +85,7 @@ export const DEFAULT_ANIMATION_PROVIDER = 'kie';
  */
 export function getAnimationReasoningEffort(
   model: string
-): 'max' | 'xhigh' | 'high' | undefined {
+): 'max' | 'xhigh' | 'high' | 'medium' | undefined {
   if (model === 'gpt-5-6-luna') return 'max';
   // Planning artifacts are small; high keeps the mathematics careful.
   if (model === 'gpt-6-luna') return 'high';

@@ -112,7 +112,12 @@ export type AnimationObjectKind =
   | 'point'
   | 'line'
   | 'arrow'
-  | 'arc';
+  | 'arc'
+  // Parameter binding (2026-10-16): an animated value and what follows it.
+  | 'tracker'
+  | 'readout'
+  | 'riemann'
+  | 'trace';
 
 export type AnimationSemanticRegion = 'title' | 'formula' | 'graph';
 
@@ -150,6 +155,19 @@ export interface AnimationObjectSpec {
   endRef?: string;
   /** End the line at the start point's foot on this axis (a drop line). */
   projection?: 'x_axis' | 'y_axis';
+  /**
+   * Parameter binding. A `tracker` holds one animated value t (`initial`,
+   * changed by set_value). A point with `trackerRef` sits at (xExpr(t),
+   * yExpr(t)); a `readout` shows label + expr(t) at `position`; a `riemann`
+   * draws round(t) rectangles under expr(x) on `domain`; a `trace` draws
+   * the path of point `traceRef`. Everything bound to one tracker moves in
+   * lockstep, every frame.
+   */
+  trackerRef?: string;
+  initial?: number;
+  decimals?: number;
+  sample?: 'left' | 'right' | 'center';
+  traceRef?: string;
   radius?: number;
   /** Radians, used by arc. */
   startAngle?: number;
@@ -177,6 +195,7 @@ export type AnimationTimelineOperation =
   | 'camera_focus'
   | 'camera_reset'
   | 'move_along'
+  | 'set_value'
   | 'hold';
 
 export type AnimationEase = 'linear' | 'smooth' | 'there_and_back';
@@ -192,6 +211,8 @@ export interface AnimationTimelineSpec {
   pathRef?: string;
   /** move_along only: travel the path from its end back to its start. */
   reverse?: boolean;
+  /** set_value only: the tracker's target value. */
+  value?: number;
   /** A formula/series part id scoped to ref. */
   partId?: string;
   /** Camera magnification for camera_focus. */

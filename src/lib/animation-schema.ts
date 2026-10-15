@@ -33,6 +33,10 @@ const objectSchema = z.object({
     'line',
     'arrow',
     'arc',
+    'tracker',
+    'readout',
+    'riemann',
+    'trace',
   ]),
   region: z.enum(['title', 'formula', 'graph']),
   importance: z.enum(['hero', 'supporting', 'context']).optional(),
@@ -56,6 +60,11 @@ const objectSchema = z.object({
   startRef: identifierSchema.optional(),
   endRef: identifierSchema.optional(),
   projection: z.enum(['x_axis', 'y_axis']).optional(),
+  trackerRef: identifierSchema.optional(),
+  initial: z.number().finite().min(-1000).max(1000).optional(),
+  decimals: z.number().int().min(0).max(4).optional(),
+  sample: z.enum(['left', 'right', 'center']).optional(),
+  traceRef: identifierSchema.optional(),
   radius: z.number().finite().min(0.01).max(100).optional(),
   startAngle: z.number().finite().min(-100).max(100).optional(),
   sweepAngle: z.number().finite().min(-100).max(100).optional(),
@@ -84,12 +93,14 @@ const timelineSchema = z.object({
     'camera_focus',
     'camera_reset',
     'move_along',
+    'set_value',
     'hold',
   ]),
   ref: identifierSchema,
   targetRef: identifierSchema.optional(),
   pathRef: identifierSchema.optional(),
   reverse: z.boolean().optional(),
+  value: z.number().finite().min(-1000).max(1000).optional(),
   partId: identifierSchema.optional(),
   zoom: z.number().min(1.1).max(3.5).optional(),
   runTime: z.number().min(0.1).max(120),
@@ -350,6 +361,9 @@ export const animationSpecSchema = z
         'line',
         'arrow',
         'arc',
+        'readout',
+        'riemann',
+        'trace',
       ]);
       if (geometryKinds.has(object.kind) && object.region !== 'graph') {
         context.addIssue({
@@ -433,6 +447,78 @@ export const animationSpecSchema = z
           });
         }
       }
+      const kindOf = (id: string | undefined) =>
+        id
+          ? spec.objects.find((candidate) => candidate.id === id)?.kind
+          : undefined;
+      if (object.kind === 'tracker' && object.initial === undefined) {
+        context.addIssue({
+          code: 'custom',
+          message: 'tracker requires initial',
+          path: ['objects', index, 'initial'],
+        });
+      }
+      if (object.trackerRef) {
+        if (!['point', 'readout', 'riemann'].includes(object.kind)) {
+          context.addIssue({
+            code: 'custom',
+            message:
+              'Only point, readout and riemann objects can declare trackerRef',
+            path: ['objects', index, 'trackerRef'],
+          });
+        } else if (kindOf(object.trackerRef) !== 'tracker') {
+          context.addIssue({
+            code: 'custom',
+            message: 'trackerRef must name a tracker object',
+            path: ['objects', index, 'trackerRef'],
+          });
+        }
+      }
+      if (
+        object.kind === 'point' &&
+        object.trackerRef &&
+        (!object.xExpr || !object.yExpr)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: 'a tracked point requires xExpr and yExpr in t',
+          path: ['objects', index],
+        });
+      }
+      if (
+        object.kind === 'readout' &&
+        (!object.trackerRef || !object.expr || !object.position)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: 'readout requires trackerRef, expr and position',
+          path: ['objects', index],
+        });
+      }
+      if (
+        object.kind === 'riemann' &&
+        (!object.trackerRef || !object.expr || !object.domain)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: 'riemann requires trackerRef, expr and domain',
+          path: ['objects', index],
+        });
+      }
+      if (object.kind === 'trace' && kindOf(object.traceRef) !== 'point') {
+        context.addIssue({
+          code: 'custom',
+          message: 'trace requires traceRef naming a point',
+          path: ['objects', index, 'traceRef'],
+        });
+      }
+      if (object.traceRef && object.kind !== 'trace') {
+        context.addIssue({
+          code: 'custom',
+          message: 'Only trace objects can declare traceRef',
+          path: ['objects', index, 'traceRef'],
+        });
+      }
       if (object.projection && (!object.startRef || object.endRef)) {
         context.addIssue({
           code: 'custom',
@@ -514,6 +600,38 @@ export const animationSpecSchema = z
           code: 'custom',
           message: 'pathRef is only supported by move_along',
           path: ['timeline', index, 'pathRef'],
+        });
+      }
+      const eventTarget = spec.objects.find(
+        (candidate) => candidate.id === event.ref
+      );
+      if (event.op === 'set_value') {
+        if (eventTarget?.kind !== 'tracker' || event.value === undefined) {
+          context.addIssue({
+            code: 'custom',
+            message: 'set_value requires a tracker ref and a value',
+            path: ['timeline', index],
+          });
+        }
+      } else if (event.value !== undefined) {
+        context.addIssue({
+          code: 'custom',
+          message: 'value is only supported by set_value',
+          path: ['timeline', index, 'value'],
+        });
+      }
+      if (eventTarget?.kind === 'tracker' && event.op !== 'set_value') {
+        context.addIssue({
+          code: 'custom',
+          message: 'A tracker is invisible; animate it only with set_value',
+          path: ['timeline', index],
+        });
+      }
+      if (event.op === 'move_along' && eventTarget?.trackerRef) {
+        context.addIssue({
+          code: 'custom',
+          message: 'A tracked point moves with its tracker, not move_along',
+          path: ['timeline', index],
         });
       }
       if (event.reverse && event.op !== 'move_along') {
@@ -922,15 +1040,29 @@ export const animationSpecSchema = z
     });
     const hasSynchronizedRollingMotion =
       new Set(synchronizedRollingSteps.map((event) => event.at)).size >= 2;
+    // A point bound to a tracker that a set_value event animates moves every
+    // frame by construction (parameter binding, 2026-10-16).
+    const animatedTrackers = new Set(
+      spec.timeline
+        .filter((event) => event.op === 'set_value')
+        .map((event) => event.ref)
+    );
+    const hasTrackedPointMotion = spec.objects.some(
+      (object) =>
+        object.kind === 'point' &&
+        !!object.trackerRef &&
+        animatedTrackers.has(object.trackerRef)
+    );
     if (
       requiresCircularPointMotion &&
       !hasCircularPointMotion &&
-      !hasSynchronizedRollingMotion
+      !hasSynchronizedRollingMotion &&
+      !hasTrackedPointMotion
     ) {
       context.addIssue({
         code: 'custom',
         message:
-          'A claimed moving or rotating circle point requires either point move_along on a circle or at least two synchronized point, circle, and parametric-trace transformations; a static sample does not prove the dynamic relationship',
+          'A claimed moving or rotating circle point requires point move_along on a circle, a point bound to an animated tracker, or at least two synchronized point, circle, and parametric-trace transformations; a static sample does not prove the dynamic relationship',
         path: ['timeline'],
       });
     }

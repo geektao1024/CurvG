@@ -123,7 +123,11 @@ export const SCENE_OBJECT_KINDS = {
     required: ['xExpr', 'yExpr', 'domain'],
     allowed: GRAPH_REGION,
   },
-  point: { fields: [], required: ['position'], allowed: GRAPH_REGION },
+  point: {
+    fields: ['trackerRef', 'xExpr', 'yExpr'],
+    required: ['position'],
+    allowed: GRAPH_REGION,
+  },
   circle: { fields: [], required: ['center', 'radius'], allowed: GRAPH_REGION },
   arc: {
     fields: [],
@@ -140,6 +144,18 @@ export const SCENE_OBJECT_KINDS = {
     required: ['start', 'end'],
     allowed: GRAPH_REGION,
   },
+  tracker: { fields: [], required: ['initial'] },
+  readout: {
+    fields: ['decimals'],
+    required: ['trackerRef', 'expr', 'position'],
+    allowed: GRAPH_REGION,
+  },
+  riemann: {
+    fields: ['sample'],
+    required: ['trackerRef', 'expr', 'domain'],
+    allowed: GRAPH_REGION,
+  },
+  trace: { fields: [], required: ['traceRef'], allowed: GRAPH_REGION },
 } as const satisfies Record<string, DiscriminatedVariant>;
 
 const SCENE_OBJECT_SHARED = ['id', 'region', 'importance', 'label', 'color'];
@@ -157,6 +173,7 @@ export const SCENE_TIMELINE_OPS = {
   camera_focus: { fields: ['partId', 'zoom'] },
   transform: { fields: [], required: ['targetRef'] },
   move_along: { fields: ['reverse'], required: ['pathRef'] },
+  set_value: { fields: [], required: ['value'] },
 } as const satisfies Record<string, DiscriminatedVariant>;
 
 const SCENE_TIMELINE_SHARED = ['id', 'shotId', 'at', 'ref', 'runTime', 'ease'];
@@ -554,7 +571,10 @@ export function alignShotFocusIds(
       .map((event) => event.ref)
       .find(
         (ref) =>
-          kinds.has(ref) && kinds.get(ref) !== 'axes' && !focusIds.has(ref)
+          kinds.has(ref) &&
+          kinds.get(ref) !== 'axes' &&
+          kinds.get(ref) !== 'tracker' &&
+          !focusIds.has(ref)
       );
     if (!candidate) continue;
     const rename = (value: string | undefined) =>
@@ -564,6 +584,8 @@ export function alignShotFocusIds(
       id: rename(object.id)!,
       ...(object.startRef ? { startRef: rename(object.startRef) } : {}),
       ...(object.endRef ? { endRef: rename(object.endRef) } : {}),
+      ...(object.trackerRef ? { trackerRef: rename(object.trackerRef) } : {}),
+      ...(object.traceRef ? { traceRef: rename(object.traceRef) } : {}),
     }));
     timeline = timeline.map((event) => ({
       ...event,

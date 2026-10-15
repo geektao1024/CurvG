@@ -748,7 +748,7 @@ test('browser math preview detects and evaluates supported inputs', () => {
 function attachedSecantSpec(): AnimationSpec {
   const spec = validSpec();
   spec.objects = [
-    ...spec.objects.filter((object) => object.id !== 'formula'),
+    ...spec.objects!.filter((object) => object.id !== 'formula'),
     {
       id: 'anchor',
       kind: 'point',
@@ -940,5 +940,226 @@ test('curves stay in their axes coordinates and move_along can run backwards', (
   assert.throws(
     () => validateAnimationSpec(misplaced),
     /reverse is only supported by move_along/
+  );
+});
+
+function trackedDemoSpec(): AnimationSpec {
+  const spec = validSpec();
+  spec.durationSeconds = 8;
+  spec.objects = [
+    { id: 'axes', kind: 'axes', region: 'graph' },
+    {
+      id: 'curve',
+      kind: 'curve',
+      region: 'graph',
+      expr: 'x^2',
+      domain: [-2, 2],
+    },
+    { id: 'h', kind: 'tracker', region: 'graph', initial: 1 },
+    { id: 'n', kind: 'tracker', region: 'graph', initial: 1 },
+    { id: 'anchor', kind: 'point', region: 'graph', position: [1, 1] },
+    {
+      id: 'mover',
+      kind: 'point',
+      region: 'graph',
+      position: [2, 4],
+      trackerRef: 'h',
+      xExpr: '1 + t',
+      yExpr: '(1 + t)^2',
+    },
+    {
+      id: 'secant',
+      kind: 'line',
+      region: 'graph',
+      start: [1, 1],
+      end: [2, 4],
+      startRef: 'anchor',
+      endRef: 'mover',
+    },
+    {
+      id: 'slope',
+      kind: 'readout',
+      region: 'graph',
+      label: 'slope',
+      trackerRef: 'h',
+      expr: '((1 + t)^2 - 1) / t',
+      position: [-1.5, 3],
+      decimals: 3,
+    },
+    {
+      id: 'bars',
+      kind: 'riemann',
+      region: 'graph',
+      trackerRef: 'n',
+      expr: 'x^2',
+      domain: [0, 1],
+      sample: 'right',
+    },
+    { id: 'path', kind: 'trace', region: 'graph', traceRef: 'mover' },
+  ];
+  spec.timeline = [
+    { id: 'a', at: 0, op: 'draw', ref: 'axes', runTime: 1, ease: 'smooth' },
+    { id: 'b', at: 1, op: 'draw', ref: 'curve', runTime: 1, ease: 'smooth' },
+    {
+      id: 'c',
+      at: 2,
+      op: 'fade_in',
+      ref: 'anchor',
+      runTime: 0.5,
+      ease: 'smooth',
+    },
+    { id: 'd', at: 2, op: 'draw', ref: 'mover', runTime: 0.5, ease: 'smooth' },
+    {
+      id: 'e',
+      at: 2.5,
+      op: 'draw',
+      ref: 'secant',
+      runTime: 0.5,
+      ease: 'smooth',
+    },
+    {
+      id: 'f',
+      at: 2.5,
+      op: 'write',
+      ref: 'slope',
+      runTime: 0.5,
+      ease: 'smooth',
+    },
+    {
+      id: 'g',
+      at: 2.5,
+      op: 'fade_in',
+      ref: 'path',
+      runTime: 0.5,
+      ease: 'smooth',
+    },
+    {
+      id: 'h1',
+      at: 3,
+      op: 'set_value',
+      ref: 'h',
+      value: 0.01,
+      runTime: 3,
+      ease: 'smooth',
+    },
+    { id: 'i', at: 6, op: 'draw', ref: 'bars', runTime: 0.5, ease: 'smooth' },
+    {
+      id: 'j',
+      at: 6.5,
+      op: 'set_value',
+      ref: 'n',
+      value: 32,
+      runTime: 1.5,
+      ease: 'linear',
+    },
+  ];
+  return spec;
+}
+
+test('a tracker drives bound points, live readouts, Riemann sums and traces', () => {
+  const code = compileAnimationSpec(validateAnimationSpec(trackedDemoSpec()));
+  assert.match(code, /obj_h = ValueTracker\(1\)/);
+  assert.match(
+    code,
+    /obj_mover = always_redraw\(lambda: Dot\(\w+\.c2p\(\*\(lambda t: \(1 \+ t, \(1 \+ t\)\*\*2\)\)\(obj_h\.get_value\(\)\)\)/
+  );
+  assert.match(
+    code,
+    /obj_slope = always_redraw\(lambda: VGroup\(Text\("slope".*DecimalNumber\(\(lambda t: \(\(1 \+ t\)\*\*2 - 1\) \/ t\)\(obj_h\.get_value\(\)\), num_decimal_places=3/
+  );
+  assert.match(
+    code,
+    /obj_bars = always_redraw\(lambda: \w+\.get_riemann_rectangles\(obj_bars_curve, x_range=\[0, 1\], dx=\(1 - \(0\)\) \/ max\(1, round\(obj_n\.get_value\(\)\)\), input_sample_type="right"/
+  );
+  assert.match(code, /obj_path = TracedPath\(obj_mover\.get_center/);
+  assert.match(code, /obj_h\.animate\.set_value\(0\.01\)/);
+  assert.match(code, /obj_n\.animate\.set_value\(32\)/);
+  // Trackers precede what reads them; traces follow their point.
+  assert.ok(code.indexOf('obj_h = ValueTracker') < code.indexOf('obj_mover ='));
+  assert.ok(
+    code.indexOf('obj_mover =') < code.indexOf('obj_path = TracedPath')
+  );
+  // Redrawn objects enter with FadeIn, never Create/Write.
+  assert.match(code, /FadeIn\(obj_mover\)/);
+  assert.match(code, /FadeIn\(obj_slope\)/);
+});
+
+test('tracker rules: invisible, set_value only, and bound points do not move_along', () => {
+  const withOp = (event: Record<string, unknown>) => {
+    const spec = trackedDemoSpec();
+    spec.timeline = [...spec.timeline!, event as never];
+    return spec;
+  };
+  assert.throws(
+    () =>
+      validateAnimationSpec(
+        withOp({
+          id: 'x',
+          at: 7.5,
+          op: 'fade_in',
+          ref: 'h',
+          runTime: 0.4,
+          ease: 'smooth',
+        })
+      ),
+    /animate it only with set_value/
+  );
+  assert.throws(
+    () =>
+      validateAnimationSpec(
+        withOp({
+          id: 'x',
+          at: 7.5,
+          op: 'set_value',
+          ref: 'curve',
+          value: 1,
+          runTime: 0.4,
+          ease: 'smooth',
+        })
+      ),
+    /set_value requires a tracker ref and a value/
+  );
+  assert.throws(
+    () =>
+      validateAnimationSpec(
+        withOp({
+          id: 'x',
+          at: 7.5,
+          op: 'move_along',
+          ref: 'mover',
+          pathRef: 'curve',
+          runTime: 0.4,
+          ease: 'smooth',
+        })
+      ),
+    /moves with its tracker/
+  );
+  const unbound = trackedDemoSpec();
+  unbound.objects = unbound.objects!.map((object) =>
+    object.id === 'mover' ? { ...object, xExpr: undefined } : object
+  );
+  assert.throws(
+    () => validateAnimationSpec(unbound),
+    /tracked point requires xExpr and yExpr/
+  );
+});
+
+test('tracked expressions accept the tracker id as an alias for t', () => {
+  const spec = trackedDemoSpec();
+  spec.objects = spec.objects!.map((object) =>
+    object.id === 'mover'
+      ? { ...object, xExpr: '1 + h', yExpr: '(1 + h)^2' }
+      : object.id === 'slope'
+        ? { ...object, expr: '((1 + h)^2 - 1) / h' }
+        : object
+  );
+  const code = compileAnimationSpec(validateAnimationSpec(spec));
+  assert.match(
+    code,
+    /\(lambda t: \(1 \+ t, \(1 \+ t\)\*\*2\)\)\(obj_h\.get_value\(\)\)/
+  );
+  assert.match(
+    code,
+    /\(lambda t: \(\(1 \+ t\)\*\*2 - 1\) \/ t\)\(obj_h\.get_value\(\)\)/
   );
 });

@@ -58,7 +58,12 @@ const prompts = process.env.SMOKE_PROMPT
 
 const upstream =
   providerName === 'opencode'
-    ? new OpenCodeChatProvider({ apiKey, maxAttempts: 3 })
+    ? new OpenCodeChatProvider({
+        apiKey,
+        maxAttempts: 3,
+        requestTimeoutMs: 240_000,
+        overallTimeoutMs: 300_000,
+      })
     : new KieChatProvider({
         apiKey,
         baseUrl: process.env.KIE_BASE_URL || 'https://api.kie.ai',

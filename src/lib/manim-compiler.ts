@@ -114,6 +114,37 @@ function isAttachedLine(object: AnimationObjectSpec): boolean {
   );
 }
 
+/**
+ * Tracked expressions use t; the tracker's own id (h, n, theta) is accepted
+ * as an alias, because that is how models naturally write them.
+ */
+function trackedExpression(object: AnimationObjectSpec, expr: string): string {
+  const alias = object.trackerRef;
+  const renamed =
+    alias && /^[A-Za-z][A-Za-z0-9_]*$/.test(alias) && alias !== 't'
+      ? expr.replace(new RegExp(`\\b${alias}\\b`, 'g'), 't')
+      : expr;
+  return compileExpression(renamed);
+}
+
+/** expr evaluated at the current value t of the object's tracker. */
+function trackedValue(object: AnimationObjectSpec, expr: string): string {
+  return `(lambda t: ${trackedExpression(object, expr)})(${variableName(object.trackerRef || '')}.get_value())`;
+}
+
+function trackedPoint(object: AnimationObjectSpec): string {
+  return `(lambda t: (${trackedExpression(object, object.xExpr || 't')}, ${trackedExpression(object, object.yExpr || 't')}))(${variableName(object.trackerRef || '')}.get_value())`;
+}
+
+/** Objects rebuilt every frame from what they follow. */
+function isRedrawn(object: AnimationObjectSpec): boolean {
+  return (
+    isAttachedLine(object) ||
+    (object.kind === 'point' && Boolean(object.trackerRef)) ||
+    ['readout', 'riemann', 'trace'].includes(object.kind)
+  );
+}
+
 function lineEndpoints(
   object: AnimationObjectSpec,
   axesVariable: string
@@ -254,7 +285,9 @@ function compileObject(
       return [constructor];
     }
     case 'point':
-      constructor = `${variable} = Dot(${graphPoint(axesVariable, object.position || [0, 0])}, radius=0.09, color=${color})`;
+      constructor = object.trackerRef
+        ? `${variable} = always_redraw(lambda: Dot(${axesVariable}.c2p(*${trackedPoint(object)}), radius=0.09, color=${color}))`
+        : `${variable} = Dot(${graphPoint(axesVariable, object.position || [0, 0])}, radius=0.09, color=${color})`;
       return [constructor];
     case 'line':
     case 'arrow': {
@@ -278,6 +311,33 @@ function compileObject(
       constructor = `${variable} = ParametricFunction(lambda t: ${axesVariable}.c2p(${center[0]} + ${radius} * np.cos(t), ${center[1]} + ${radius} * np.sin(t)), t_range=[${startAngle}, ${endAngle}], color=${color}, stroke_width=5)`;
       return [constructor];
     }
+    case 'tracker':
+      return [`${variable} = ValueTracker(${Number(object.initial ?? 0)})`];
+    case 'readout': {
+      const value = `DecimalNumber(${trackedValue(object, object.expr || 't')}, num_decimal_places=${object.decimals ?? 2}, font_size=36, color=${color})`;
+      const shown = object.label
+        ? `VGroup(Text(${pythonString(object.label)}, font_size=30, color=${color}), ${value}).arrange(RIGHT, buff=0.15)`
+        : value;
+      return [
+        `${variable} = always_redraw(lambda: ${shown}.move_to(${graphPoint(axesVariable, object.position || [0, 0])}))`,
+      ];
+    }
+    case 'riemann': {
+      const [from, to] = object.domain ?? [0, 1];
+      const helper = `${variable}_curve`;
+      const tracker = variableName(object.trackerRef || '');
+      return [
+        `${helper} = ${axesVariable}.plot(lambda x: ${compileExpression(object.expr || 'x')}, x_range=[${from}, ${to}])`,
+        `${variable} = always_redraw(lambda: ${axesVariable}.get_riemann_rectangles(${helper}, x_range=[${from}, ${to}], dx=(${to} - (${from})) / max(1, round(${tracker}.get_value())), input_sample_type=${pythonString(object.sample || 'right')}, stroke_width=1, fill_opacity=0.55, color=${color}))`,
+      ];
+    }
+    case 'trace':
+      return [
+        `${variable} = TracedPath(${variableName(object.traceRef || '')}.get_center, stroke_color=${color}, stroke_width=4)`,
+        // A trace starts empty and grows while its point moves; animating its
+        // entrance changes its point count mid-animation and fails in Manim.
+        `self.add(${variable})`,
+      ];
   }
   return [constructor, positionStatement(variable, object, layout, frame)];
 }
@@ -315,10 +375,22 @@ function animationExpression(
   const variable = variableName(event.ref);
   const target = eventTarget(event, objectsById);
   const source = objectsById.get(event.ref);
-  if (source && isAttachedLine(source)) {
+  if (event.op === 'set_value') {
+    return `${variable}.animate.set_value(${Number(event.value ?? 0)})`;
+  }
+  if (
+    source?.kind === 'trace' &&
+    ['draw', 'write', 'fade_in'].includes(event.op)
+  ) {
+    return null;
+  }
+  if (source && isRedrawn(source)) {
     // Create/Write fight the per-frame redraw; a plain Transform would snap
     // back to the point when its updater resumes.
-    if (event.op === 'draw' || event.op === 'write') return `FadeIn(${target})`;
+    // No shift: a traced point would record the slide as a stray tick.
+    if (['draw', 'write', 'fade_in'].includes(event.op)) {
+      return `FadeIn(${target})`;
+    }
     if (event.op === 'transform') {
       return `ReplacementTransform(${variable}, ${variableName(event.targetRef || '')}.copy())`;
     }
@@ -383,6 +455,8 @@ export function compileAnimationSpec(input: AnimationSpec): string {
       'line',
       'arrow',
       'arc',
+      'readout',
+      'riemann',
     ].includes(object.kind)
   );
   const axesVariable = axes ? variableName(axes.id) : 'obj_auto_axes';
@@ -430,9 +504,16 @@ export function compileAnimationSpec(input: AnimationSpec): string {
     ).map((line) => line.replace(variableName(autoAxes.id), axesVariable));
     lines.push(...autoAxesLines.map((line) => `        ${line}`));
   }
-  // Attached lines read their points' positions, so they are built last.
+  // Trackers come before what reads them; attached lines and traces read
+  // points, so they are built last.
   const rank = (object: AnimationObjectSpec) =>
-    object.kind === 'axes' ? 0 : isAttachedLine(object) ? 2 : 1;
+    object.kind === 'axes'
+      ? 0
+      : object.kind === 'tracker'
+        ? 1
+        : isAttachedLine(object) || object.kind === 'trace'
+          ? 3
+          : 2;
   const sortedObjects = [...spec.objects].sort(
     (left, right) => rank(left) - rank(right) || left.id.localeCompare(right.id)
   );
@@ -477,14 +558,13 @@ export function compileAnimationSpec(input: AnimationSpec): string {
         `        # Shot ${shot.id}: ${shot.beat} — ${shot.purpose.replace(/[\r\n]+/g, ' ').slice(0, 180)}`
       );
     }
-    const holdOnly = group.every((event) => event.op === 'hold');
     const duration = Math.max(...group.map((event) => event.runTime));
-    if (holdOnly) {
+    const animations = group
+      .map((event) => animationExpression(event, objectsById))
+      .filter((value): value is string => !!value);
+    if (animations.length === 0) {
       lines.push(`        self.wait(${Number(duration.toFixed(3))})`);
     } else {
-      const animations = group
-        .map((event) => animationExpression(event, objectsById))
-        .filter((value): value is string => !!value);
       const rate = rateFunction(group[0]);
       lines.push(
         `        self.play(${animations.join(', ')}, run_time=${Number(duration.toFixed(3))}, rate_func=${rate})`
