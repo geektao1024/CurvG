@@ -91,8 +91,10 @@ export function getAnimationReasoningEffort(
   if (model === 'gpt-6-luna') return 'high';
   if (model === 'deepseek-v4-flash') return 'high';
   if (model === 'gpt-6-1-sol' || model === 'gpt-5-6-sol') return 'xhigh';
-  // Claude on Kie has a thinking on/off switch only; `high` turns it on.
-  if (model === 'claude-haiku-5-5') return 'high';
+  // Claude Haiku 5.5 thinks adaptively; at `high` a plan used 17-24k output
+  // tokens and scenes hit their cap (OpenCode, 2026-10-16). `medium` is the
+  // model's own default. (On KIE, `high` only switched thinking on.)
+  if (model === 'claude-haiku-5-5') return 'medium';
   return model === 'gemini-3.6-flash' ? 'high' : undefined;
 }
 
@@ -109,7 +111,7 @@ export function getAnimationCompositionReasoningEffort(
   if (model === 'gpt-6-luna') return 'medium';
   if (model === 'deepseek-v4-flash') return 'high';
   if (model === 'gpt-6-1-sol' || model === 'gpt-5-6-sol') return 'high';
-  if (model === 'claude-haiku-5-5') return 'high';
+  if (model === 'claude-haiku-5-5') return 'medium';
   return model === 'gemini-3.6-flash' ? 'medium' : undefined;
 }
 

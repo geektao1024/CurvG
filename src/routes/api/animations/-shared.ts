@@ -9,6 +9,7 @@ import {
   type ChatProvider,
 } from '@/core/ai/chat';
 import { KieChatProvider } from '@/core/ai/kie-chat';
+import { OpenCodeChatProvider } from '@/core/ai/opencode-chat';
 import { HttpAnimationOrchestrator } from '@/core/animation-orchestrator';
 import { HttpAnimationRenderer } from '@/core/animation-renderer';
 import { db } from '@/core/db';
@@ -316,9 +317,27 @@ function backupProvider(configs: ConfigMap) {
 }
 
 export interface AnimationProviderTargetPlan {
-  provider: 'kie' | 'backup';
+  provider: 'opencode' | 'kie' | 'backup';
   model: string;
   reasoningEffort?: ChatCompletionInput['reasoningEffort'];
+}
+
+/**
+ * OpenCode's Claude Haiku 5.5 answered every probe in 1-5s while KIE went
+ * through slowdowns and maintenance on the same day (2026-10-16). When its
+ * key is configured it leads and KIE follows: two vendors, so one outage no
+ * longer stops generation.
+ */
+export const OPENCODE_ANIMATION_MODEL = 'claude-haiku-5-5';
+
+function opencodeProvider(configs: ConfigMap) {
+  return new OpenCodeChatProvider({
+    apiKey: configs.opencode_api_key,
+    baseUrl: configs.opencode_base_url || undefined,
+    maxAttempts: 3,
+    requestTimeoutMs: 240_000,
+    overallTimeoutMs: 300_000,
+  });
 }
 
 function backupRouteConfigured(configs: ConfigMap) {
@@ -343,6 +362,13 @@ export function animationProviderTargetPlan(
   primary: Pick<AnimationModelPolicy, 'provider' | 'model'>
 ): AnimationProviderTargetPlan[] {
   const targets: AnimationProviderTargetPlan[] = [];
+  if (primary.provider === 'kie' && configs.opencode_api_key) {
+    targets.push({
+      provider: 'opencode',
+      model: OPENCODE_ANIMATION_MODEL,
+      reasoningEffort: getAnimationReasoningEffort(OPENCODE_ANIMATION_MODEL),
+    });
+  }
   if (primary.provider === 'kie' && configs.kie_api_key) {
     targets.push({
       provider: 'kie',
@@ -402,7 +428,10 @@ function policyKey(policy: Pick<AnimationModelOption, 'provider' | 'model'>) {
 }
 
 function policyAvailable(policy: AnimationModelPolicy, configs: ConfigMap) {
-  return policy.provider === 'kie' && !!configs.kie_api_key;
+  return (
+    policy.provider === 'kie' &&
+    !!(configs.kie_api_key || configs.opencode_api_key)
+  );
 }
 
 function resilientProvider(
@@ -424,7 +453,9 @@ function resilientProvider(
       provider =
         spec.provider === 'backup'
           ? backupProvider(configs)
-          : kieProvider(configs);
+          : spec.provider === 'opencode'
+            ? opencodeProvider(configs)
+            : kieProvider(configs);
       providers.set(spec.provider, provider);
     }
     return {
@@ -518,9 +549,11 @@ export async function listAnimationModels(
   // The product catalog is the intersection of the reviewed model allowlist
   // and a configured credential. We deliberately do not expose every model
   // returned by the upstream `/models` endpoint.
-  const discoveredOptions = configs.kie_api_key
-    ? policyOptions(viewerTier, 'kie')
-    : [];
+  // The public "kie" entry is served by OpenCode first when configured.
+  const discoveredOptions =
+    configs.kie_api_key || configs.opencode_api_key
+      ? policyOptions(viewerTier, 'kie')
+      : [];
   const entitledTargets = new Set(
     discoveredOptions.filter((option) => option.entitled).map(policyKey)
   );

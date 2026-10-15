@@ -14,6 +14,7 @@ import {
   discriminateStrictObject,
   stripNullFields,
   toStrictJsonSchema,
+  type DiscriminatedVariant,
 } from '@/lib/strict-json-schema';
 import { parseStructuredJsonObject } from '@/lib/structured-json';
 
@@ -103,11 +104,67 @@ export function splitPlanArtifact(
 const GRAPH_REGION = { region: ['graph'] } as const;
 
 /**
- * The scene's strict response schema with the per-kind rules that zod keeps
- * in a superRefine (animation-schema.ts) lifted into the schema itself:
- * objects split by `kind`, timeline events by `op`. Before this, "line
- * requires start and end" and "series requires expr" were the most common
- * scene repairs (2026-10-15 smoke runs).
+ * One source for what each scene object kind and timeline op carries: it
+ * builds both the strict response schema (KIE) and the field list in the
+ * scene prompt (routes without schema-enforced output, e.g. OpenCode). The
+ * rules mirror the superRefine in animation-schema.ts.
+ */
+export const SCENE_OBJECT_KINDS = {
+  axes: { fields: [] },
+  text: { fields: [], required: ['label'] },
+  curve: { fields: ['domain'], required: ['expr'] },
+  area: { fields: ['domain'], required: ['expr'] },
+  series: { fields: ['parts'], required: ['expr'] },
+  // Formula content is derived from the dossier through formulaId.
+  formula: { fields: [], required: ['formulaId'] },
+  matrix: { fields: [], required: ['values'] },
+  parametric: {
+    fields: [],
+    required: ['xExpr', 'yExpr', 'domain'],
+    allowed: GRAPH_REGION,
+  },
+  point: { fields: [], required: ['position'], allowed: GRAPH_REGION },
+  circle: { fields: [], required: ['center', 'radius'], allowed: GRAPH_REGION },
+  arc: {
+    fields: [],
+    required: ['center', 'radius', 'startAngle', 'sweepAngle'],
+    allowed: GRAPH_REGION,
+  },
+  line: {
+    fields: ['startRef', 'endRef', 'projection'],
+    required: ['start', 'end'],
+    allowed: GRAPH_REGION,
+  },
+  arrow: {
+    fields: ['startRef', 'endRef', 'projection'],
+    required: ['start', 'end'],
+    allowed: GRAPH_REGION,
+  },
+} as const satisfies Record<string, DiscriminatedVariant>;
+
+const SCENE_OBJECT_SHARED = ['id', 'region', 'importance', 'label', 'color'];
+
+export const SCENE_TIMELINE_OPS = {
+  draw: { fields: [] },
+  write: { fields: ['partId'] },
+  fade_in: { fields: [] },
+  fade_out: { fields: [] },
+  hold: { fields: [] },
+  camera_reset: { fields: [] },
+  emphasize: { fields: ['partId'] },
+  spotlight: { fields: ['partId'] },
+  glow: { fields: ['partId'] },
+  camera_focus: { fields: ['partId', 'zoom'] },
+  transform: { fields: [], required: ['targetRef'] },
+  move_along: { fields: ['reverse'], required: ['pathRef'] },
+} as const satisfies Record<string, DiscriminatedVariant>;
+
+const SCENE_TIMELINE_SHARED = ['id', 'shotId', 'at', 'ref', 'runTime', 'ease'];
+
+/**
+ * The scene's strict response schema with the per-kind rules lifted into the
+ * schema: objects split by `kind`, timeline events by `op`, each variant
+ * listing only its own fields (no row of nulls).
  */
 export function sceneResponseSchema(): Record<string, unknown> {
   const strict = toStrictJsonSchema(sceneArtifactSchema) as {
@@ -117,66 +174,44 @@ export function sceneResponseSchema(): Record<string, unknown> {
   objects.items = discriminateStrictObject(
     objects.items,
     'kind',
-    {
-      axes: { fields: [] },
-      text: { fields: [], required: ['label'] },
-      curve: { fields: ['domain'], required: ['expr'] },
-      area: { fields: ['domain'], required: ['expr'] },
-      series: { fields: ['parts'], required: ['expr'] },
-      // Formula content is derived from the dossier through formulaId.
-      formula: { fields: [], required: ['formulaId'] },
-      matrix: { fields: [], required: ['values'] },
-      parametric: {
-        fields: [],
-        required: ['xExpr', 'yExpr', 'domain'],
-        allowed: GRAPH_REGION,
-      },
-      point: { fields: [], required: ['position'], allowed: GRAPH_REGION },
-      circle: {
-        fields: [],
-        required: ['center', 'radius'],
-        allowed: GRAPH_REGION,
-      },
-      arc: {
-        fields: [],
-        required: ['center', 'radius', 'startAngle', 'sweepAngle'],
-        allowed: GRAPH_REGION,
-      },
-      line: {
-        fields: ['startRef', 'endRef', 'projection'],
-        required: ['start', 'end'],
-        allowed: GRAPH_REGION,
-      },
-      arrow: {
-        fields: ['startRef', 'endRef', 'projection'],
-        required: ['start', 'end'],
-        allowed: GRAPH_REGION,
-      },
-    },
-    ['id', 'region', 'importance', 'label', 'color']
+    SCENE_OBJECT_KINDS,
+    SCENE_OBJECT_SHARED
   );
   const timeline = strict.properties.timeline!;
-  const partOps = { fields: ['partId'] };
   timeline.items = discriminateStrictObject(
     timeline.items,
     'op',
-    {
-      draw: { fields: [] },
-      write: partOps,
-      fade_in: { fields: [] },
-      fade_out: { fields: [] },
-      hold: { fields: [] },
-      camera_reset: { fields: [] },
-      emphasize: partOps,
-      spotlight: partOps,
-      glow: partOps,
-      camera_focus: { fields: ['partId', 'zoom'] },
-      transform: { fields: [], required: ['targetRef'] },
-      move_along: { fields: ['reverse'], required: ['pathRef'] },
-    },
-    ['id', 'shotId', 'at', 'ref', 'runTime', 'ease']
+    SCENE_TIMELINE_OPS,
+    SCENE_TIMELINE_SHARED
   );
   return strict;
+}
+
+/** The same rules as prompt text, for routes without enforced schemas. */
+export function sceneFieldContract(): string {
+  const describe = (
+    table: Record<string, DiscriminatedVariant>,
+    label: string
+  ) =>
+    Object.entries(table)
+      .map(([name, rule]) => {
+        const required = rule.required?.length
+          ? ` requires ${rule.required.join(', ')}`
+          : '';
+        const optional = rule.fields?.length
+          ? `${required ? ';' : ''} may set ${rule.fields.join(', ')}`
+          : '';
+        const region = rule.allowed?.region
+          ? `; region ${rule.allowed.region.join('|')}`
+          : '';
+        return `- ${label} ${name}:${required}${optional}${region || (!required && !optional ? ' no extra fields' : '')}`;
+      })
+      .join('\n');
+  return `Per-kind object fields (besides ${SCENE_OBJECT_SHARED.join(', ')}; coordinates are [x, y] number pairs in axis units within -100..100):
+${describe(SCENE_OBJECT_KINDS, 'kind')}
+Per-op timeline fields (besides ${SCENE_TIMELINE_SHARED.join(', ')}):
+${describe(SCENE_TIMELINE_OPS, 'op')}
+A line's start and end must differ.`;
 }
 
 export interface AnimationPlanningArtifacts {

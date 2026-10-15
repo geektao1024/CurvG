@@ -74,6 +74,10 @@ export const envConfigs: Record<string, string> = {
   inline_image_max_kb: procEnv.INLINE_IMAGE_MAX_KB ?? '2048',
 
   // AI
+  // OpenCode inference gateway (Claude Haiku 5.5 for animation planning). Not
+  // a common ambient variable, so the env fallback cannot pick up a stray key.
+  opencode_api_key: procEnv.OPENCODE_API_KEY ?? '',
+  opencode_base_url: procEnv.OPENCODE_BASE_URL ?? '',
   // OpenAI / Anthropic are admin-panel-only (like Gemini/Fal). No env fallback:
   // OPENAI_API_KEY / ANTHROPIC_API_KEY are common ambient vars, and falling back
   // to them would let the admin "Test" silently pass on the machine's own key.

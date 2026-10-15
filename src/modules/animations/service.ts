@@ -247,7 +247,7 @@ Object IDs, shot IDs, and timeline IDs must be unique. Formula part IDs must be 
 
 const MATH_REVIEW_SYSTEM_PROMPT = `You are CurvG's independent mathematical reviewer. Audit a proposed animation specification skeptically before any code is generated.
 
-Verify the exact core claim, definitions and domains, every derivation step, formulas and plotted expressions, invariants, limiting or special cases, and whether each proposed visual actually proves rather than merely suggests its claim. Use the declared checks and independently recompute enough of them to expose contradictions. When a claim depends on a parameter varying over time, require an explicit timeline action that varies it; one static sample cannot establish a statement about motion, tracing, projection across a domain, or "for every" parameter value. In this IR a point moves with a move_along event. A line or arrow whose startRef or endRef names a point is redrawn from that point every frame, so it follows the point exactly; projection makes it a drop line from the point to an axis. That attachment is the declarative contract for a dynamic secant, connector or projection, and acceptance wording alone does not establish it. A line without refs stays fixed. Do not ask a line to move_along a fixed segment. Do not review aesthetics and do not repair the specification yourself.
+Verify the exact core claim, definitions and domains, every derivation step, formulas and plotted expressions, invariants, limiting or special cases, and whether each proposed visual actually proves rather than merely suggests its claim. Use the declared checks and independently recompute enough of them to expose contradictions. When a claim depends on a parameter varying over time, require an explicit timeline action that varies it; one static sample cannot establish a statement about motion, tracing, projection across a domain, or "for every" parameter value. In this IR a point moves with a move_along event. A line or arrow whose startRef or endRef names a point is redrawn from that point every frame, so it follows the point exactly; projection makes it a drop line from the point to an axis. That attachment is the declarative contract for a dynamic secant, connector or projection, and acceptance wording alone does not establish it. A line without refs stays fixed. Do not ask a line to move_along a fixed segment. Do not review aesthetics, wording length, text policy, colours or layout (other gates check those), and do not repair the specification yourself.
 
 Return JSON only:
 {
@@ -356,35 +356,23 @@ async function reviewAnimationMathematics(params: {
       learningJob: beat.learningJob,
       visualEvidence: beat.visualEvidence,
     })),
+    // Everything the auditor needs to check a claim is visible. Before
+    // 2026-10-16 this projection dropped label, xExpr/yExpr/domain, arc
+    // angles, matrix values and all timing, so the audit rejected plans for
+    // "undefined" paths, "empty" text and "no timing" it simply could not see.
     shots: params.spec.shots?.map((shot) => ({
       id: shot.id,
+      beat: shot.beat,
+      startAt: shot.startAt,
+      endAt: shot.endAt,
       purpose: shot.purpose,
       focusRef: shot.focusRef,
       acceptance: shot.acceptance,
     })),
-    objects: params.spec.objects?.map((object) => ({
-      id: object.id,
-      kind: object.kind,
-      expr: object.expr,
-      position: object.position,
-      center: object.center,
-      start: object.start,
-      end: object.end,
-      startRef: object.startRef,
-      endRef: object.endRef,
-      projection: object.projection,
-      radius: object.radius,
-      parts: object.parts,
-    })),
-    timeline: params.spec.timeline?.map((event) => ({
-      shotId: event.shotId,
-      op: event.op,
-      ref: event.ref,
-      targetRef: event.targetRef,
-      pathRef: event.pathRef,
-      reverse: event.reverse,
-      partId: event.partId,
-    })),
+    objects: params.spec.objects?.map(
+      ({ color: _color, importance: _importance, ...object }) => object
+    ),
+    timeline: params.spec.timeline?.map(({ ease: _ease, ...event }) => event),
   };
   const input = {
     model: params.model,
@@ -396,8 +384,8 @@ async function reviewAnimationMathematics(params: {
       },
     ],
     temperature: 0,
-    // Reasoning shares this budget on the Responses route.
-    maxTokens: 8_000,
+    // Reasoning shares this budget on both routes.
+    maxTokens: 16_000,
     reasoningEffort: getAnimationReasoningEffort(params.model),
     responseFormat: MATH_REVIEW_RESPONSE_FORMAT,
     // Typically ~40s; a twin after 90s cuts KIE's long tail.

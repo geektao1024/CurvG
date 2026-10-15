@@ -35,6 +35,7 @@ import {
   PLAN_STAGE_NAMES,
   planArtifactSchema,
   planSceneTargetedRepair,
+  sceneFieldContract,
   sceneResponseSchema,
   sceneTargetedRepairPrompt,
   splitPlanArtifact,
@@ -63,8 +64,8 @@ import {
 const PIPELINE_VERSION = 2;
 // One call writes the whole plan, and reasoning shares the output budget on
 // the Responses route, so both calls get room well above their artifacts.
-const PLAN_MAX_OUTPUT_TOKENS = 24_000;
-const SCENE_MAX_OUTPUT_TOKENS = 16_000;
+const PLAN_MAX_OUTPUT_TOKENS = 40_000;
+const SCENE_MAX_OUTPUT_TOKENS = 32_000;
 const MAX_PLAN_REPAIRS = 2;
 const PLAN_TARGET_TIMEOUT_MS = 290_000;
 // Hedge points sit near twice the observed median (plan ~45s, scene 50-80s,
@@ -211,7 +212,8 @@ const STAGE_CONTRACTS: Record<AnimationPlanningStageName, string> = {
   "layout": {"regions": "single|left|right|top|bottom"},
   "dependencies": ["required capability"],
   "notes": ["implementation invariant"]
-}`,
+}
+${sceneFieldContract()}`,
 };
 
 const STAGE_ROLES: Record<AnimationPlanningStageName, string> = {

@@ -32,8 +32,8 @@ test('the default model is KIE GPT-6 Luna', () => {
   assert.equal(canUseAnimationModel('free', policy), true);
   assert.equal(getAnimationReasoningEffort('gpt-6-luna'), 'high');
   assert.equal(getAnimationCompositionReasoningEffort('gpt-6-luna'), 'medium');
-  // Haiku 5.5 (retired 2026-10-16) keeps its tuning for old rows.
-  assert.equal(getAnimationReasoningEffort('claude-haiku-5-5'), 'high');
+  // Haiku 5.5 thinks adaptively; medium keeps plans inside their cap.
+  assert.equal(getAnimationReasoningEffort('claude-haiku-5-5'), 'medium');
   // GPT-6.1 Sol stays allowlisted (hidden) with its tuning for old rows.
   assert.equal(getAnimationReasoningEffort('gpt-6-1-sol'), 'xhigh');
 });
@@ -127,6 +127,31 @@ test('KIE is the only vendor in the chain (2026-10-14)', () => {
   );
   const lite = getAnimationModelPolicy('deepseek', 'deepseek-v4-flash')!;
   assert.deepEqual(animationProviderTargetPlan(allKeys, lite), []);
+});
+
+test('OpenCode Haiku 5.5 leads and KIE follows when both keys are set', () => {
+  const luna = animationModelPolicies[0];
+  assert.deepEqual(
+    animationProviderTargetPlan(
+      { kie_api_key: 'configured', opencode_api_key: 'configured' },
+      luna
+    ),
+    [
+      {
+        provider: 'opencode',
+        model: 'claude-haiku-5-5',
+        reasoningEffort: 'medium',
+      },
+      { provider: 'kie', model: 'gpt-6-luna', reasoningEffort: 'high' },
+    ]
+  );
+  // OpenCode alone still serves the public model.
+  assert.deepEqual(
+    animationProviderTargetPlan({ opencode_api_key: 'configured' }, luna).map(
+      (target) => target.provider
+    ),
+    ['opencode']
+  );
 });
 
 test('the backup route joins the plan last and only when fully configured', () => {

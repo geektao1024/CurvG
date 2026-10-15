@@ -15,6 +15,7 @@ import { asc, eq } from 'drizzle-orm';
 
 import type { ChatProvider } from '@/core/ai/chat';
 import { KieChatProvider } from '@/core/ai/kie-chat';
+import { OpenCodeChatProvider } from '@/core/ai/opencode-chat';
 import { db } from '@/core/db';
 import {
   animationPlanningAttempt,
@@ -33,12 +34,20 @@ const GOLDEN_PROMPTS = [
   'Prove the Pythagorean theorem visually by rearranging four right triangles.',
 ];
 
-const apiKey = process.env.KIE_API_KEY;
+const providerName = process.env.SMOKE_PROVIDER || 'kie';
+const apiKey =
+  providerName === 'opencode'
+    ? process.env.OPENCODE_API_KEY || process.env.opencode_API_KEY
+    : process.env.KIE_API_KEY;
 if (!apiKey) {
-  console.error('KIE_API_KEY is not set (add it to .env.development).');
+  console.error(
+    `${providerName === 'opencode' ? 'OPENCODE_API_KEY' : 'KIE_API_KEY'} is not set (add it to .env.development).`
+  );
   process.exit(1);
 }
-const model = process.env.SMOKE_MODEL || 'gpt-6-luna';
+const model =
+  process.env.SMOKE_MODEL ||
+  (providerName === 'opencode' ? 'claude-haiku-5-5' : 'gpt-6-luna');
 const only = (process.env.SMOKE_ONLY || '')
   .split(',')
   .filter(Boolean)
@@ -47,30 +56,33 @@ const prompts = process.env.SMOKE_PROMPT
   ? [process.env.SMOKE_PROMPT]
   : GOLDEN_PROMPTS.filter((_, index) => !only.length || only.includes(index));
 
-const kie = new KieChatProvider({
-  apiKey,
-  baseUrl: process.env.KIE_BASE_URL || 'https://api.kie.ai',
-  maxAttempts: 2,
-  requestTimeoutMs: 290_000,
-  overallTimeoutMs: 600_000,
-});
+const upstream =
+  providerName === 'opencode'
+    ? new OpenCodeChatProvider({ apiKey, maxAttempts: 3 })
+    : new KieChatProvider({
+        apiKey,
+        baseUrl: process.env.KIE_BASE_URL || 'https://api.kie.ai',
+        maxAttempts: 2,
+        requestTimeoutMs: 290_000,
+        overallTimeoutMs: 600_000,
+      });
 
 // Log every model call; print the mathematics audit verdict in full, since
 // it is otherwise only visible as a one-line failure summary.
 const provider: ChatProvider = {
-  name: kie.name,
+  name: upstream.name,
   async complete(input) {
     const label =
       input.responseFormat?.name ||
       input.messages[0]?.content.replace(/\s+/g, ' ').slice(0, 40);
     const started = Date.now();
     try {
-      const result = await kie.complete(input);
+      const result = await upstream.complete(input);
       console.log(
-        `    call [${label}] ok ${Date.now() - started}ms ${result.content.length}ch credits=${result.usage?.providerCredits ?? '?'}`
+        `    call [${label}] ok ${Date.now() - started}ms ${result.content.length}ch tokens=${result.usage?.inputTokens ?? '?'}/${result.usage?.outputTokens ?? '?'} credits=${result.usage?.providerCredits ?? '?'}`
       );
       if (result.content.includes('"checkedClaims"')) {
-        console.log(`      audit: ${result.content.slice(0, 2_500)}`);
+        console.log(`      audit: ${result.content.slice(0, 12_000)}`);
       }
       return result;
     } catch (error) {
@@ -107,7 +119,7 @@ async function runOne(prompt: string) {
       userId: SMOKE_USER,
       status: 'generating_spec',
       model,
-      provider: 'kie',
+      provider: providerName,
       title: prompt.slice(0, 48),
       parts: JSON.stringify({ prompt }),
       metadata: JSON.stringify({ kind: 'animation', smoke: true }),
@@ -177,7 +189,9 @@ async function runOne(prompt: string) {
 }
 
 await ensureUser();
-console.log(`model=${model} prompts=${prompts.length}`);
+console.log(
+  `provider=${providerName} model=${model} prompts=${prompts.length}`
+);
 const results = [];
 for (const prompt of prompts) results.push(await runOne(prompt));
 const ok = results.filter((result) => result.outcome === 'ok');

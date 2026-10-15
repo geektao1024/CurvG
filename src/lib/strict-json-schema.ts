@@ -187,3 +187,66 @@ export function discriminateStrictObject(
     ],
   };
 }
+
+const ANTHROPIC_UNSUPPORTED = new Set([
+  'minimum',
+  'maximum',
+  'exclusiveMinimum',
+  'exclusiveMaximum',
+  'multipleOf',
+  'maxItems',
+  // Every regex grows the compiled grammar; the plan schema hit Anthropic's
+  // "compiled grammar is too large" with them.
+  'pattern',
+]);
+
+function isNullable(schema: JsonSchema): boolean {
+  return (
+    (Array.isArray(schema.type) &&
+      (schema.type as string[]).includes('null')) ||
+    (Array.isArray(schema.anyOf) &&
+      (schema.anyOf as JsonSchema[]).some((option) => option.type === 'null'))
+  );
+}
+
+/**
+ * Anthropic structured output (output_config.format) differs from the OpenAI
+ * strict route (400s observed through OpenCode, 2026-10-16): no numeric
+ * bounds, no maxItems, minItems only 0 or 1, and a hard cap on union-typed
+ * parameters ("69 parameters with type arrays or anyOf"). It does allow
+ * optional properties, so the strict encoding "value | null, always listed"
+ * goes back to "value, not required". zod still enforces every bound, and
+ * stripNullFields stays harmless when no nulls arrive.
+ */
+export function toAnthropicStructuredSchema(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(toAnthropicStructuredSchema);
+  if (!node || typeof node !== 'object') return node;
+  const source = node as JsonSchema;
+  const result: JsonSchema = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (ANTHROPIC_UNSUPPORTED.has(key)) continue;
+    if (key === 'minItems') {
+      if (typeof value === 'number' && value >= 1) result.minItems = 1;
+      continue;
+    }
+    if (key === 'properties' || key === 'required') continue;
+    result[key] = toAnthropicStructuredSchema(value);
+  }
+  if (source.properties && typeof source.properties === 'object') {
+    const properties = source.properties as Record<string, JsonSchema>;
+    const required = new Set(
+      Array.isArray(source.required) ? (source.required as string[]) : []
+    );
+    result.properties = Object.fromEntries(
+      Object.entries(properties).map(([name, property]) => {
+        if (isNullable(property)) {
+          required.delete(name);
+          return [name, toAnthropicStructuredSchema(nonNullable(property))];
+        }
+        return [name, toAnthropicStructuredSchema(property)];
+      })
+    );
+    result.required = [...required];
+  }
+  return result;
+}

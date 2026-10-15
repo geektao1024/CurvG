@@ -312,6 +312,7 @@ test('a missing shot focus id is aligned to the object that shot animates', () =
 test('an emphasis on an unseen object becomes its entrance', () => {
   const step = (id: string, at: number, op: string, ref: string) => ({
     id,
+    shotId: 's1',
     at,
     op: op as 'draw',
     ref,

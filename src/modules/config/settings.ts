@@ -177,6 +177,13 @@ export function getSettingGroups(): SettingGroup[] {
       tab: 'ai',
     },
     {
+      name: 'opencode',
+      title: 'OpenCode',
+      description:
+        'Claude Haiku 5.5 for animation planning. When set, it leads and KIE becomes the fallback.',
+      tab: 'ai',
+    },
+    {
       name: 'anthropic',
       title: 'Anthropic',
       description: 'Anthropic Claude API',
@@ -877,6 +884,24 @@ export function getSettings(): Setting[] {
       type: 'password',
       placeholder: 'xxx',
       group: 'kie',
+      tab: 'ai',
+    },
+    // ─── AI / OpenCode ───────────────────────────────────────────────
+    {
+      name: 'opencode_base_url',
+      title: 'Base URL',
+      type: 'text',
+      placeholder: 'https://opencode.ai/inference/v1',
+      group: 'opencode',
+      tab: 'ai',
+      defaultValue: 'https://opencode.ai/inference/v1',
+    },
+    {
+      name: 'opencode_api_key',
+      title: 'API Key',
+      type: 'password',
+      placeholder: 'oc_xxx',
+      group: 'opencode',
       tab: 'ai',
     },
     // ─── AI / Anthropic ──────────────────────────────────────────────

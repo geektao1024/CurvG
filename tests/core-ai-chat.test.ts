@@ -11,6 +11,7 @@ import {
   type ChatProvider,
 } from '../src/core/ai/chat';
 import { kieChatModelRoutes, KieChatProvider } from '../src/core/ai/kie-chat';
+import { OpenCodeChatProvider } from '../src/core/ai/opencode-chat';
 
 const input: ChatCompletionInput = {
   model: 'primary-model',
@@ -1199,4 +1200,116 @@ test('Kie hedging leaves a fast failure to the retry loop and skips twins for fa
   assert.equal(result.content, 'retried');
   // One failed call, one retry; no hedge twin was ever launched.
   assert.equal(calls, 2);
+});
+
+test('OpenCode sends Anthropic Messages without temperature and reads text blocks', async () => {
+  let url = '';
+  let headers: Headers | undefined;
+  let body: Record<string, unknown> | undefined;
+  const provider = new OpenCodeChatProvider({
+    apiKey: 'test-oc-key',
+    fetch: (async (requestUrl, init) => {
+      url = String(requestUrl);
+      headers = new Headers(init?.headers);
+      body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return Response.json({
+        model: 'claude-haiku-5-5',
+        stop_reason: 'end_turn',
+        content: [
+          { type: 'thinking', thinking: '' },
+          { type: 'text', text: '{"ok":true}' },
+        ],
+        usage: { input_tokens: 12, output_tokens: 34 },
+      });
+    }) as typeof globalThis.fetch,
+  });
+
+  const result = await provider.complete({
+    model: 'claude-haiku-5-5',
+    messages: [
+      { role: 'system', content: 'Rules' },
+      { role: 'user', content: 'Plan' },
+    ],
+    temperature: 0.1,
+    maxTokens: 4_000,
+    reasoningEffort: 'medium',
+    responseFormat: { name: 'ignored', schema: { type: 'object' } },
+  });
+
+  assert.equal(url, 'https://opencode.ai/inference/v1/messages');
+  assert.equal(headers?.get('x-api-key'), 'test-oc-key');
+  assert.equal(body?.system, 'Rules');
+  assert.deepEqual(body?.messages, [{ role: 'user', content: 'Plan' }]);
+  assert.equal('temperature' in body!, false);
+  assert.equal(
+    'output_config' in body! &&
+      (body.output_config as Record<string, unknown>).format,
+    undefined
+  );
+  assert.deepEqual(body?.output_config, { effort: 'medium' });
+  assert.equal(body?.max_tokens, 4_000);
+  assert.equal(result.content, '{"ok":true}');
+  assert.deepEqual(result.usage, { inputTokens: 12, outputTokens: 34 });
+});
+
+test('OpenCode retries overload, not auth, and reports truncation', async () => {
+  let calls = 0;
+  const overloaded = new OpenCodeChatProvider({
+    apiKey: 'k',
+    maxAttempts: 2,
+    fetch: (async () => {
+      calls += 1;
+      return calls === 1
+        ? Response.json(
+            {
+              type: 'error',
+              error: { type: 'overloaded_error', message: 'Overloaded' },
+            },
+            { status: 529 }
+          )
+        : Response.json({
+            content: [{ type: 'text', text: 'ok' }],
+            stop_reason: 'end_turn',
+          });
+    }) as typeof globalThis.fetch,
+  });
+  assert.equal(
+    (await overloaded.complete({ ...input, model: 'claude-haiku-5-5' }))
+      .content,
+    'ok'
+  );
+  assert.equal(calls, 2);
+
+  let authCalls = 0;
+  const unauthorized = new OpenCodeChatProvider({
+    apiKey: 'k',
+    maxAttempts: 3,
+    fetch: (async () => {
+      authCalls += 1;
+      return Response.json(
+        { error: { message: 'invalid key' } },
+        { status: 401 }
+      );
+    }) as typeof globalThis.fetch,
+  });
+  await assert.rejects(
+    unauthorized.complete({ ...input, model: 'claude-haiku-5-5' }),
+    (error: unknown) =>
+      error instanceof ChatProviderError && error.code === 'upstream_auth'
+  );
+  assert.equal(authCalls, 1);
+
+  const truncated = new OpenCodeChatProvider({
+    apiKey: 'k',
+    fetch: (async () =>
+      Response.json({
+        content: [{ type: 'text', text: '{"partial":' }],
+        stop_reason: 'max_tokens',
+      })) as typeof globalThis.fetch,
+  });
+  await assert.rejects(
+    truncated.complete({ ...input, model: 'claude-haiku-5-5' }),
+    (error: unknown) =>
+      error instanceof ChatProviderError && error.code === 'output_truncated'
+  );
 });
