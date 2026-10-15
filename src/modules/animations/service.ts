@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lt, ne } from 'drizzle-orm';
 
 import {
   ChatProviderError,
@@ -45,6 +45,7 @@ import {
   type AnimationVisualReview,
 } from '@/lib/animation';
 import {
+  animationMathReviewSchema,
   isAnimationMathReviewApproved,
   parseAnimationMathReview,
   type AnimationMathReview,
@@ -66,6 +67,7 @@ import { getUuid, md5 } from '@/lib/hash';
 import { compileAnimationSpec } from '@/lib/manim-compiler';
 import { ringEscapePresentationSpec } from '@/lib/simulation-presentation';
 import { buildVerifiedRingEscapeProduction } from '@/lib/simulation-production';
+import { toStrictJsonSchema } from '@/lib/strict-json-schema';
 
 import {
   generatePersistentAnimationSpec,
@@ -245,7 +247,7 @@ Object IDs, shot IDs, and timeline IDs must be unique. Formula part IDs must be 
 
 const MATH_REVIEW_SYSTEM_PROMPT = `You are CurvG's independent mathematical reviewer. Audit a proposed animation specification skeptically before any code is generated.
 
-Verify the exact core claim, definitions and domains, every derivation step, formulas and plotted expressions, invariants, limiting or special cases, and whether each proposed visual actually proves rather than merely suggests its claim. Use the declared checks and independently recompute enough of them to expose contradictions. When a claim depends on a parameter varying over time, require an explicit timeline action that varies it; one static sample cannot establish a statement about motion, tracing, projection across a domain, or "for every" parameter value. In this IR, a point move_along event plus explicit connector/target objects and a mechanism-shot acceptance condition requiring synchronized endpoints is the declarative contract for a dynamic projection. Do not ask a line to move_along a fixed segment; the scene composer realizes the declared synchronization with per-frame geometry. Do not review aesthetics and do not repair the specification yourself.
+Verify the exact core claim, definitions and domains, every derivation step, formulas and plotted expressions, invariants, limiting or special cases, and whether each proposed visual actually proves rather than merely suggests its claim. Use the declared checks and independently recompute enough of them to expose contradictions. When a claim depends on a parameter varying over time, require an explicit timeline action that varies it; one static sample cannot establish a statement about motion, tracing, projection across a domain, or "for every" parameter value. In this IR a point moves with a move_along event. A line or arrow whose startRef or endRef names a point is redrawn from that point every frame, so it follows the point exactly; projection makes it a drop line from the point to an axis. That attachment is the declarative contract for a dynamic secant, connector or projection, and acceptance wording alone does not establish it. A line without refs stays fixed. Do not ask a line to move_along a fixed segment. Do not review aesthetics and do not repair the specification yourself.
 
 Return JSON only:
 {
@@ -254,11 +256,14 @@ Return JSON only:
   "checkedClaims": ["specific claims independently checked"],
   "issues": [{
     "severity": "major|blocking",
+    "scope": "mathematics|visual",
     "claim": "the affected claim",
     "problem": "the exact contradiction, missing condition, or invalid step",
     "correction": "the mathematically correct replacement or required condition"
   }]
 }
+
+Set scope to visual when the mathematical dossier is correct and only the scene's objects, motion, attachments or timing fail to show it; otherwise mathematics.
 
 Approve only when no mathematical issue remains. If the request is ambiguous, require explicit assumptions instead of inventing certainty. Ambiguity alone is not a mathematical error when the specification states a conventional, coherent interpretation in its assumptions and limitations and keeps every claim consistent with that scope.`;
 
@@ -327,6 +332,11 @@ function partialJsonStringField(source: string, field: string): string {
   return output;
 }
 
+const MATH_REVIEW_RESPONSE_FORMAT = {
+  name: 'curvg_math_review',
+  schema: toStrictJsonSchema(animationMathReviewSchema),
+};
+
 async function reviewAnimationMathematics(params: {
   provider: ChatProvider;
   model: string;
@@ -360,6 +370,9 @@ async function reviewAnimationMathematics(params: {
       center: object.center,
       start: object.start,
       end: object.end,
+      startRef: object.startRef,
+      endRef: object.endRef,
+      projection: object.projection,
       radius: object.radius,
       parts: object.parts,
     })),
@@ -369,6 +382,7 @@ async function reviewAnimationMathematics(params: {
       ref: event.ref,
       targetRef: event.targetRef,
       pathRef: event.pathRef,
+      reverse: event.reverse,
       partId: event.partId,
     })),
   };
@@ -382,8 +396,12 @@ async function reviewAnimationMathematics(params: {
       },
     ],
     temperature: 0,
-    maxTokens: 3_000,
+    // Reasoning shares this budget on the Responses route.
+    maxTokens: 8_000,
     reasoningEffort: getAnimationReasoningEffort(params.model),
+    responseFormat: MATH_REVIEW_RESPONSE_FORMAT,
+    // Typically ~40s; a twin after 90s cuts KIE's long tail.
+    hedgeAfterMs: 90_000,
     signal: params.signal,
     // The audit shares the strict planning budget. Extending it here used to
     // turn a completed six-stage plan into another five-minute wait before a
@@ -1950,6 +1968,95 @@ export async function finalizeAnimationPlanningFailure(params: {
     await setFailure(row, parts, params.error, 'spec');
   }
   return getAnimation(params.userId, params.id);
+}
+
+// Longer than the slowest legitimate run: eight queued planning attempts plus
+// a 30-minute compile-and-render step with one retry.
+const STALE_ANIMATION_RUN_MS = 6 * 60 * 60_000;
+const IN_FLIGHT_ANIMATION_STATUSES = [
+  'generating_spec',
+  'generating_code',
+  'queued',
+  'rendering',
+] as const;
+
+/**
+ * Close a user's runs that have shown no progress for six hours (a lost
+ * Workflow, a deploy mid-run). Without this they stay "in progress" forever.
+ * Each row moves only if it is still the exact row read, so a run that
+ * resumes at the same moment is left alone. Credits held by stuck render
+ * tasks are refunded separately (ai-tasks failStaleTasks).
+ */
+export async function failStaleAnimationRuns(
+  userId: string,
+  now = new Date()
+): Promise<number> {
+  const cutoff = new Date(now.getTime() - STALE_ANIMATION_RUN_MS);
+  const rows = await db()
+    .select()
+    .from(chat)
+    .where(
+      and(
+        eq(chat.userId, userId),
+        inArray(chat.status, [...IN_FLIGHT_ANIMATION_STATUSES]),
+        lt(chat.updatedAt, cutoff)
+      )
+    );
+  let failed = 0;
+  for (const row of rows) {
+    const parts = animationParts(row);
+    delete parts.queue;
+    const { operation: _operation, ...rest } = parts;
+    const stage: AnimationFailureStage =
+      row.status === 'generating_spec'
+        ? 'spec'
+        : row.status === 'generating_code'
+          ? 'code'
+          : 'render';
+    const code: AnimationFailure['code'] =
+      stage === 'render' ? 'RENDER_FAILED' : 'UPSTREAM_TIMEOUT';
+    const failure: AnimationFailure = {
+      stage,
+      code,
+      message: failureMessages[code],
+      retryable: true,
+    };
+    await db()
+      .update(chat)
+      .set({
+        status: 'failed',
+        parts: JSON.stringify({ ...rest, error: failure.message, failure }),
+      })
+      .where(
+        and(
+          eq(chat.id, row.id),
+          eq(chat.status, row.status),
+          eq(chat.updatedAt, row.updatedAt)
+        )
+      );
+    const [current] = await db()
+      .select({ status: chat.status })
+      .from(chat)
+      .where(eq(chat.id, row.id))
+      .limit(1);
+    if (current?.status !== 'failed') continue;
+    failed += 1;
+    if (stage === 'spec' && parts.planningRunId) {
+      await failRunningPlanningStages({
+        userId,
+        chatId: row.id,
+        runId: parts.planningRunId,
+        errorCode: 'stale_run',
+        errorMessage: 'No progress for six hours',
+      }).catch(() => undefined);
+    }
+    await ensureAnimationFailureMessage({
+      row,
+      failure,
+      key: `${parts.planningRunId || parts.operation?.id || 'animation'}:${stage}:stale`,
+    }).catch(() => undefined);
+  }
+  return failed;
 }
 
 export async function createAnimation(params: {

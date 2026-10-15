@@ -1,12 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router';
 
 import { getAuth } from '@/core/auth';
+import { failStaleTasks } from '@/modules/ai-tasks/service';
 import { instantiateAnimationTemplate } from '@/modules/animation-templates/service';
 import {
   createAnimation,
   createAnimationDraft,
   createAnimationFromTemplate,
   createSimulationAnimation,
+  failStaleAnimationRuns,
   listAnimations,
   planAnimation,
 } from '@/modules/animations/service';
@@ -43,11 +45,33 @@ import {
 } from './animations/-shared';
 import { animationEventStream } from './animations/-stream';
 
+// Render tasks hold credits; one that never reports back is refunded after
+// the same six hours a stuck run is closed.
+const STALE_RENDER_TASK_MS = 6 * 60 * 60_000;
+
+/** Close this user's stuck runs and refund stuck renders; never fails the list. */
+async function sweepStaleWork(userId: string) {
+  try {
+    await failStaleAnimationRuns(userId);
+    await failStaleTasks({
+      userId,
+      mediaType: 'animation_render',
+      olderThan: new Date(Date.now() - STALE_RENDER_TASK_MS),
+    });
+  } catch (error) {
+    console.error('[animations] stale work sweep failed', {
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function GET({ request }: { request: Request }) {
   try {
     const auth = getAuth();
     const session = await auth.api.getSession({ headers: request.headers });
     if (!session?.user) return respErr('Unauthorized', { status: 401 });
+    await sweepStaleWork(session.user.id);
     return respData(await listAnimations(session.user.id));
   } catch (error) {
     const failure = animationErrorResponse(error);

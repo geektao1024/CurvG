@@ -21,20 +21,19 @@ import {
   parseModelChoice,
 } from '../src/routes/api/animations/-shared';
 
-test('the default model is KIE Claude Haiku 5.5 with thinking on', () => {
+test('the default model is KIE GPT-6 Luna', () => {
   const policy = getAnimationModelPolicy('kie', DEFAULT_ANIMATION_MODEL);
 
   assert.ok(policy);
-  assert.equal(policy.model, 'claude-haiku-5-5');
+  assert.equal(policy.model, 'gpt-6-luna');
   assert.equal(policy.presetKey, 'curvgPro');
   assert.equal(policy.requiredTier, 'free');
   assert.equal(policy.publicCatalog, true);
   assert.equal(canUseAnimationModel('free', policy), true);
+  assert.equal(getAnimationReasoningEffort('gpt-6-luna'), 'high');
+  assert.equal(getAnimationCompositionReasoningEffort('gpt-6-luna'), 'medium');
+  // Haiku 5.5 (retired 2026-10-16) keeps its tuning for old rows.
   assert.equal(getAnimationReasoningEffort('claude-haiku-5-5'), 'high');
-  assert.equal(
-    getAnimationCompositionReasoningEffort('claude-haiku-5-5'),
-    'high'
-  );
   // GPT-6.1 Sol stays allowlisted (hidden) with its tuning for old rows.
   assert.equal(getAnimationReasoningEffort('gpt-6-1-sol'), 'xhigh');
 });
@@ -99,12 +98,12 @@ test('Auto resolves to Claude Haiku 5.5; retired entries stay allowlisted', () =
   );
 });
 
-test('Claude Haiku 5.5 is the only public catalog entry', () => {
+test('GPT-6 Luna is the only public catalog entry', () => {
   assert.deepEqual(
     animationModelPolicies
       .filter((policy) => policy.publicCatalog)
       .map((policy) => `${policy.provider}:${policy.model}`),
-    ['kie:claude-haiku-5-5']
+    ['kie:gpt-6-luna']
   );
 });
 
@@ -116,7 +115,7 @@ test('KIE is the only vendor in the chain (2026-10-14)', () => {
     kie_api_key: 'configured',
   };
   assert.deepEqual(animationProviderTargetPlan(allKeys, haiku), [
-    { provider: 'kie', model: 'claude-haiku-5-5', reasoningEffort: 'high' },
+    { provider: 'kie', model: 'gpt-6-luna', reasoningEffort: 'high' },
   ]);
   // DeepSeek and Kuaipao keys left in admin settings never join the chain.
   assert.deepEqual(

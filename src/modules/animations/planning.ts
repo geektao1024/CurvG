@@ -21,6 +21,7 @@ import type {
 } from '@/lib/animation';
 import {
   isAnimationMathReviewApproved,
+  mathReviewNeedsOnlyScene,
   type AnimationMathReview,
 } from '@/lib/animation-math';
 import {
@@ -31,15 +32,22 @@ import {
   composeAnimationSpecFromArtifacts,
   normalizeAnimationPlanningArtifact,
   parseAnimationPlanningArtifact,
+  PLAN_STAGE_NAMES,
+  planArtifactSchema,
   planSceneTargetedRepair,
+  sceneResponseSchema,
   sceneTargetedRepairPrompt,
+  splitPlanArtifact,
   supportsDeterministicSceneProfile,
   validateAnimationPlanningArtifact,
   type AnimationPlanningArtifacts,
   type AnimationPlanningStageDefinition,
+  type AnimationPlanStageName,
   type SceneTargetedRepairItem,
 } from '@/lib/animation-pipeline';
 import { md5 } from '@/lib/hash';
+import { stripNullFields, toStrictJsonSchema } from '@/lib/strict-json-schema';
+import { parseStructuredJsonObject } from '@/lib/structured-json';
 
 import {
   cachePlanningStage,
@@ -51,7 +59,28 @@ import {
   startPlanningStage,
 } from './stages';
 
-const PIPELINE_VERSION = 1;
+// 2: intent..storyboard come from one structured call (runPlanCall).
+const PIPELINE_VERSION = 2;
+// One call writes the whole plan, and reasoning shares the output budget on
+// the Responses route, so both calls get room well above their artifacts.
+const PLAN_MAX_OUTPUT_TOKENS = 24_000;
+const SCENE_MAX_OUTPUT_TOKENS = 16_000;
+const MAX_PLAN_REPAIRS = 2;
+const PLAN_TARGET_TIMEOUT_MS = 290_000;
+// Hedge points sit near twice the observed median (plan ~45s, scene 50-80s,
+// 2026-10-15 smoke runs on gpt-6-luna): the tail, not the median, is what
+// broke runs.
+const PLAN_HEDGE_AFTER_MS = 100_000;
+const SCENE_HEDGE_AFTER_MS = 120_000;
+const PLAN_ROUND_WINDOW_MS = 300_000;
+const PLAN_RESPONSE_FORMAT = {
+  name: 'curvg_plan',
+  schema: toStrictJsonSchema(planArtifactSchema),
+};
+const SCENE_RESPONSE_FORMAT = {
+  name: 'curvg_scene',
+  schema: sceneResponseSchema(),
+};
 // Format-repair budget per stage (2026-08 path B5): scene carries the most
 // required structure and is the schema_validation hotspot, so it gets more
 // bounded retries. The widened 1200s plan budget absorbs the extra rounds.
@@ -163,7 +192,10 @@ const STAGE_CONTRACTS: Record<AnimationPlanningStageName, string> = {
     "id": "unique_object_id",
     "kind": "axes|curve|parametric|area|formula|text|series|matrix|circle|point|line|arrow|arc",
     "region": "title|formula|graph",
-    "formulaId": "required for formula objects: the mathDossier formula this object renders"
+    "formulaId": "required for formula objects: the mathDossier formula this object renders",
+    "startRef": "line/arrow only: point id the start follows every frame",
+    "endRef": "line/arrow only: point id the end follows every frame",
+    "projection": "line/arrow with startRef only: x_axis|y_axis drop line from the point"
   }],
   "timeline": [{
     "id": "unique_event_id",
@@ -171,6 +203,8 @@ const STAGE_CONTRACTS: Record<AnimationPlanningStageName, string> = {
     "at": 0,
     "op": "draw|write|fade_in|fade_out|transform|emphasize|spotlight|glow|camera_focus|camera_reset|move_along|hold",
     "ref": "object id",
+    "pathRef": "move_along only: the curve/circle/arc/line to travel, from its domain start to end",
+    "reverse": "move_along only: true travels the path from its end back to its start",
     "runTime": 1,
     "ease": "linear|smooth|there_and_back"
   }],
@@ -190,9 +224,9 @@ const STAGE_ROLES: Record<AnimationPlanningStageName, string> = {
   mathematics:
     'Produce an exact, independently checkable mathematical dossier. State domains and limitations; never invent a theorem to fit a visual. The dossier owns every formula the film may show: author each one exactly once in formulas, with ordered latexParts whose chunks compile independently and concatenate into the full formula. Downstream stages copy these verbatim and may not write LaTeX of their own.',
   storyboard:
-    'Translate the approved learning and mathematics artifacts into 3-6 non-overlapping shots. Begin with a hook at 0 and end with payoff or memory exactly at durationSeconds. term-tour emphasis requires a moving-camera scene; never combine term-tour with static.',
+    'Translate the approved learning and mathematics artifacts into 3-6 non-overlapping shots. Begin with a hook at 0 and end with payoff or memory exactly at durationSeconds. term-tour emphasis requires a moving-camera scene; never combine term-tour with static. When a claim depends on a quantity varying (a limit, a traced locus, a projection across a domain), the mechanism shot must show that variation as motion covering every case the claim covers (a two-sided limit approaches from both sides), and its acceptance must require every connector to stay attached to the moving point throughout the motion.',
   scene:
-    'Declare the concrete visual objects and timed actions that realize every storyboard acceptance condition and the mathematical visual proof. Preserve every storyboard shot id exactly, create an object for every focusRef, and keep every timeline event inside its referenced shot. Every formula object must reference one mathDossier formula through formulaId; the pipeline derives its parts and expr from the dossier mechanically, so never author LaTeX in the scene and never render the same formula through two objects. Parametric curves require safe xExpr, yExpr and an increasing domain for t.',
+    'Declare the concrete visual objects and timed actions that realize every storyboard acceptance condition and the mathematical visual proof. Preserve every storyboard shot id exactly, create an object for every focusRef, and keep every timeline event inside its referenced shot. Every formula object must reference one mathDossier formula through formulaId; the pipeline derives its parts and expr from the dossier mechanically, so never author LaTeX in the scene and never render the same formula through two objects. Parametric curves require safe xExpr, yExpr and an increasing domain for t. Realize every varying quantity the storyboard requires as move_along motion of a point, on each side the claim covers; never replace motion with a single static sample. A line or arrow follows a moving point only when its startRef/endRef names that point (start/end stay its initial coordinates); use projection for a drop line from a point to an axis. A line without refs never moves with a point. move_along travels the whole pathRef from its domain start to its end (reverse: true for end to start); to approach a point from one side, travel an undrawn curve whose domain covers only that side.',
 };
 
 export interface PersistentAnimationPlanningContext {
@@ -521,6 +555,328 @@ CONTEXT:
 ${JSON.stringify(context)}`;
 }
 
+const PLAN_SHARED_RULES = `Rules:
+- The answer is one flat JSON object holding every top-level field of the five parts.
+- Use stable ASCII ids matching ^[A-Za-z][A-Za-z0-9_-]{0,79}$, unique within their list.
+- Every later part must follow the interpretation fixed in intent; never reinterpret the original wording.
+- Never ask the user a question. When the request is incomplete, make the smallest reasonable assumption and state it in assumptions and summary.
+- Keep prose concise and visual evidence observable. Prefer the minimum complete set of nodes, beats, formulas and shots; do not pad lists.
+- Storyboard focusRef values name objects the scene step will create; keep them short and descriptive.
+- An independent mathematical audit follows. It rejects visuals that merely suggest a claim: anything stated for a varying quantity must be shown varying, over every case the claim covers. The scene can attach a line's endpoints to a moving point, so plan secants and connectors that follow the point.`;
+
+function planPrompt(params: {
+  prompt: string;
+  subject: AnimationSubject;
+  currentSpec?: AnimationSpec;
+  history?: ChatTurn[];
+  previousPlan?: Partial<AnimationPlanningArtifacts>;
+  feedback?: string;
+}) {
+  const parts = PLAN_STAGE_NAMES.map(
+    (name, index) =>
+      `${index + 1}. ${name}: ${STAGE_ROLES[name]}\nFields: ${STAGE_CONTRACTS[name]}`
+  ).join('\n\n');
+  const context = {
+    originalRequest: params.prompt,
+    subject: params.subject,
+    priorConversation: compactHistory(params.history),
+    currentApprovedSpec: params.currentSpec,
+    previousPlan: params.previousPlan,
+    mandatoryFeedback: params.feedback,
+  };
+  return `You are CurvG's planning specialist. Write the complete teaching plan for one short mathematics animation, in five parts that build on each other in order:
+
+${parts}
+
+${PLAN_SHARED_RULES}
+${params.previousPlan ? '- previousPlan is the last approved plan. Keep every part that mandatoryFeedback does not require you to change.\n' : ''}
+CONTEXT:
+${JSON.stringify(context)}`;
+}
+
+/**
+ * Parse one plan answer into the five stage artifacts, validating each stage
+ * in pipeline order exactly as the old per-stage calls did: schema, the
+ * mechanical normalizer, then cross-stage semantics against earlier parts.
+ */
+export function acceptPlanContent(content: string): {
+  artifacts: Pick<AnimationPlanningArtifacts, AnimationPlanStageName>;
+  corrections: Partial<Record<AnimationPlanStageName, string[]>>;
+} {
+  const parts = splitPlanArtifact(
+    stripNullFields(parseStructuredJsonObject(content))
+  );
+  const accepted: Partial<AnimationPlanningArtifacts> = {};
+  const corrections: Partial<Record<AnimationPlanStageName, string[]>> = {};
+  for (const name of PLAN_STAGE_NAMES) {
+    try {
+      const parsed = validateAnimationPlanningArtifact(name, parts[name]);
+      const normalized = normalizeAnimationPlanningArtifact(
+        name,
+        parsed,
+        accepted
+      );
+      validateAnimationPlanningStageSemantics(
+        name,
+        normalized.artifact,
+        accepted
+      );
+      (accepted as Record<string, unknown>)[name] = normalized.artifact;
+      if (normalized.corrections.length) {
+        corrections[name] = normalized.corrections.slice(0, 24);
+      }
+    } catch (error) {
+      throw new Error(`${name}: ${planningFailureSummary(error)}`, {
+        cause: error,
+      });
+    }
+  }
+  return {
+    artifacts: accepted as Pick<
+      AnimationPlanningArtifacts,
+      AnimationPlanStageName
+    >,
+    corrections,
+  };
+}
+
+function planStageDefinitions() {
+  return PLAN_STAGE_NAMES.map((name) => definition(name));
+}
+
+/**
+ * One structured call for intent, knowledge, curriculum, mathematics and
+ * storyboard (2026-10-16). Six serial calls made every stage a separate
+ * failure point on a flaky upstream; the merged call keeps the same five
+ * persisted stage rows, so the progress UI and stage reuse are unchanged.
+ */
+async function runPlanCall(params: {
+  planning: PlanningParams;
+  artifacts: Partial<AnimationPlanningArtifacts>;
+  feedback?: string;
+  disableReuse?: boolean;
+}): Promise<ChatCompletionResult> {
+  const { planning } = params;
+  const definitions = planStageDefinitions();
+  const previousPlan = params.feedback
+    ? Object.fromEntries(
+        PLAN_STAGE_NAMES.filter((name) => params.artifacts[name]).map(
+          (name) => [name, params.artifacts[name]]
+        )
+      )
+    : undefined;
+  const prompt = planPrompt({
+    prompt: planning.prompt,
+    subject: planning.subject,
+    currentSpec: planning.currentSpec,
+    history: planning.history,
+    previousPlan,
+    feedback: params.feedback,
+  });
+  const inputHash = md5(
+    JSON.stringify({
+      pipelineVersion: PIPELINE_VERSION,
+      stage: 'plan',
+      model: planning.model,
+      prompt,
+    })
+  );
+  planning.onPhase?.('understanding');
+
+  const adopt = (
+    accepted: Pick<AnimationPlanningArtifacts, AnimationPlanStageName>
+  ) => {
+    for (const name of PLAN_STAGE_NAMES) {
+      (params.artifacts as Record<string, unknown>)[name] = accepted[name];
+    }
+    planning.onSummaryDelta?.(accepted.intent.summary);
+    planning.onPhase?.('structuring');
+  };
+
+  if (!params.disableReuse) {
+    const reusable = await Promise.all(
+      definitions.map((item) =>
+        findReusablePlanningStage({
+          userId: planning.context.userId,
+          chatId: planning.context.chatId,
+          stage: item.name,
+          inputHash,
+        })
+      )
+    );
+    if (reusable.every((row) => row?.artifact)) {
+      try {
+        const merged = Object.assign(
+          {},
+          ...reusable.map((row) => JSON.parse(row!.artifact!) as object)
+        );
+        const { artifacts } = acceptPlanContent(JSON.stringify(merged));
+        for (const [index, item] of definitions.entries()) {
+          const cached = await cachePlanningStage({
+            userId: planning.context.userId,
+            chatId: planning.context.chatId,
+            runId: planning.context.runId,
+            stage: item.name,
+            sequence: item.sequence,
+            inputHash,
+            source: reusable[index]!,
+          });
+          planning.context.onStage?.(planningStageSummary(cached));
+        }
+        adopt(artifacts);
+        const last = reusable[reusable.length - 1]!;
+        return {
+          content: JSON.stringify(merged),
+          provider: last.provider,
+          model: last.model,
+        };
+      } catch {
+        // Corrupted or legacy rows: regenerate the plan.
+      }
+    }
+  }
+
+  const rows: Awaited<ReturnType<typeof startPlanningStage>>[] = [];
+  for (const item of definitions) {
+    const row = await startPlanningStage({
+      userId: planning.context.userId,
+      chatId: planning.context.chatId,
+      runId: planning.context.runId,
+      stage: item.name,
+      sequence: item.sequence,
+      inputHash,
+      provider: planning.provider.name,
+      model: planning.model,
+    });
+    rows.push(row);
+    planning.context.onStage?.(planningStageSummary(row));
+  }
+
+  let telemetryRepairAttempt = 0;
+  const input: ChatCompletionInput = {
+    model: planning.model,
+    messages: [
+      {
+        role: 'system',
+        content:
+          'Produce only the requested teaching plan as one JSON object. Do not design the scene objects or timeline.',
+      },
+      { role: 'user', content: prompt },
+    ],
+    maxTokens: PLAN_MAX_OUTPUT_TOKENS,
+    perTargetTimeoutMs: PLAN_TARGET_TIMEOUT_MS,
+    reasoningEffort: getAnimationReasoningEffort(planning.model),
+    responseFormat: PLAN_RESPONSE_FORMAT,
+    hedgeAfterMs: PLAN_HEDGE_AFTER_MS,
+    signal: planning.signal,
+    onAttempt: (report) =>
+      recordPlanningAttempt({
+        userId: planning.context.userId,
+        chatId: planning.context.chatId,
+        runId: planning.context.runId,
+        stage: 'intent',
+        repairAttempt: telemetryRepairAttempt,
+        report,
+      }),
+  };
+  const roundDeadlineAt = () =>
+    Math.min(
+      Date.now() + PLAN_ROUND_WINDOW_MS,
+      planning.deadlineAt ?? Number.POSITIVE_INFINITY
+    );
+
+  let result: ChatCompletionResult | undefined;
+  let lastError: unknown;
+  // What each repaired round rejected, kept so prompts can be tuned from data.
+  const validationErrors: string[] = [];
+  try {
+    for (
+      let repairAttempt = 0;
+      repairAttempt <= MAX_PLAN_REPAIRS;
+      repairAttempt += 1
+    ) {
+      telemetryRepairAttempt = repairAttempt;
+      result = await planning.provider.complete(
+        repairAttempt === 0
+          ? { ...input, deadlineAt: roundDeadlineAt() }
+          : {
+              ...input,
+              deadlineAt: roundDeadlineAt(),
+              messages: [
+                ...input.messages,
+                { role: 'assistant', content: result?.content || '' },
+                {
+                  role: 'user',
+                  content: `The previous plan failed validation: ${
+                    lastError instanceof Error
+                      ? lastError.message.slice(0, 2_000)
+                      : 'invalid output'
+                  }. Return one complete corrected plan.`,
+                },
+              ],
+            }
+      );
+      try {
+        const { artifacts, corrections } = acceptPlanContent(result.content);
+        for (const [index, item] of definitions.entries()) {
+          const artifact = artifacts[item.name as AnimationPlanStageName];
+          const stageCorrections =
+            corrections[item.name as AnimationPlanStageName];
+          const completed = await completePlanningStage({
+            id: rows[index]!.id,
+            artifact,
+            outputHash: md5(JSON.stringify(artifact)),
+            diagnostic: {
+              ...(safeDiagnostic(result.diagnostic) || {}),
+              ...(stageCorrections ? { corrections: stageCorrections } : {}),
+              ...(repairAttempt
+                ? { planRepairs: repairAttempt, validationErrors }
+                : {}),
+            },
+            provider: result.provider,
+            model: result.model,
+          });
+          planning.context.onStage?.(planningStageSummary(completed));
+        }
+        adopt(artifacts);
+        return result;
+      } catch (error) {
+        lastError = error;
+        const summary = planningFailureSummary(error).slice(0, 400);
+        validationErrors.push(summary);
+        console.warn('[animation-planning] plan failed validation', {
+          chatId: planning.context.chatId,
+          runId: planning.context.runId,
+          repairAttempt,
+          error: summary,
+        });
+      }
+    }
+    throw lastError;
+  } catch (error) {
+    const providerError =
+      error instanceof ChatProviderError ? error : undefined;
+    for (const row of rows) {
+      const failed = await failPlanningStage({
+        id: row.id,
+        errorCode: stageErrorCode(error),
+        errorMessage: error instanceof Error ? error.message : String(error),
+        diagnostic: {
+          ...(safeDiagnostic(providerError?.diagnostic || result?.diagnostic) ||
+            {}),
+          validationError: planningFailureSummary(error),
+          ...(result?.content
+            ? { outputPreview: result.content.slice(0, 2_000) }
+            : {}),
+        },
+        requestId: providerError?.requestId,
+      });
+      planning.context.onStage?.(planningStageSummary(failed));
+    }
+    throw error;
+  }
+}
+
 async function runStage<Name extends AnimationPlanningStageName>(params: {
   definition: AnimationPlanningStageDefinition & { name: Name };
   planning: PlanningParams;
@@ -669,7 +1025,16 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
       { role: 'user', content: prompt },
     ],
     temperature: 0.1,
-    maxTokens: definition.maxTokens,
+    maxTokens:
+      definition.name === 'scene'
+        ? SCENE_MAX_OUTPUT_TOKENS
+        : definition.maxTokens,
+    ...(definition.name === 'scene'
+      ? {
+          responseFormat: SCENE_RESPONSE_FORMAT,
+          hedgeAfterMs: SCENE_HEDGE_AFTER_MS,
+        }
+      : {}),
     perTargetTimeoutMs: stageTargetTimeoutMs(definition.name),
     reasoningEffort:
       definition.name === 'scene'
@@ -723,6 +1088,7 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
   planning.context.onStage?.(planningStageSummary(latestRow));
   let result: ChatCompletionResult | undefined;
   let lastError: unknown;
+  const stageValidationErrors: string[] = [];
   // Path B5: when a scene failure maps cleanly onto objects[i]/timeline[j],
   // the next round resends only those items instead of the whole artifact.
   let targetedRepair:
@@ -759,6 +1125,8 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
                 ...input,
                 deadlineAt: roundDeadlineAt(),
                 temperature: 0,
+                // The fragment repair answers a different shape.
+                responseFormat: undefined,
                 messages: [
                   ...input.messages,
                   {
@@ -815,6 +1183,9 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
             ...(normalized.corrections.length
               ? { corrections: normalized.corrections.slice(0, 24) }
               : {}),
+            ...(stageValidationErrors.length
+              ? { validationErrors: stageValidationErrors }
+              : {}),
           },
           provider: result.provider,
           model: result.model,
@@ -824,6 +1195,15 @@ async function runStage<Name extends AnimationPlanningStageName>(params: {
       } catch (error) {
         lastError = error;
         targetedRepair = undefined;
+        const summary = planningFailureSummary(error).slice(0, 400);
+        stageValidationErrors.push(summary);
+        console.warn('[animation-planning] stage failed validation', {
+          chatId: planning.context.chatId,
+          runId: planning.context.runId,
+          stage: definition.name,
+          repairAttempt,
+          error: summary,
+        });
         if (definition.name === 'scene' && candidate) {
           const items = planSceneTargetedRepair(
             error,
@@ -1003,32 +1383,35 @@ async function runFromStage(params: {
   feedback?: string;
   disableReuse?: boolean;
 }) {
-  const startSequence = definition(params.startAt).sequence;
   let lastResult: ChatCompletionResult | undefined;
-  for (const item of ANIMATION_PLANNING_STAGES) {
-    if (item.sequence < startSequence) continue;
-    params.planning.onPhase?.(item.phase);
+  if (params.startAt !== 'scene') {
     try {
-      const completed = await runStage({
-        definition: item,
+      lastResult = await runPlanCall({
         planning: params.planning,
         artifacts: params.artifacts,
-        feedback: item.name === params.startAt ? params.feedback : undefined,
+        feedback: params.feedback,
         disableReuse: params.disableReuse,
       });
-      (params.artifacts as Record<string, unknown>)[item.name] =
-        completed.artifact;
-      lastResult = completed.result;
-      if (item.name === 'intent') {
-        params.planning.onSummaryDelta?.(
-          (completed.artifact as AnimationPlanningArtifacts['intent']).summary
-        );
-      }
     } catch (error) {
-      throw new AnimationPlanningStageError(item.name, error);
+      throw new AnimationPlanningStageError(params.startAt, error);
     }
   }
-  return lastResult!;
+  params.planning.onPhase?.('finalizing');
+  try {
+    const completed = await runStage({
+      definition: definition('scene'),
+      planning: params.planning,
+      artifacts: params.artifacts,
+      // Integration feedback usually concerns ids the scene must honour.
+      feedback: params.feedback,
+      disableReuse: params.disableReuse,
+    });
+    params.artifacts.scene = completed.artifact;
+    lastResult = completed.result;
+  } catch (error) {
+    throw new AnimationPlanningStageError('scene', error);
+  }
+  return lastResult;
 }
 
 async function runFromStageStrict(params: Parameters<typeof runFromStage>[0]) {
@@ -1186,16 +1569,20 @@ async function generatePersistentAnimationSpecStrict(
     revision < MAX_MATH_REVISIONS;
     revision += 1
   ) {
+    // Visual-only findings keep the approved plan and redo just the scene;
+    // re-planning for them doubled each revision on a slow upstream.
+    const sceneOnly = mathReviewNeedsOnlyScene(mathReview);
     result = await runFromStageStrict({
       planning,
       artifacts,
-      startAt: 'mathematics',
+      startAt: sceneOnly ? 'scene' : 'mathematics',
       feedback: `Independent mathematical audit requires revision: ${JSON.stringify(
         mathReview
-      ).slice(
-        0,
-        5_000
-      )}. Correct the mathematical dossier and rebuild all downstream artifacts.`,
+      ).slice(0, 5_000)}. ${
+        sceneOnly
+          ? 'The plan is approved; correct the scene so it shows the claim.'
+          : 'Correct the mathematical dossier and rebuild all downstream artifacts.'
+      }`,
       disableReuse: true,
     });
     spec = composeAnimationSpecFromArtifacts(

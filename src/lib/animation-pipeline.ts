@@ -10,6 +10,11 @@ import {
   v6AnimationSpecSchema,
   validateAnimationSpec,
 } from '@/lib/animation-schema';
+import {
+  discriminateStrictObject,
+  stripNullFields,
+  toStrictJsonSchema,
+} from '@/lib/strict-json-schema';
 import { parseStructuredJsonObject } from '@/lib/structured-json';
 
 export const intentArtifactSchema = v6AnimationSpecSchema.pick({
@@ -47,6 +52,132 @@ export const sceneArtifactSchema = v6AnimationSpecSchema.pick({
   dependencies: true,
   notes: true,
 });
+
+/**
+ * The first five stages are produced by one model call (2026-10-16): the
+ * merged object carries every top-level field of the five stage artifacts,
+ * and `splitPlanArtifact` hands each stage its own fields for validation.
+ */
+export const PLAN_STAGE_NAMES = [
+  'intent',
+  'knowledge',
+  'curriculum',
+  'mathematics',
+  'storyboard',
+] as const;
+export type AnimationPlanStageName = (typeof PLAN_STAGE_NAMES)[number];
+
+const planStageSchemas = {
+  intent: intentArtifactSchema,
+  knowledge: knowledgeArtifactSchema,
+  curriculum: curriculumArtifactSchema,
+  mathematics: mathematicsArtifactSchema,
+  storyboard: storyboardArtifactSchema,
+} as const;
+
+export const planArtifactSchema = intentArtifactSchema
+  .extend(knowledgeArtifactSchema.shape)
+  .extend(curriculumArtifactSchema.shape)
+  .extend(mathematicsArtifactSchema.shape)
+  .extend(storyboardArtifactSchema.shape);
+
+export function splitPlanArtifact(
+  value: unknown
+): Record<AnimationPlanStageName, Record<string, unknown>> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('The plan must be one JSON object');
+  }
+  const record = value as Record<string, unknown>;
+  return Object.fromEntries(
+    PLAN_STAGE_NAMES.map((name) => [
+      name,
+      Object.fromEntries(
+        Object.keys(planStageSchemas[name].shape)
+          .filter((key) => key in record)
+          .map((key) => [key, record[key]])
+      ),
+    ])
+  ) as Record<AnimationPlanStageName, Record<string, unknown>>;
+}
+
+const GRAPH_REGION = { region: ['graph'] } as const;
+
+/**
+ * The scene's strict response schema with the per-kind rules that zod keeps
+ * in a superRefine (animation-schema.ts) lifted into the schema itself:
+ * objects split by `kind`, timeline events by `op`. Before this, "line
+ * requires start and end" and "series requires expr" were the most common
+ * scene repairs (2026-10-15 smoke runs).
+ */
+export function sceneResponseSchema(): Record<string, unknown> {
+  const strict = toStrictJsonSchema(sceneArtifactSchema) as {
+    properties: Record<string, { items: Record<string, unknown> }>;
+  };
+  const objects = strict.properties.objects!;
+  objects.items = discriminateStrictObject(
+    objects.items,
+    'kind',
+    {
+      axes: { fields: [] },
+      text: { fields: [], required: ['label'] },
+      curve: { fields: ['domain'], required: ['expr'] },
+      area: { fields: ['domain'], required: ['expr'] },
+      series: { fields: ['parts'], required: ['expr'] },
+      // Formula content is derived from the dossier through formulaId.
+      formula: { fields: [], required: ['formulaId'] },
+      matrix: { fields: [], required: ['values'] },
+      parametric: {
+        fields: [],
+        required: ['xExpr', 'yExpr', 'domain'],
+        allowed: GRAPH_REGION,
+      },
+      point: { fields: [], required: ['position'], allowed: GRAPH_REGION },
+      circle: {
+        fields: [],
+        required: ['center', 'radius'],
+        allowed: GRAPH_REGION,
+      },
+      arc: {
+        fields: [],
+        required: ['center', 'radius', 'startAngle', 'sweepAngle'],
+        allowed: GRAPH_REGION,
+      },
+      line: {
+        fields: ['startRef', 'endRef', 'projection'],
+        required: ['start', 'end'],
+        allowed: GRAPH_REGION,
+      },
+      arrow: {
+        fields: ['startRef', 'endRef', 'projection'],
+        required: ['start', 'end'],
+        allowed: GRAPH_REGION,
+      },
+    },
+    ['id', 'region', 'importance', 'label', 'color']
+  );
+  const timeline = strict.properties.timeline!;
+  const partOps = { fields: ['partId'] };
+  timeline.items = discriminateStrictObject(
+    timeline.items,
+    'op',
+    {
+      draw: { fields: [] },
+      write: partOps,
+      fade_in: { fields: [] },
+      fade_out: { fields: [] },
+      hold: { fields: [] },
+      camera_reset: { fields: [] },
+      emphasize: partOps,
+      spotlight: partOps,
+      glow: partOps,
+      camera_focus: { fields: ['partId', 'zoom'] },
+      transform: { fields: [], required: ['targetRef'] },
+      move_along: { fields: ['reverse'], required: ['pathRef'] },
+    },
+    ['id', 'shotId', 'at', 'ref', 'runTime', 'ease']
+  );
+  return strict;
+}
 
 export interface AnimationPlanningArtifacts {
   intent: z.infer<typeof intentArtifactSchema>;
@@ -104,8 +235,9 @@ const schemas: {
 export function parseAnimationPlanningArtifact<
   Name extends AnimationPlanningStageName,
 >(name: Name, value: string): AnimationPlanningArtifacts[Name] {
+  // Strict structured output encodes an omitted optional field as null.
   return schemas[name].parse(
-    parseStructuredJsonObject(value)
+    stripNullFields(parseStructuredJsonObject(value))
   ) as AnimationPlanningArtifacts[Name];
 }
 
@@ -234,6 +366,219 @@ function normalizeStoryboardArtifact(
   return { artifact: storyboard, corrections };
 }
 
+const TIMELINE_EPSILON = 0.001;
+const MIN_TRIMMED_RUN_TIME = 0.5;
+const MERGE_STAGGER_SECONDS = 0.5;
+
+type StoryboardShot = AnimationPlanningArtifacts['storyboard']['shots'][number];
+
+/**
+ * The compiler plays the timeline as groups of events that start together; a
+ * group may start only after the previous group's longest event ends. Models
+ * often stagger a label into a running motion instead, the most frequent
+ * remaining scene rejection (2026-10-15). Resolved mechanically, in order:
+ * a stagger of at most 0.5s joins the running group; otherwise the group
+ * waits for it (shortening itself, to at least 0.5s, if its shot ends
+ * first); otherwise the running group is trimmed to end where this one
+ * starts. Every change is recorded; anything else stays a rejection.
+ */
+export function resolveTimelineOverlaps(
+  timeline: SceneTimelineEvent[],
+  shotById: Map<string, StoryboardShot>,
+  durationSeconds?: number
+): { timeline: SceneTimelineEvent[]; corrections: string[] } {
+  const corrections: string[] = [];
+  const events = timeline.map((event) => ({ ...event }));
+  const order = events
+    .map((event, index) => ({ event, index }))
+    .sort(
+      (left, right) =>
+        left.event.at - right.event.at || left.index - right.index
+    );
+  const groups: SceneTimelineEvent[][] = [];
+  for (const { event } of order) {
+    const current = groups.at(-1);
+    if (current && Math.abs(current[0]!.at - event.at) < TIMELINE_EPSILON) {
+      current.push(event);
+    } else {
+      groups.push([event]);
+    }
+  }
+  const end = (group: SceneTimelineEvent[]) =>
+    group[0]!.at + Math.max(...group.map((event) => event.runTime));
+  const fits = (event: SceneTimelineEvent, at: number) => {
+    const shot = event.shotId ? shotById.get(event.shotId) : undefined;
+    if (
+      shot &&
+      (at < shot.startAt - TIMELINE_EPSILON ||
+        at + event.runTime > shot.endAt + TIMELINE_EPSILON)
+    ) {
+      return false;
+    }
+    return (
+      durationSeconds === undefined ||
+      at + event.runTime <= durationSeconds + TIMELINE_EPSILON
+    );
+  };
+  const shotEnd = (event: SceneTimelineEvent) => {
+    const shot = event.shotId ? shotById.get(event.shotId) : undefined;
+    return Math.min(
+      shot?.endAt ?? Number.POSITIVE_INFINITY,
+      durationSeconds ?? Number.POSITIVE_INFINITY
+    );
+  };
+  let previous = groups[0] ? [...groups[0]] : [];
+  for (let index = 1; index < groups.length; index += 1) {
+    const group = groups[index]!;
+    const previousStart = previous[0]!.at;
+    const previousEnd = end(previous);
+    const start = group[0]!.at;
+    if (start >= previousEnd - TIMELINE_EPSILON) {
+      previous = [...group];
+      continue;
+    }
+    // 1. A small stagger joins the running group.
+    if (
+      start - previousStart <= MERGE_STAGGER_SECONDS &&
+      group.every((event) => fits(event, previousStart))
+    ) {
+      for (const event of group) {
+        corrections.push(
+          `timeline/${event.id}: moved at ${event.at} -> ${previousStart} to start with its group`
+        );
+        event.at = previousStart;
+      }
+      previous = [...previous, ...group];
+      continue;
+    }
+    // 2-3. Wait for the running group, shortening itself if its shot ends.
+    const shifted = Number(previousEnd.toFixed(3));
+    if (
+      group.every(
+        (event) =>
+          fits(event, shifted) ||
+          shotEnd(event) - shifted >= MIN_TRIMMED_RUN_TIME - TIMELINE_EPSILON
+      )
+    ) {
+      for (const event of group) {
+        corrections.push(
+          `timeline/${event.id}: moved at ${event.at} -> ${shifted} to follow the previous group`
+        );
+        event.at = shifted;
+        if (!fits(event, shifted)) {
+          const runTime = Number((shotEnd(event) - shifted).toFixed(3));
+          corrections.push(
+            `timeline/${event.id}: trimmed runTime ${event.runTime} -> ${runTime} to fit its shot`
+          );
+          event.runTime = runTime;
+        }
+      }
+      previous = [...group];
+      continue;
+    }
+    // 4. Otherwise the running group ends where this one starts.
+    const trimmed = Number((start - previousStart).toFixed(3));
+    if (trimmed >= MIN_TRIMMED_RUN_TIME) {
+      for (const event of previous) {
+        if (event.runTime > trimmed) {
+          corrections.push(
+            `timeline/${event.id}: trimmed runTime ${event.runTime} -> ${trimmed} to end before the next group`
+          );
+          event.runTime = trimmed;
+        }
+      }
+    }
+    previous = [...group];
+  }
+  return { timeline: events, corrections };
+}
+
+/**
+ * The storyboard names each shot's focus object before the scene exists; the
+ * scene often builds that object under another id ("Unknown shot focus", the
+ * commonest scene rejection left on 2026-10-16). When a shot's focusRef is
+ * missing, rename the first object that shot actually animates (not axes, not
+ * another shot's focus) to the focusRef, updating every reference. Only ids
+ * change; the storyboard and the drawn content stay as approved.
+ */
+export function alignShotFocusIds(
+  scene: AnimationPlanningArtifacts['scene'],
+  shots: readonly StoryboardShot[]
+): { scene: AnimationPlanningArtifacts['scene']; corrections: string[] } {
+  const corrections: string[] = [];
+  let objects = scene.objects;
+  let timeline = scene.timeline;
+  const focusIds = new Set(shots.map((shot) => shot.focusRef).filter(Boolean));
+  for (const shot of shots) {
+    const focus = shot.focusRef;
+    if (!focus || objects.some((object) => object.id === focus)) continue;
+    const kinds = new Map(objects.map((object) => [object.id, object.kind]));
+    const candidate = [...timeline]
+      .filter((event) => event.shotId === shot.id)
+      .sort((left, right) => left.at - right.at)
+      .map((event) => event.ref)
+      .find(
+        (ref) =>
+          kinds.has(ref) && kinds.get(ref) !== 'axes' && !focusIds.has(ref)
+      );
+    if (!candidate) continue;
+    const rename = (value: string | undefined) =>
+      value === candidate ? focus : value;
+    objects = objects.map((object) => ({
+      ...object,
+      id: rename(object.id)!,
+      ...(object.startRef ? { startRef: rename(object.startRef) } : {}),
+      ...(object.endRef ? { endRef: rename(object.endRef) } : {}),
+    }));
+    timeline = timeline.map((event) => ({
+      ...event,
+      ref: rename(event.ref)!,
+      ...(event.targetRef ? { targetRef: rename(event.targetRef) } : {}),
+      ...(event.pathRef ? { pathRef: rename(event.pathRef) } : {}),
+    }));
+    focusIds.add(focus);
+    corrections.push(
+      `objects/${candidate}: renamed to shot ${shot.id} focus ${focus}`
+    );
+  }
+  return { scene: { ...scene, objects, timeline }, corrections };
+}
+
+const ATTENTION_OPS = new Set(['emphasize', 'spotlight', 'glow']);
+
+/**
+ * An emphasis on an object that has not appeared yet becomes its entrance
+ * (fade_in): the model meant the viewer to look at it, and it cannot be
+ * looked at before it exists. Mirrors the visibility rules of
+ * validateSceneSemantics; removals and transforms are left for repair.
+ */
+export function revealOnFirstAttention(timeline: SceneTimelineEvent[]): {
+  timeline: SceneTimelineEvent[];
+  corrections: string[];
+} {
+  const corrections: string[] = [];
+  const events = timeline.map((event) => ({ ...event }));
+  const visible = new Set<string>();
+  const ordered = [...events].sort((left, right) => left.at - right.at);
+  for (const event of ordered) {
+    if (['draw', 'write', 'fade_in', 'move_along'].includes(event.op)) {
+      visible.add(event.ref);
+      continue;
+    }
+    if (ATTENTION_OPS.has(event.op) && !visible.has(event.ref)) {
+      corrections.push(
+        `timeline/${event.id}: ${event.op} on unseen ${event.ref} -> fade_in`
+      );
+      event.op = 'fade_in';
+      delete event.partId;
+      visible.add(event.ref);
+      continue;
+    }
+    if (event.op === 'fade_out') visible.delete(event.ref);
+  }
+  return { timeline: events, corrections };
+}
+
 function normalizeSceneArtifact(
   scene: AnimationPlanningArtifacts['scene'],
   artifacts: Partial<AnimationPlanningArtifacts>
@@ -320,7 +665,25 @@ function normalizeSceneArtifact(
     return next;
   });
 
-  let artifact: AnimationPlanningArtifacts['scene'] = { ...scene, timeline };
+  const sequenced = resolveTimelineOverlaps(
+    timeline,
+    shotById,
+    artifacts.intent?.durationSeconds
+  );
+  corrections.push(...sequenced.corrections);
+
+  const aligned = alignShotFocusIds(
+    { ...scene, timeline: sequenced.timeline },
+    shots
+  );
+  corrections.push(...aligned.corrections);
+  const revealed = revealOnFirstAttention(aligned.scene.timeline);
+  corrections.push(...revealed.corrections);
+
+  let artifact: AnimationPlanningArtifacts['scene'] = {
+    ...aligned.scene,
+    timeline: revealed.timeline,
+  };
   if (artifacts.mathematics) {
     const derived = deriveSceneFormulaContent(artifact, artifacts.mathematics);
     artifact = derived.artifact;

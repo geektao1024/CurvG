@@ -8,6 +8,7 @@ import {
 } from '../src/core/ai/chat';
 import type { AnimationOrchestrationPlan } from '../src/core/animation-orchestrator';
 import { animationFailureCodeFromHttpStatus } from '../src/lib/animation';
+import { mathReviewNeedsOnlyScene } from '../src/lib/animation-math';
 import {
   buildDeterministicAnimationPlanningProfile,
   buildDeterministicCycloidArtifacts,
@@ -23,6 +24,7 @@ import {
 import { compileAnimationSpec } from '../src/lib/manim-compiler';
 import { enforceMinIntervalRateLimit } from '../src/lib/rate-limit';
 import {
+  acceptPlanContent,
   deterministicMathReviewForScene,
   validateAnimationPlanningStageSemantics,
 } from '../src/modules/animations/planning';
@@ -1602,4 +1604,56 @@ test('a provider error wrapped by a planning stage keeps its retryable code', ()
   );
   assert.equal(fatal.code, 'UPSTREAM_AUTH');
   assert.equal(fatal.retryable, false);
+});
+
+test('one merged plan answer validates into the five stage artifacts', () => {
+  const artifacts =
+    buildDeterministicCycloidArtifacts('对比摆线与生成它的滚动圆。');
+  assert.ok(artifacts);
+  const merged = {
+    ...artifacts.intent,
+    ...artifacts.knowledge,
+    ...artifacts.curriculum,
+    ...artifacts.mathematics,
+    ...artifacts.storyboard,
+  };
+  // Strict structured output encodes omitted optional fields as null.
+  const answer = JSON.stringify({ ...merged, assumptions: null });
+  const accepted = acceptPlanContent(answer);
+  assert.deepEqual(accepted.artifacts.mathematics, artifacts.mathematics);
+  assert.deepEqual(accepted.artifacts.knowledge, artifacts.knowledge);
+  assert.equal(accepted.artifacts.intent.title, artifacts.intent.title);
+  // null -> omitted -> the schema default, never a literal null.
+  assert.deepEqual(accepted.artifacts.intent.assumptions, []);
+
+  const brokenShots = JSON.stringify({
+    ...merged,
+    shots: merged.shots.map((shot, index) =>
+      index === 0 ? { ...shot, startAt: 3 } : shot
+    ),
+  });
+  assert.throws(() => acceptPlanContent(brokenShots), /^Error: storyboard: /);
+});
+
+test('only all-visual audit findings skip re-planning', () => {
+  const issue = (scope?: 'mathematics' | 'visual') => ({
+    severity: 'major' as const,
+    ...(scope ? { scope } : {}),
+    claim: 'c',
+    problem: 'p',
+    correction: 'x',
+  });
+  const review = (issues: ReturnType<typeof issue>[]) => ({
+    status: 'needs_revision' as const,
+    summary: 's',
+    checkedClaims: ['c'],
+    issues,
+  });
+  assert.equal(mathReviewNeedsOnlyScene(review([issue('visual')])), true);
+  assert.equal(
+    mathReviewNeedsOnlyScene(review([issue('visual'), issue('mathematics')])),
+    false
+  );
+  // Unscoped findings count as mathematics: fail toward the full revision.
+  assert.equal(mathReviewNeedsOnlyScene(review([issue()])), false);
 });

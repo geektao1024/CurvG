@@ -19,6 +19,18 @@ export interface ChatCompletionInput {
    * window without widening every small stage.
    */
   perTargetTimeoutMs?: number;
+  /**
+   * Strict JSON Schema for the answer (see lib/strict-json-schema). Routes
+   * with native structured output enforce it; others ignore it, so callers
+   * must still validate the content.
+   */
+  responseFormat?: { name: string; schema: Record<string, unknown> };
+  /**
+   * Send one identical twin request if the first has not answered by then;
+   * the first success wins. For heavy-tailed upstreams (KIE). Providers
+   * without support ignore it.
+   */
+  hedgeAfterMs?: number;
   signal?: AbortSignal;
   /**
    * Per-target attempt telemetry. ProviderFailoverChatProvider reports every

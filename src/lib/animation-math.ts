@@ -4,12 +4,17 @@ import { parseStructuredJsonObject } from '@/lib/structured-json';
 
 const mathIssueSchema = z.object({
   severity: z.enum(['major', 'blocking']),
+  /**
+   * visual: the dossier is right but the scene does not show it (motion,
+   * attachments, timing), so only the scene is redone. Absent = mathematics.
+   */
+  scope: z.enum(['mathematics', 'visual']).optional(),
   claim: z.string().min(1).max(500),
   problem: z.string().min(1).max(800),
   correction: z.string().min(1).max(800),
 });
 
-const animationMathReviewSchema = z
+export const animationMathReviewSchema = z
   .object({
     status: z.enum(['approved', 'needs_revision']),
     summary: z.string().min(1).max(800),
@@ -53,4 +58,12 @@ export function isAnimationMathReviewApproved(
   review: AnimationMathReview
 ): boolean {
   return review.status === 'approved' && review.issues.length === 0;
+}
+
+/** Only the scene needs rework when every issue is about the visuals. */
+export function mathReviewNeedsOnlyScene(review: AnimationMathReview): boolean {
+  return (
+    review.issues.length > 0 &&
+    review.issues.every((issue) => issue.scope === 'visual')
+  );
 }

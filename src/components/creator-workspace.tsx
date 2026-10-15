@@ -178,8 +178,8 @@ const CURATED_MODEL_PRESETS: CreatorCuratedModelPreset[] = [
   {
     key: 'curvgPro',
     provider: 'kie',
-    // Luna rows predate the 2026-10-14 switch; they keep the same label.
-    models: ['claude-haiku-5-5', 'gpt-6-1-sol', 'gpt-5-6-luna'],
+    // Earlier single-model rows keep the same label.
+    models: ['gpt-6-luna', 'claude-haiku-5-5', 'gpt-6-1-sol', 'gpt-5-6-luna'],
     tier: 'free',
   },
   // Retired public entries: kept so historical conversations that recorded
@@ -207,10 +207,7 @@ const CURATED_MODEL_PRESETS: CreatorCuratedModelPreset[] = [
   },
 ];
 
-const DEFAULT_CREATOR_MODEL_VALUE = animationModelValue(
-  'kie',
-  'claude-haiku-5-5'
-);
+const DEFAULT_CREATOR_MODEL_VALUE = animationModelValue('kie', 'gpt-6-luna');
 
 interface CreatorSuggestionGroup {
   value: string;

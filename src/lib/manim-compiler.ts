@@ -107,6 +107,35 @@ function graphPoint(axesVariable: string, point: [number, number]): string {
   return `${axesVariable}.c2p(${point[0]}, ${point[1]})`;
 }
 
+function isAttachedLine(object: AnimationObjectSpec): boolean {
+  return (
+    (object.kind === 'line' || object.kind === 'arrow') &&
+    Boolean(object.startRef || object.endRef || object.projection)
+  );
+}
+
+function lineEndpoints(
+  object: AnimationObjectSpec,
+  axesVariable: string
+): [string, string] {
+  const start = object.startRef
+    ? `${variableName(object.startRef)}.get_center()`
+    : graphPoint(axesVariable, object.start || [0, 0]);
+  if (object.endRef) {
+    return [start, `${variableName(object.endRef)}.get_center()`];
+  }
+  if (object.projection && object.startRef) {
+    const coordinates = `${axesVariable}.p2c(${variableName(object.startRef)}.get_center())`;
+    return [
+      start,
+      object.projection === 'x_axis'
+        ? `${axesVariable}.c2p(${coordinates}[0], 0)`
+        : `${axesVariable}.c2p(0, ${coordinates}[1])`,
+    ];
+  }
+  return [start, graphPoint(axesVariable, object.end || [1, 0])];
+}
+
 function positionStatement(
   variable: string,
   object: AnimationObjectSpec,
@@ -166,8 +195,12 @@ function compileObject(
           : `${variable} = Axes(x_range=[-6, 6, 1], y_range=[-4, 4, 1], x_length=8.6, y_length=5.4, tips=False, axis_config={"include_numbers": True, "font_size": 22, "stroke_opacity": 0.72})`;
       break;
     case 'curve':
+      // Plotted in the already-placed axes' coordinates. Scaling and moving
+      // it again (as before 2026-10-16) put every curve off its axes: the
+      // vertex of y=x^2 sat below the origin, and points and tangents
+      // declared in axis coordinates missed the curve.
       constructor = `${variable} = ${axesVariable}.plot(lambda x: ${compileExpression(object.expr || 'x')}, x_range=[${domain[0]}, ${domain[1]}], color=${color}, stroke_width=5)`;
-      break;
+      return [constructor];
     case 'parametric':
       constructor = `${variable} = ParametricFunction(lambda t: ${axesVariable}.c2p(${compileExpression(object.xExpr || 't')}, ${compileExpression(object.yExpr || 't')}), t_range=[${domain[0]}, ${domain[1]}], color=${color}, stroke_width=5)`;
       return [constructor];
@@ -224,11 +257,19 @@ function compileObject(
       constructor = `${variable} = Dot(${graphPoint(axesVariable, object.position || [0, 0])}, radius=0.09, color=${color})`;
       return [constructor];
     case 'line':
-      constructor = `${variable} = Line(${graphPoint(axesVariable, object.start || [0, 0])}, ${graphPoint(axesVariable, object.end || [1, 0])}, color=${color}, stroke_width=4)`;
+    case 'arrow': {
+      const [start, end] = lineEndpoints(object, axesVariable);
+      const shape =
+        object.kind === 'line'
+          ? `Line(${start}, ${end}, color=${color}, stroke_width=4)`
+          : `Arrow(${start}, ${end}, buff=0, color=${color}, stroke_width=4, max_tip_length_to_length_ratio=0.18)`;
+      // An attached line is rebuilt from its point every frame, so it follows
+      // a point that moves along a path (secants, connectors, drop lines).
+      constructor = isAttachedLine(object)
+        ? `${variable} = always_redraw(lambda: ${shape})`
+        : `${variable} = ${shape}`;
       return [constructor];
-    case 'arrow':
-      constructor = `${variable} = Arrow(${graphPoint(axesVariable, object.start || [0, 0])}, ${graphPoint(axesVariable, object.end || [1, 0])}, buff=0, color=${color}, stroke_width=4, max_tip_length_to_length_ratio=0.18)`;
-      return [constructor];
+    }
     case 'arc': {
       const center = object.center || [0, 0];
       const radius = object.radius || 1;
@@ -273,6 +314,15 @@ function animationExpression(
 ): string | null {
   const variable = variableName(event.ref);
   const target = eventTarget(event, objectsById);
+  const source = objectsById.get(event.ref);
+  if (source && isAttachedLine(source)) {
+    // Create/Write fight the per-frame redraw; a plain Transform would snap
+    // back to the point when its updater resumes.
+    if (event.op === 'draw' || event.op === 'write') return `FadeIn(${target})`;
+    if (event.op === 'transform') {
+      return `ReplacementTransform(${variable}, ${variableName(event.targetRef || '')}.copy())`;
+    }
+  }
   switch (event.op) {
     case 'draw':
       return `Create(${target})`;
@@ -294,8 +344,12 @@ function animationExpression(
       return `self.camera.frame.animate.move_to(${target}).set(width=config.frame_width / ${event.zoom || 1.8})`;
     case 'camera_reset':
       return 'Restore(self.camera.frame)';
-    case 'move_along':
-      return `MoveAlongPath(${target}, ${variableName(event.pathRef || '')})`;
+    case 'move_along': {
+      const path = variableName(event.pathRef || '');
+      return event.reverse
+        ? `MoveAlongPath(${target}, ${path}.copy().reverse_points())`
+        : `MoveAlongPath(${target}, ${path})`;
+    }
     case 'hold':
       return null;
   }
@@ -376,11 +430,12 @@ export function compileAnimationSpec(input: AnimationSpec): string {
     ).map((line) => line.replace(variableName(autoAxes.id), axesVariable));
     lines.push(...autoAxesLines.map((line) => `        ${line}`));
   }
-  const sortedObjects = [...spec.objects].sort((left, right) => {
-    if (left.kind === 'axes' && right.kind !== 'axes') return -1;
-    if (right.kind === 'axes' && left.kind !== 'axes') return 1;
-    return left.id.localeCompare(right.id);
-  });
+  // Attached lines read their points' positions, so they are built last.
+  const rank = (object: AnimationObjectSpec) =>
+    object.kind === 'axes' ? 0 : isAttachedLine(object) ? 2 : 1;
+  const sortedObjects = [...spec.objects].sort(
+    (left, right) => rank(left) - rank(right) || left.id.localeCompare(right.id)
+  );
   for (const object of sortedObjects) {
     for (const line of compileObject(
       object,

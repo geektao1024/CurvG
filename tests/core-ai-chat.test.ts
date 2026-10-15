@@ -48,7 +48,7 @@ function providerWith(params: {
   });
 }
 
-test('Kie chat allowlist contains exactly the eleven product models', () => {
+test('Kie chat allowlist contains exactly the twelve product models', () => {
   assert.deepEqual(Object.keys(kieChatModelRoutes), [
     'gemini-3.6-flash',
     'grok-4-5',
@@ -58,6 +58,7 @@ test('Kie chat allowlist contains exactly the eleven product models', () => {
     'gpt-5-6-sol',
     'gpt-6-1-sol',
     'gpt-5-6-luna',
+    'gpt-6-luna',
     'claude-haiku-5-5',
     'claude-sonnet-4-6',
     'claude-opus-4-7',
@@ -299,6 +300,38 @@ test('Kie GPT-5.6 Sol uses the Codex Responses endpoint', async () => {
 
   assert.equal(requestUrl, 'https://api.kie.ai/codex/v1/responses');
   assert.equal(result.content, 'GPT OK');
+});
+
+test('Kie GPT-6 Luna sends a strict json_schema text format when asked', async () => {
+  let requestUrl = '';
+  let requestBody: Record<string, unknown> | undefined;
+  const provider = new KieChatProvider({
+    apiKey: 'test-kie-key',
+    fetch: (async (url, init) => {
+      requestUrl = String(url);
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return Response.json({ output_text: '{"ok":true}', model: 'gpt-6-luna' });
+    }) as typeof globalThis.fetch,
+  });
+  const schema = {
+    type: 'object',
+    properties: { ok: { type: 'boolean' } },
+    required: ['ok'],
+    additionalProperties: false,
+  };
+
+  await provider.complete({
+    ...input,
+    model: 'gpt-6-luna',
+    responseFormat: { name: 'probe', schema },
+  });
+  assert.equal(requestUrl, 'https://api.kie.ai/codex/v1/responses');
+  assert.deepEqual(requestBody?.text, {
+    format: { type: 'json_schema', name: 'probe', strict: true, schema },
+  });
+
+  await provider.complete({ ...input, model: 'gpt-6-luna' });
+  assert.equal(requestBody?.text, undefined);
 });
 
 test('Kie Responses replays an assistant turn as output_text', async () => {
@@ -1108,4 +1141,62 @@ test('Auto reserves a separate timeout budget for fallback models', async () => 
     { model: 'primary-model', deadlineAt: 91_000 },
     { model: 'fallback-model', deadlineAt: 181_000 },
   ]);
+});
+
+test('Kie hedges a slow request: the twin wins and the original is aborted', async () => {
+  let calls = 0;
+  let firstAborted = false;
+  const provider = new KieChatProvider({
+    apiKey: 'test-kie-key',
+    maxAttempts: 1,
+    fetch: ((_url, init) => {
+      calls += 1;
+      if (calls === 1) {
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            firstAborted = true;
+            reject(new DOMException('aborted', 'AbortError'));
+          });
+        });
+      }
+      return Promise.resolve(
+        Response.json({ output_text: 'twin', model: 'gpt-6-luna' })
+      );
+    }) as typeof globalThis.fetch,
+  });
+
+  const result = await provider.complete({
+    ...input,
+    model: 'gpt-6-luna',
+    hedgeAfterMs: 20,
+  });
+  assert.equal(result.content, 'twin');
+  assert.equal(calls, 2);
+  assert.equal(firstAborted, true);
+});
+
+test('Kie hedging leaves a fast failure to the retry loop and skips twins for fast answers', async () => {
+  let calls = 0;
+  const provider = new KieChatProvider({
+    apiKey: 'test-kie-key',
+    maxAttempts: 2,
+    fetch: (async () => {
+      calls += 1;
+      return calls === 1
+        ? Response.json({
+            code: 429,
+            msg: 'Internal error, please try again later',
+          })
+        : Response.json({ output_text: 'retried', model: 'gpt-6-luna' });
+    }) as typeof globalThis.fetch,
+  });
+
+  const result = await provider.complete({
+    ...input,
+    model: 'gpt-6-luna',
+    hedgeAfterMs: 5_000,
+  });
+  assert.equal(result.content, 'retried');
+  // One failed call, one retry; no hedge twin was ever launched.
+  assert.equal(calls, 2);
 });

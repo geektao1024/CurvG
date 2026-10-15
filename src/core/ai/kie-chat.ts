@@ -63,6 +63,13 @@ export const kieChatModelRoutes = {
     path: 'codex/v1/responses',
     supportsStreaming: false,
   },
+  // 2026-10-16: the public animation model. Documented on KIE with strict
+  // json_schema output (text.format); probe: scripts/probe-kie-gpt.mjs.
+  'gpt-6-luna': {
+    protocol: 'responses',
+    path: 'codex/v1/responses',
+    supportsStreaming: false,
+  },
   'claude-haiku-5-5': {
     protocol: 'anthropic-messages',
     path: 'claude/v1/messages',
@@ -382,6 +389,18 @@ export class KieChatProvider implements ChatProvider {
           : { max_output_tokens: input.maxTokens }),
         ...(input.reasoningEffort
           ? { reasoning: { effort: input.reasoningEffort } }
+          : {}),
+        ...(input.responseFormat
+          ? {
+              text: {
+                format: {
+                  type: 'json_schema',
+                  name: input.responseFormat.name,
+                  strict: true,
+                  schema: input.responseFormat.schema,
+                },
+              },
+            }
           : {}),
       };
     } else {
@@ -760,6 +779,86 @@ export class KieChatProvider implements ChatProvider {
     });
   }
 
+  /**
+   * KIE latency is heavy-tailed: the same planning call took 41s, then 269s,
+   * then timed out twice at 290s (2026-10-15). With `hedgeAfterMs`, a request
+   * still unanswered by then gets one identical twin; the first success wins
+   * and the other is aborted. A fast failure before the hedge point is left
+   * to the normal retry loop. Costs at most one extra call, a few hundredths
+   * of a Kie credit on this route.
+   */
+  private hedgedAttempt(
+    model: KieChatModel,
+    input: ChatCompletionInput,
+    deadlineAt: number,
+    bodyOverride?: Record<string, unknown>
+  ): Promise<ChatCompletionResult> {
+    const hedgeAfterMs = input.hedgeAfterMs;
+    if (!hedgeAfterMs || Date.now() + hedgeAfterMs >= deadlineAt) {
+      return this.attempt(model, input, deadlineAt, bodyOverride);
+    }
+    return new Promise((resolve, reject) => {
+      const controllers: AbortController[] = [];
+      let settled = false;
+      let running = 0;
+      let hedged = false;
+      const settle = (winner?: AbortController) => {
+        settled = true;
+        clearTimeout(timer);
+        input.signal?.removeEventListener('abort', onCallerAbort);
+        for (const controller of controllers) {
+          if (controller !== winner) controller.abort();
+        }
+      };
+      const onCallerAbort = () => {
+        if (settled) return;
+        settle();
+        reject(
+          new ChatProviderError('Kie request was canceled', {
+            code: 'stream_interrupted',
+            retryable: false,
+            provider: this.name,
+            model,
+          })
+        );
+      };
+      input.signal?.addEventListener('abort', onCallerAbort, { once: true });
+      const launch = () => {
+        const controller = new AbortController();
+        controllers.push(controller);
+        running += 1;
+        this.attempt(
+          model,
+          { ...input, signal: controller.signal },
+          deadlineAt,
+          bodyOverride
+        ).then(
+          (result) => {
+            if (settled) return;
+            settle(controller);
+            resolve(result);
+          },
+          (error) => {
+            running -= 1;
+            if (settled) return;
+            // Before the hedge point a failure is the retry loop's to handle;
+            // after it, wait for the twin.
+            if (!hedged || running === 0) {
+              settle();
+              reject(error);
+            }
+          }
+        );
+      };
+      const timer = setTimeout(() => {
+        if (settled) return;
+        hedged = true;
+        launch();
+      }, hedgeAfterMs);
+      launch();
+    });
+  }
+
   private async completeWithRetry(
     model: KieChatModel,
     input: ChatCompletionInput,
@@ -769,7 +868,7 @@ export class KieChatProvider implements ChatProvider {
     let lastError: ChatProviderError | undefined;
     for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
       try {
-        return await this.attempt(model, input, deadlineAt, bodyOverride);
+        return await this.hedgedAttempt(model, input, deadlineAt, bodyOverride);
       } catch (error) {
         lastError =
           error instanceof ChatProviderError

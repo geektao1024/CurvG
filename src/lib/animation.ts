@@ -141,6 +141,15 @@ export interface AnimationObjectSpec {
   center?: [number, number];
   start?: [number, number];
   end?: [number, number];
+  /**
+   * Line/arrow endpoints attached to point objects: the line is redrawn from
+   * the point every frame, so it follows a point that moves along a path.
+   * `start`/`end` stay the initial coordinates.
+   */
+  startRef?: string;
+  endRef?: string;
+  /** End the line at the start point's foot on this axis (a drop line). */
+  projection?: 'x_axis' | 'y_axis';
   radius?: number;
   /** Radians, used by arc. */
   startAngle?: number;
@@ -181,6 +190,8 @@ export interface AnimationTimelineSpec {
   targetRef?: string;
   /** A curve/circle/arc/line path used by move_along. */
   pathRef?: string;
+  /** move_along only: travel the path from its end back to its start. */
+  reverse?: boolean;
   /** A formula/series part id scoped to ref. */
   partId?: string;
   /** Camera magnification for camera_focus. */

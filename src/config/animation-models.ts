@@ -6,10 +6,12 @@
  * endpoint. Unknown models fail closed instead of silently inheriting access
  * when an upstream platform adds new aliases.
  *
- * Single public model (2026-10-15): KIE Claude Haiku 5.5 — better scenes in
- * the owner's comparison and a tenth of GPT-6.1 Sol's token price ($0.06 /
- * $0.30 per 1M in/out), which is what makes the plans profitable at full use
- * (docs/MONETIZATION.md). GPT-6.1 Sol was the single model on 2026-10-14.
+ * Single public model (2026-10-16): KIE GPT-6 Luna. KIE's Claude Haiku 5.5
+ * route returned HTTP 429 "Internal error" on every probe (0/10 on
+ * 2026-10-15, any request shape) while Luna passed 30/30 with strict
+ * json_schema output at ~0.01-0.04 Kie credits per call
+ * (scripts/probe-kie-gpt.mjs). Haiku 5.5 was the single model on 2026-10-15,
+ * GPT-6.1 Sol on 2026-10-14.
  * DeepSeek and Kuaipao
  * were removed from routing after 30 days without one delivered video (Kuaipao
  * out of quota since mid-September, DeepSeek truncating). Retired entries stay
@@ -19,10 +21,17 @@
 export const animationModelPolicies = [
   {
     provider: 'kie',
-    model: 'claude-haiku-5-5',
+    model: 'gpt-6-luna',
     presetKey: 'curvgPro',
     requiredTier: 'free',
     publicCatalog: true,
+  },
+  {
+    provider: 'kie',
+    model: 'claude-haiku-5-5',
+    presetKey: 'curvgPro',
+    requiredTier: 'free',
+    publicCatalog: false,
   },
   {
     provider: 'kie',
@@ -64,7 +73,7 @@ export const animationModelPolicies = [
 export type AnimationModelPolicy = (typeof animationModelPolicies)[number];
 export type AnimationAccessTier = 'free' | 'starter' | 'pro';
 
-export const DEFAULT_ANIMATION_MODEL = 'claude-haiku-5-5';
+export const DEFAULT_ANIMATION_MODEL = 'gpt-6-luna';
 export const DEFAULT_ANIMATION_PROVIDER = 'kie';
 
 /**
@@ -78,6 +87,8 @@ export function getAnimationReasoningEffort(
   model: string
 ): 'max' | 'xhigh' | 'high' | undefined {
   if (model === 'gpt-5-6-luna') return 'max';
+  // Planning artifacts are small; high keeps the mathematics careful.
+  if (model === 'gpt-6-luna') return 'high';
   if (model === 'deepseek-v4-flash') return 'high';
   if (model === 'gpt-6-1-sol' || model === 'gpt-5-6-sol') return 'xhigh';
   // Claude on Kie has a thinking on/off switch only; `high` turns it on.
@@ -95,6 +106,7 @@ export function getAnimationCompositionReasoningEffort(
   model: string
 ): 'max' | 'high' | 'medium' | undefined {
   if (model === 'gpt-5-6-luna') return 'max';
+  if (model === 'gpt-6-luna') return 'medium';
   if (model === 'deepseek-v4-flash') return 'high';
   if (model === 'gpt-6-1-sol' || model === 'gpt-5-6-sol') return 'high';
   if (model === 'claude-haiku-5-5') return 'high';
@@ -104,11 +116,11 @@ export function getAnimationCompositionReasoningEffort(
 // Auto candidates in preference order; resolveChatProvider picks the first
 // with a configured credential. One target while KIE is the only vendor.
 export const FREE_AUTO_MODEL_TARGETS = [
-  { provider: 'kie', model: 'claude-haiku-5-5' },
+  { provider: 'kie', model: 'gpt-6-luna' },
 ] as const;
 
 export const PRO_AUTO_MODEL_TARGETS = [
-  { provider: 'kie', model: 'claude-haiku-5-5' },
+  { provider: 'kie', model: 'gpt-6-luna' },
 ] as const;
 
 export function getAnimationModelPolicy(

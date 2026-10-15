@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt } from 'drizzle-orm';
 
 import { db } from '@/core/db';
 import { aiTask } from '@/config/db/schema';
@@ -173,4 +173,50 @@ export async function findTask(taskId: string) {
     .where(eq(aiTask.id, taskId))
     .limit(1);
   return result;
+}
+
+/**
+ * Fail a user's tasks that have been pending or processing since before
+ * `olderThan` and refund their credits. Each row moves only through a
+ * conditional update, so a render that finishes at the same moment keeps its
+ * success and is never refunded. Returns the number of tasks failed.
+ */
+export async function failStaleTasks(params: {
+  userId: string;
+  mediaType: string;
+  olderThan: Date;
+}): Promise<number> {
+  const stale = await db()
+    .select()
+    .from(aiTask)
+    .where(
+      and(
+        eq(aiTask.userId, params.userId),
+        eq(aiTask.mediaType, params.mediaType),
+        inArray(aiTask.status, [AITaskStatus.PENDING, AITaskStatus.PROCESSING]),
+        lt(aiTask.updatedAt, params.olderThan),
+        isNull(aiTask.deletedAt)
+      )
+    );
+  let failed = 0;
+  for (const task of stale) {
+    await db()
+      .update(aiTask)
+      .set({ status: AITaskStatus.FAILED })
+      .where(and(eq(aiTask.id, task.id), eq(aiTask.status, task.status)));
+    const [current] = await db()
+      .select({ status: aiTask.status })
+      .from(aiTask)
+      .where(eq(aiTask.id, task.id))
+      .limit(1);
+    if (current?.status !== AITaskStatus.FAILED) continue;
+    failed += 1;
+    const info = task.taskInfo
+      ? (JSON.parse(task.taskInfo as string) as { creditId?: unknown })
+      : {};
+    if (typeof info.creditId === 'string' && info.creditId) {
+      await revoke(info.creditId);
+    }
+  }
+  return failed;
 }

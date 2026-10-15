@@ -53,6 +53,9 @@ const objectSchema = z.object({
   center: coordinateSchema.optional(),
   start: coordinateSchema.optional(),
   end: coordinateSchema.optional(),
+  startRef: identifierSchema.optional(),
+  endRef: identifierSchema.optional(),
+  projection: z.enum(['x_axis', 'y_axis']).optional(),
   radius: z.number().finite().min(0.01).max(100).optional(),
   startAngle: z.number().finite().min(-100).max(100).optional(),
   sweepAngle: z.number().finite().min(-100).max(100).optional(),
@@ -86,6 +89,7 @@ const timelineSchema = z.object({
   ref: identifierSchema,
   targetRef: identifierSchema.optional(),
   pathRef: identifierSchema.optional(),
+  reverse: z.boolean().optional(),
   partId: identifierSchema.optional(),
   zoom: z.number().min(1.1).max(3.5).optional(),
   runTime: z.number().min(0.1).max(120),
@@ -406,6 +410,36 @@ export const animationSpecSchema = z
           path: ['objects', index],
         });
       }
+      const attachments = [
+        ['startRef', object.startRef],
+        ['endRef', object.endRef],
+      ] as const;
+      for (const [field, ref] of attachments) {
+        if (!ref) continue;
+        if (object.kind !== 'line' && object.kind !== 'arrow') {
+          context.addIssue({
+            code: 'custom',
+            message: `Only line and arrow objects can declare ${field}`,
+            path: ['objects', index, field],
+          });
+        } else if (
+          spec.objects.find((candidate) => candidate.id === ref)?.kind !==
+          'point'
+        ) {
+          context.addIssue({
+            code: 'custom',
+            message: `${field} must name a point object`,
+            path: ['objects', index, field],
+          });
+        }
+      }
+      if (object.projection && (!object.startRef || object.endRef)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'projection requires startRef and no endRef',
+          path: ['objects', index, 'projection'],
+        });
+      }
       if (object.parts && !['formula', 'series'].includes(object.kind)) {
         context.addIssue({
           code: 'custom',
@@ -480,6 +514,13 @@ export const animationSpecSchema = z
           code: 'custom',
           message: 'pathRef is only supported by move_along',
           path: ['timeline', index, 'pathRef'],
+        });
+      }
+      if (event.reverse && event.op !== 'move_along') {
+        context.addIssue({
+          code: 'custom',
+          message: 'reverse is only supported by move_along',
+          path: ['timeline', index, 'reverse'],
         });
       }
       const referencedObject = spec.objects.find(

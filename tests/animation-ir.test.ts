@@ -744,3 +744,201 @@ test('browser math preview detects and evaluates supported inputs', () => {
     [3, 4],
   ]);
 });
+
+function attachedSecantSpec(): AnimationSpec {
+  const spec = validSpec();
+  spec.objects = [
+    ...spec.objects.filter((object) => object.id !== 'formula'),
+    {
+      id: 'anchor',
+      kind: 'point',
+      region: 'graph',
+      position: [1, 1],
+    },
+    {
+      id: 'mover',
+      kind: 'point',
+      region: 'graph',
+      position: [2, 4],
+    },
+    {
+      id: 'secant',
+      kind: 'line',
+      region: 'graph',
+      start: [1, 1],
+      end: [2, 4],
+      startRef: 'anchor',
+      endRef: 'mover',
+    },
+    {
+      id: 'drop',
+      kind: 'line',
+      region: 'graph',
+      start: [2, 4],
+      end: [2, 0],
+      startRef: 'mover',
+      projection: 'x_axis',
+    },
+    {
+      id: 'tangent',
+      kind: 'line',
+      region: 'graph',
+      start: [0, -1],
+      end: [2, 3],
+    },
+  ];
+  spec.timeline = [
+    {
+      id: 'axes-in',
+      at: 0,
+      op: 'draw',
+      ref: 'axes',
+      runTime: 1,
+      ease: 'smooth',
+    },
+    {
+      id: 'curve-in',
+      at: 1,
+      op: 'draw',
+      ref: 'curve',
+      runTime: 1,
+      ease: 'smooth',
+    },
+    {
+      id: 'anchor-in',
+      at: 2,
+      op: 'fade_in',
+      ref: 'anchor',
+      runTime: 0.5,
+      ease: 'smooth',
+    },
+    {
+      id: 'mover-in',
+      at: 2,
+      op: 'fade_in',
+      ref: 'mover',
+      runTime: 0.5,
+      ease: 'smooth',
+    },
+    {
+      id: 'secant-in',
+      at: 2.5,
+      op: 'draw',
+      ref: 'secant',
+      runTime: 0.5,
+      ease: 'smooth',
+    },
+    {
+      id: 'drop-in',
+      at: 2.5,
+      op: 'draw',
+      ref: 'drop',
+      runTime: 0.5,
+      ease: 'smooth',
+    },
+    {
+      id: 'slide',
+      at: 3,
+      op: 'move_along',
+      ref: 'mover',
+      pathRef: 'curve',
+      runTime: 2,
+      ease: 'smooth',
+    },
+    {
+      id: 'settle',
+      at: 5,
+      op: 'transform',
+      ref: 'secant',
+      targetRef: 'tangent',
+      runTime: 1,
+      ease: 'smooth',
+    },
+  ];
+  return spec;
+}
+
+test('lines attached to points are redrawn from them every frame', () => {
+  const spec = validateAnimationSpec(attachedSecantSpec());
+  const code = compileAnimationSpec(spec);
+
+  assert.match(
+    code,
+    /obj_secant = always_redraw\(lambda: Line\(obj_anchor\.get_center\(\), obj_mover\.get_center\(\)/
+  );
+  assert.match(
+    code,
+    /obj_drop = always_redraw\(lambda: Line\(obj_mover\.get_center\(\), \w+\.c2p\(\w+\.p2c\(obj_mover\.get_center\(\)\)\[0\], 0\)/
+  );
+  // Attached lines are built after the points they read.
+  assert.ok(
+    code.indexOf('obj_mover = Dot(') <
+      code.indexOf('obj_secant = always_redraw')
+  );
+  // A fixed line keeps its plain constructor.
+  assert.match(code, /obj_tangent = Line\(/);
+  assert.match(code, /FadeIn\(obj_secant\)/);
+  assert.match(
+    code,
+    /ReplacementTransform\(obj_secant, obj_tangent\.copy\(\)\)/
+  );
+  assert.match(code, /MoveAlongPath\(obj_mover, obj_curve\)/);
+});
+
+test('line attachments must name point objects on lines or arrows', () => {
+  const notAPoint = attachedSecantSpec();
+  notAPoint.objects = notAPoint.objects!.map((object) =>
+    object.id === 'secant' ? { ...object, endRef: 'curve' } : object
+  );
+  assert.throws(
+    () => validateAnimationSpec(notAPoint),
+    /endRef must name a point object/
+  );
+
+  const projectionWithEnd = attachedSecantSpec();
+  projectionWithEnd.objects = projectionWithEnd.objects!.map((object) =>
+    object.id === 'drop' ? { ...object, endRef: 'anchor' } : object
+  );
+  assert.throws(
+    () => validateAnimationSpec(projectionWithEnd),
+    /projection requires startRef and no endRef/
+  );
+});
+
+test('curves stay in their axes coordinates and move_along can run backwards', () => {
+  const spec = attachedSecantSpec();
+  spec.objects = [
+    ...spec.objects!,
+    {
+      id: 'approach',
+      kind: 'curve',
+      region: 'graph',
+      expr: 'x^2',
+      domain: [1.05, 2],
+    },
+  ];
+  spec.timeline = spec.timeline!.map((event) =>
+    event.id === 'slide'
+      ? { ...event, pathRef: 'approach', reverse: true }
+      : event
+  );
+  const code = compileAnimationSpec(validateAnimationSpec(spec));
+
+  // A plotted curve already lives in the placed axes; moving it again put
+  // y=x^2's vertex below the origin (fixed 2026-10-16).
+  assert.doesNotMatch(code, /obj_curve\.scale\(/);
+  assert.doesNotMatch(code, /obj_approach\.scale\(/);
+  assert.match(
+    code,
+    /MoveAlongPath\(obj_mover, obj_approach\.copy\(\)\.reverse_points\(\)\)/
+  );
+
+  const misplaced = attachedSecantSpec();
+  misplaced.timeline = misplaced.timeline!.map((event) =>
+    event.id === 'settle' ? { ...event, reverse: true } : event
+  );
+  assert.throws(
+    () => validateAnimationSpec(misplaced),
+    /reverse is only supported by move_along/
+  );
+});

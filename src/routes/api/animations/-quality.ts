@@ -5,7 +5,12 @@ import { parseAnimationVisualReview } from '@/lib/animation-qa';
 import { signAnimationReviewArtifact } from '@/lib/signed-animation-artifact';
 
 export const ANIMATION_REVIEW_MODEL = 'gemini-3.1-pro';
-const ANIMATION_REVIEW_TIMEOUT_MS = 25_000;
+// The renderer waits 120s for the quality gate (renderer QUALITY_GATE_TIMEOUT_MS).
+// One 25s try failed whole renders when KIE was slow (2026-10-15: the review
+// never ran and a finished video was discarded). Two tries of up to 50s fit
+// inside the renderer's wait; Gemini answers a single frame in 11-14s.
+const ANIMATION_REVIEW_ATTEMPT_TIMEOUT_MS = 50_000;
+const ANIMATION_REVIEW_TIMEOUT_MS = 100_000;
 
 export function animationVisualReviewPrompt(detail: AnimationDetail): string {
   return `You are the cinematographer and mathematical continuity reviewer in CurvG's autonomous Manim production pipeline.
@@ -118,8 +123,8 @@ export async function runAnimationSemanticReview(params: {
   const provider = new KieChatProvider({
     apiKey: params.configs.kie_api_key,
     baseUrl: params.configs.kie_base_url || 'https://api.kie.ai',
-    maxAttempts: 1,
-    requestTimeoutMs: ANIMATION_REVIEW_TIMEOUT_MS,
+    maxAttempts: 2,
+    requestTimeoutMs: ANIMATION_REVIEW_ATTEMPT_TIMEOUT_MS,
     overallTimeoutMs: ANIMATION_REVIEW_TIMEOUT_MS,
   });
   const result = await provider.completeImageReview({
