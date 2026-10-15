@@ -259,6 +259,13 @@ export interface PaymentProvider {
     sessionId: string;
   }): Promise<PaymentSession>;
 
+  // expire an open checkout so it can no longer be paid
+  expirePaymentSession?({
+    sessionId,
+  }: {
+    sessionId: string;
+  }): Promise<PaymentSession>;
+
   // get payment event from webhook notification
   getPaymentEvent({ req }: { req: Request }): Promise<PaymentEvent>;
 

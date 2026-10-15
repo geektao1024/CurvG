@@ -14,6 +14,7 @@ import {
 import {
   PaymentEventType,
   PaymentInterval,
+  PaymentStatus,
   PaymentType,
   SubscriptionCycleType,
 } from '../src/core/payment/types';
@@ -382,6 +383,34 @@ test('Stripe sessions meet Managed Payments: tax code, inclusive price, no unsup
   );
   assert.equal(own.managed_payments, undefined);
   assert.deepEqual(own.invoice_creation, { enabled: true });
+});
+
+test('Stripe expires an abandoned checkout as canceled so another plan can start', async () => {
+  const provider = new StripeProvider({
+    secretKey: 'sk_test_fake',
+    publishableKey: 'pk_test_fake',
+  });
+  let expiredId = '';
+  (provider as any).client = {
+    checkout: {
+      sessions: {
+        expire: async (id: string) => {
+          expiredId = id;
+          return {
+            id,
+            status: 'expired',
+            payment_status: 'unpaid',
+            metadata: { orderNo: 'ORD_OLD' },
+          };
+        },
+      },
+    },
+  };
+
+  const session = await provider.expirePaymentSession({ sessionId: 'cs_old' });
+  assert.equal(expiredId, 'cs_old');
+  assert.equal(session.paymentStatus, PaymentStatus.CANCELED);
+  assert.equal(session.metadata?.orderNo, 'ORD_OLD');
 });
 
 test('PayPal subscription APPROVED stays pending at the provider status layer', () => {

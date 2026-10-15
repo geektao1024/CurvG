@@ -543,10 +543,27 @@ export async function createCheckout(params: {
         // A provider status outage must not create a second chargeable session.
         throw new PaymentCheckoutBusyError();
       }
-      if (!activeCheckoutClosed) {
-        if (activeCheckout.productId !== catalogProduct.productId) {
+      if (
+        !activeCheckoutClosed &&
+        activeCheckout.productId !== catalogProduct.productId
+      ) {
+        // The user left an unpaid checkout for another plan (e.g. came back
+        // from Stripe and switched monthly/yearly). Expire it so it can no
+        // longer be paid, then start the new one. A session that completed in
+        // the meantime cannot be expired, so a real payment is never dropped.
+        const expired = await pm
+          .expirePaymentSession({
+            sessionId: activeCheckout.paymentSessionId,
+            provider: activeCheckout.paymentProvider,
+          })
+          .catch(() => null);
+        if (expired?.paymentStatus !== PaymentStatus.CANCELED) {
           throw new PaymentCheckoutBusyError();
         }
+        await handleCheckoutSuccess(expired, activeCheckout.paymentProvider);
+        activeCheckoutClosed = true;
+      }
+      if (!activeCheckoutClosed) {
         return {
           provider: activeCheckout.paymentProvider,
           checkoutParams: {},

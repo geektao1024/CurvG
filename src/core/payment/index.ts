@@ -89,6 +89,22 @@ export class PaymentManager {
     return defaultProvider.getPaymentSession({ sessionId });
   }
 
+  // expire an open checkout; null when the provider cannot expire sessions
+  async expirePaymentSession({
+    sessionId,
+    provider,
+  }: {
+    sessionId: string;
+    provider: string;
+  }): Promise<PaymentSession | null> {
+    const providerInstance = this.getProvider(provider);
+    if (!providerInstance) {
+      throw new Error(`Payment provider '${provider}' not found`);
+    }
+    if (!providerInstance.expirePaymentSession) return null;
+    return providerInstance.expirePaymentSession({ sessionId });
+  }
+
   // handle webhook using specific provider
   async getPaymentEvent({
     req,

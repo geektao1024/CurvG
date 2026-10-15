@@ -282,6 +282,24 @@ export class StripeProvider implements PaymentProvider {
   }
 
   /**
+   * Expire an open checkout session. Stripe rejects the call once the session
+   * is complete, so a paid session can never be expired here.
+   */
+  async expirePaymentSession({
+    sessionId,
+  }: {
+    sessionId: string;
+  }): Promise<PaymentSession> {
+    if (!sessionId) {
+      throw new Error('sessionId is required');
+    }
+
+    const session = await this.client.checkout.sessions.expire(sessionId);
+
+    return await this.buildPaymentSessionFromCheckoutSession(session);
+  }
+
+  /**
    * Get payment event from webhook notification
    */
   async getPaymentEvent({ req }: { req: Request }): Promise<PaymentEvent> {

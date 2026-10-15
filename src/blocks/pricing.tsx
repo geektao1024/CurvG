@@ -7,7 +7,7 @@ import { useSession } from '@/core/auth/client';
 import { useRouter } from '@/core/i18n/navigation';
 import { getPricingProduct, type PricingProduct } from '@/config/pricing';
 import type { AnimationModelCatalog } from '@/lib/animation';
-import { apiGet, apiPost } from '@/lib/api-client';
+import { ApiError, apiGet, apiPost } from '@/lib/api-client';
 import { m } from '@/paraglide/messages.js';
 import { getLocale, localizeHref } from '@/paraglide/runtime.js';
 import { usePublicConfig } from '@/hooks/use-public-config';
@@ -335,8 +335,12 @@ export function Pricing({
       }
       window.location.href = data.checkout_url;
     },
-    onError: () => {
-      toast.error(m['common.pricing.checkout_failed']());
+    onError: (error) => {
+      toast.error(
+        error instanceof ApiError && error.status === 409
+          ? m['common.pricing.checkout_busy']()
+          : m['common.pricing.checkout_failed']()
+      );
       setLoadingPlanId(null);
       setLoadingProvider(null);
     },

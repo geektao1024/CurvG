@@ -332,6 +332,7 @@
   "common.pricing.upgrade_pro": "升级到 Pro",
   "common.pricing.payments_unavailable": "支付暂不可用",
   "common.pricing.checkout_failed": "无法发起结账，请重试。",
+  "common.pricing.checkout_busy": "还有一个结账页面未完成。请先完成它，或稍等一分钟再试。",
   "common.pricing.choose_payment": "选择支付方式",
   "common.pricing.choose_payment_desc": "选择你想使用的支付渠道。",
   "common.pricing.payment_for": "{plan} — {price}",
