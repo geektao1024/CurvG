@@ -32,7 +32,6 @@ const cellAt = (r: number, j: number): [number, number] => [
 export const permutationsCombinations: Lab = {
   slug: 'permutations-combinations',
   publication: 'public',
-  primaryCategoryId: 'numbers-structure',
   levels: ['high'],
   chapterTitle: { en: 'Permutations & combinations', zh: '排列与组合' },
   title: {

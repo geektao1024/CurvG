@@ -58,7 +58,7 @@ export const conicCurves: CurveDef[] = [
       en: 'Animate the parabola x² = 4py: mark the focus and directrix, pick three points and show their two defining distances are equal, then reflect a family of vertical rays off the curve and watch them converge at the focus.',
       zh: '演示抛物线 x² = 4py：标出焦点与准线，取三个点展示"到焦点与到准线的距离相等"；再让一组竖直光线在曲线上反射，观察它们汇聚于焦点。',
     },
-    related: ['ellipse', 'hyperbola', 'catenary', 'sine-wave'],
+    related: ['ellipse', 'hyperbola', 'catenary', 'semicubical-parabola'],
   },
   {
     slug: 'ellipse',

@@ -61,6 +61,8 @@ function graphPaths(curve: CurveDef, w: number, h: number, pad: number) {
 
 function graphSvg(curve: CurveDef, w = 800, h = 600) {
   const { paths, origin } = graphPaths(curve, w, h, 56);
+  // Construction lines (a fixed circle, a control polygon) are drawn faint.
+  const guides = curve.guideLines ?? 0;
   const grid: string[] = [];
   for (let x = 0; x <= w; x += 40) grid.push(`M${x},0V${h}`);
   for (let y = 0; y <= h; y += 40) grid.push(`M0,${y}H${w}`);
@@ -72,7 +74,8 @@ function graphSvg(curve: CurveDef, w = 800, h = 600) {
 <rect width="${w}" height="${h}" fill="#fbf9f4"/>
 <path d="${grid.join('')}" stroke="#e7e2d8" stroke-width="1" fill="none"/>
 <path d="${axes.join('')}" stroke="#bdb6a8" stroke-width="1.2" fill="none"/>
-<path d="${paths.join('')}" stroke="#c9800f" stroke-width="3" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="${paths.slice(0, guides).join('')}" stroke="#c9800f" stroke-opacity="0.45" stroke-width="1.6" fill="none" stroke-linejoin="round"/>
+<path d="${paths.slice(guides).join('')}" stroke="#c9800f" stroke-width="3" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
 </svg>
 `;
 }

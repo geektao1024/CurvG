@@ -24,7 +24,6 @@ const C2: [string, string] = ['c2x', 'c2y'];
 export const similarityHomothety: Lab = {
   slug: 'similarity-homothety',
   publication: 'public',
-  primaryCategoryId: 'visual-proofs',
   levels: ['middle', 'high'],
   chapterTitle: { en: 'Similarity & homothety', zh: '相似与位似' },
   title: {

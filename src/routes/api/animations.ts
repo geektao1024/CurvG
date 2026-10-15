@@ -34,6 +34,7 @@ import { startSilentAnimationProduction } from './animations/-production';
 import {
   animationErrorInit,
   animationErrorResponse,
+  enforceFreeDailyCreations,
   parseAnimationProductionRequest,
   parseModelChoice,
   parseSubject,
@@ -151,6 +152,7 @@ async function POST({ request }: { request: Request }) {
       return respErr('Prompt is too long', { status: 400 });
     }
     const configs = await getAllConfigs();
+    await enforceFreeDailyCreations(configs, session.user.id);
     if (production.productionMode === 'simulation_short') {
       const produce = async (
         signal: AbortSignal,

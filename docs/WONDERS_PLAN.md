@@ -55,10 +55,19 @@
 最后在 `-wonder-page.tsx` 的 `StageFor` 加一个分支、在 `wonder-poster.tsx` 加海报（从数学直接画，不用截图）、
 在 `messages/{zh,en}.json` 加 `wonders.{topic}.*` 文案。
 
-## 4. 视频（下一步）
+## 4. 视频
 
-故事是 `t` 的纯函数，所以出片 = 逐帧采集同一个场景（复用 `/render/*` + 采集脚本的思路），
-配音用 ElevenLabs（带逐字时间戳，节拍时间可以按配音实际长度对齐）。视频走深色。
+故事是 `t` 的纯函数，所以出片 = 逐帧采集同一个场景：`pnpm video:wonders [slug]`（`scripts/wonder-video.ts`，
+帧源 `/render/wonder/$slug`，时间轴 `src/lib/wonders/film.ts`）。每个专题在数据里写 `film`（一拍一句旁白），
+节拍按配音实测时长拉长，画面只放慢不停帧。视频走深色，出 16:9 + 9:16，产物在 `output/wonder-videos/`（不进 git）。
+
+配音（2026-10-15 试音后定，ElevenLabs Starter，可商用）：
+
+- 英文优先：库音色 Max – Elearning and Documentary（`Gfpl8Yo74Is0W6cPUWWT`），`eleven_multilingual_v2`，
+  stability 0.5 / similarity 0.75 / style 0 / speed 1.05，前后句上下文拼接。约 140–150 词/分钟，
+  对 8 个候选做过语速和转写检查。中文暂用 Alice + `eleven_v3`。
+- 母带两遍 loudnorm 到 -14 LUFS / -1 dBTP（YouTube、TikTok、Instagram 的播放基准）。
+- 改了旁白文案，只重新合成改动的句子（按音色、模型、参数、上下文缓存）。
 
 ## 5. 已有专题
 

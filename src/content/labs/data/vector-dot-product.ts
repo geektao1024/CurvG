@@ -3,7 +3,6 @@ import { pick, type Lab } from '../types';
 export const vectorDotProduct: Lab = {
   slug: 'vector-dot-product',
   publication: 'public',
-  primaryCategoryId: 'visual-proofs',
   levels: ['high'],
   chapterTitle: { en: 'Vector addition & dot product', zh: '向量加法与数量积' },
   title: {

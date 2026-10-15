@@ -21,17 +21,22 @@ import {
   parseModelChoice,
 } from '../src/routes/api/animations/-shared';
 
-test('the default model is KIE GPT-6.1 Sol', () => {
+test('the default model is KIE Claude Haiku 5.5 with thinking on', () => {
   const policy = getAnimationModelPolicy('kie', DEFAULT_ANIMATION_MODEL);
 
   assert.ok(policy);
-  assert.equal(policy.model, 'gpt-6-1-sol');
+  assert.equal(policy.model, 'claude-haiku-5-5');
   assert.equal(policy.presetKey, 'curvgPro');
   assert.equal(policy.requiredTier, 'free');
   assert.equal(policy.publicCatalog, true);
   assert.equal(canUseAnimationModel('free', policy), true);
+  assert.equal(getAnimationReasoningEffort('claude-haiku-5-5'), 'high');
+  assert.equal(
+    getAnimationCompositionReasoningEffort('claude-haiku-5-5'),
+    'high'
+  );
+  // GPT-6.1 Sol stays allowlisted (hidden) with its tuning for old rows.
   assert.equal(getAnimationReasoningEffort('gpt-6-1-sol'), 'xhigh');
-  assert.equal(getAnimationCompositionReasoningEffort('gpt-6-1-sol'), 'high');
 });
 
 test('planning effort: Luna max, DeepSeek high, retired routes unchanged', () => {
@@ -61,7 +66,7 @@ test('composition effort: Pro keeps max (2026-08-04), others one tier below', ()
   assert.equal(getAnimationCompositionReasoningEffort('gpt-5.5'), undefined);
 });
 
-test('Auto resolves to GPT-6.1 Sol; retired entries stay allowlisted', () => {
+test('Auto resolves to Claude Haiku 5.5; retired entries stay allowlisted', () => {
   const freeAuto = decideAnimationModelAccess({ tier: 'free', choice: 'auto' });
   assert.equal(freeAuto.allowed, true);
   if (freeAuto.allowed) {
@@ -75,6 +80,7 @@ test('Auto resolves to GPT-6.1 Sol; retired entries stay allowlisted', () => {
     ['deepseek', 'deepseek-v4-flash'],
     ['kie', 'gpt-5-6-luna'],
     ['kie', 'gpt-5-6-sol'],
+    ['kie', 'gpt-6-1-sol'],
   ] as const) {
     assert.equal(
       decideAnimationModelAccess({ tier: 'free', choice, requestedModel })
@@ -93,30 +99,30 @@ test('Auto resolves to GPT-6.1 Sol; retired entries stay allowlisted', () => {
   );
 });
 
-test('GPT-6.1 Sol is the only public catalog entry', () => {
+test('Claude Haiku 5.5 is the only public catalog entry', () => {
   assert.deepEqual(
     animationModelPolicies
       .filter((policy) => policy.publicCatalog)
       .map((policy) => `${policy.provider}:${policy.model}`),
-    ['kie:gpt-6-1-sol']
+    ['kie:claude-haiku-5-5']
   );
 });
 
 test('KIE is the only vendor in the chain (2026-10-14)', () => {
-  const sol = animationModelPolicies[0];
+  const haiku = animationModelPolicies[0];
   const allKeys = {
     deepseek_api_key: 'configured',
     kuaipao_api_key: 'configured',
     kie_api_key: 'configured',
   };
-  assert.deepEqual(animationProviderTargetPlan(allKeys, sol), [
-    { provider: 'kie', model: 'gpt-6-1-sol', reasoningEffort: 'xhigh' },
+  assert.deepEqual(animationProviderTargetPlan(allKeys, haiku), [
+    { provider: 'kie', model: 'claude-haiku-5-5', reasoningEffort: 'high' },
   ]);
   // DeepSeek and Kuaipao keys left in admin settings never join the chain.
   assert.deepEqual(
     animationProviderTargetPlan(
       { deepseek_api_key: 'configured', kuaipao_api_key: 'configured' },
-      sol
+      haiku
     ),
     []
   );

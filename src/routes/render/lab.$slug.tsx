@@ -16,7 +16,7 @@ import {
   subjectOf,
   suiteForLab,
 } from '@/content/labs';
-import type { LibraryLocale } from '@/content/library/types';
+import type { ContentLocale } from '@/content/text';
 
 /**
  * Frame source for lab films. `scripts/lab-video.ts` loads this page in a
@@ -129,7 +129,7 @@ export const Route = createFileRoute('/render/lab/$slug')({
     if (!lab || !suiteForLab(params.slug)) throw notFound();
     return {
       slug: params.slug,
-      lang: deps.lang as LibraryLocale,
+      lang: deps.lang as ContentLocale,
       aspect: deps.aspect as LabFilmAspect,
     };
   },

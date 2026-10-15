@@ -48,7 +48,7 @@ function providerWith(params: {
   });
 }
 
-test('Kie chat allowlist contains exactly the ten product models', () => {
+test('Kie chat allowlist contains exactly the eleven product models', () => {
   assert.deepEqual(Object.keys(kieChatModelRoutes), [
     'gemini-3.6-flash',
     'grok-4-5',
@@ -58,6 +58,7 @@ test('Kie chat allowlist contains exactly the ten product models', () => {
     'gpt-5-6-sol',
     'gpt-6-1-sol',
     'gpt-5-6-luna',
+    'claude-haiku-5-5',
     'claude-sonnet-4-6',
     'claude-opus-4-7',
   ]);
@@ -298,6 +299,76 @@ test('Kie GPT-5.6 Sol uses the Codex Responses endpoint', async () => {
 
   assert.equal(requestUrl, 'https://api.kie.ai/codex/v1/responses');
   assert.equal(result.content, 'GPT OK');
+});
+
+test('Kie Responses replays an assistant turn as output_text', async () => {
+  let requestBody: { input: { role: string; content: { type: string }[] }[] };
+  const provider = new KieChatProvider({
+    apiKey: 'test-kie-key',
+    fetch: (async (_url, init) => {
+      requestBody = JSON.parse(String(init?.body));
+      return Response.json({ output_text: 'fixed', model: 'gpt-6-1-sol' });
+    }) as typeof globalThis.fetch,
+  });
+
+  await provider.complete({
+    ...input,
+    model: 'gpt-6-1-sol',
+    messages: [
+      { role: 'system', content: 'Rules' },
+      { role: 'user', content: 'Draft a scene' },
+      { role: 'assistant', content: '{"scene":1}' },
+      { role: 'user', content: 'Repair it' },
+    ],
+  });
+
+  assert.deepEqual(
+    requestBody!.input.map((turn) => [turn.role, turn.content[0].type]),
+    [
+      ['developer', 'input_text'],
+      ['user', 'input_text'],
+      ['assistant', 'output_text'],
+      ['user', 'input_text'],
+    ]
+  );
+});
+
+test('Kie Claude Haiku: thinking on with headroom, text only, usage reported', async () => {
+  let requestUrl = '';
+  let requestBody: Record<string, unknown> | undefined;
+  const provider = new KieChatProvider({
+    apiKey: 'test-kie-key',
+    fetch: (async (url, init) => {
+      requestUrl = String(url);
+      requestBody = JSON.parse(String(init?.body));
+      return Response.json({
+        model: 'claude-haiku-5-5',
+        content: [
+          { type: 'thinking', thinking: 'scratch work', text: 'leak' },
+          { type: 'text', text: '{"ok":true}' },
+        ],
+        usage: { input_tokens: 600, output_tokens: 57 },
+        credits_consumed: 0.05,
+      });
+    }) as typeof globalThis.fetch,
+  });
+
+  const result = await provider.complete({
+    ...input,
+    model: 'claude-haiku-5-5',
+    maxTokens: 2_000,
+    reasoningEffort: 'high',
+  });
+
+  assert.equal(requestUrl, 'https://api.kie.ai/claude/v1/messages');
+  assert.equal(requestBody?.thinkingFlag, true);
+  assert.equal(requestBody?.max_tokens, 10_000);
+  assert.equal(result.content, '{"ok":true}');
+  assert.deepEqual(result.usage, {
+    inputTokens: 600,
+    outputTokens: 57,
+    providerCredits: 0.05,
+  });
 });
 
 test('Kie Claude uses Messages auth and parses text blocks', async () => {

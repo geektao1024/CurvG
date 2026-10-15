@@ -15,8 +15,6 @@ const simpson = (from: string, step: string, part: number) =>
 export const normalDistribution: Lab = {
   slug: 'normal-distribution',
   publication: 'public',
-  primaryCategoryId: 'accumulation',
-  additionalCategoryIds: ['numbers-structure'],
   levels: ['high'],
   chapterTitle: { en: 'Normal distribution & 3σ', zh: '正态分布与 3σ' },
   title: {

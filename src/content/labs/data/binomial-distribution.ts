@@ -14,7 +14,6 @@ const ratio = (from: number, to: number) =>
 export const binomialDistribution: Lab = {
   slug: 'binomial-distribution',
   publication: 'public',
-  primaryCategoryId: 'numbers-structure',
   levels: ['high'],
   chapterTitle: { en: 'Binomial distribution', zh: '二项分布' },
   title: {

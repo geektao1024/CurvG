@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Check, Code2, Film, RefreshCw, Sparkles } from 'lucide-react';
+import { Check, Code2, Film, Gift, Tag } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useSession } from '@/core/auth/client';
@@ -47,6 +47,18 @@ function displayMonthlyEquivalent(product: PricingProduct, locale: string) {
     product.currency,
     locale
   );
+}
+
+/**
+ * Where checkout lands: back in the creator conversation that sent the user
+ * here (`/pricing?return=/creator?animationId=…`), else the creator.
+ */
+function checkoutReturnPath() {
+  const back =
+    typeof window === 'undefined'
+      ? null
+      : new URLSearchParams(window.location.search).get('return');
+  return back && /^\/creator(\?|$)/.test(back) ? back : '/creator';
 }
 
 export function Pricing({
@@ -103,23 +115,25 @@ export function Pricing({
     Number.parseInt(configs.animation_render_credits || '20', 10) || 20
   );
 
+  // What a plan buys is rendered videos: plans differ only in how many a
+  // period includes and so what each one costs. Every plan gets the same
+  // generation pipeline (one model, no tiered model access).
   function renderEstimate(product: PricingProduct) {
     return Math.floor(product.credits / renderCreditCost);
   }
 
+  function perVideo(product: PricingProduct) {
+    return displayCents(
+      Math.round(product.priceInCents / Math.max(1, renderEstimate(product))),
+      product.currency,
+      locale
+    );
+  }
+
   const freeFeatures = [
-    { icon: Sparkles, label: m['landing.pricing.feature_free_model']() },
+    { icon: Gift, label: m['landing.pricing.feature_first_video_free']() },
     { icon: Check, label: m['landing.pricing.feature_scene_plans']() },
     { icon: Code2, label: m['landing.pricing.feature_code_export']() },
-  ];
-  const starterFeatures = [
-    { icon: Sparkles, label: m['landing.pricing.feature_starter_models']() },
-    { icon: Check, label: m['landing.pricing.feature_everything_free']() },
-  ];
-  const proFeatures = [
-    { icon: Sparkles, label: m['landing.pricing.feature_pro_models']() },
-    { icon: RefreshCw, label: m['landing.pricing.feature_auto_failover']() },
-    { icon: Check, label: m['landing.pricing.feature_everything_starter']() },
   ];
 
   function freePlan(group: string): PricingPlan {
@@ -138,14 +152,13 @@ export function Pricing({
       price: '$0',
       features: cardFeatures,
       comparison: {
-        models: m['landing.pricing.comparison.three_models'](),
-        fallback: false,
+        perVideo: m['landing.pricing.comparison.first_free'](),
         credits: '—',
         renders: '—',
         previews: true,
         review: true,
         python: true,
-        video: false,
+        video: m['landing.pricing.comparison.first_free'](),
         expiration: '—',
       },
       buttonText: !session?.user
@@ -168,16 +181,25 @@ export function Pricing({
     const hasPaidPlan = viewerTier !== 'free';
     const estimate = renderEstimate(params.product);
     const cardFeatures = [
-      ...(isStarter ? starterFeatures : proFeatures),
       {
         icon: Film,
         label: m['landing.pricing.feature_render_credits']({
           credits: params.product.credits,
+          renders: estimate,
         }),
       },
-      ...(isStarter
-        ? [{ icon: Code2, label: m['landing.pricing.feature_video_export']() }]
-        : []),
+      {
+        icon: Tag,
+        label: m['landing.pricing.feature_per_video']({
+          price: perVideo(params.product),
+        }),
+      },
+      {
+        icon: Check,
+        label: isStarter
+          ? m['landing.pricing.feature_everything_free']()
+          : m['landing.pricing.feature_everything_starter'](),
+      },
     ];
 
     return {
@@ -197,10 +219,7 @@ export function Pricing({
         : m['landing.pricing.full_power'](),
       features: cardFeatures,
       comparison: {
-        models: isStarter
-          ? m['landing.pricing.comparison.three_models']()
-          : m['landing.pricing.comparison.all_models'](),
-        fallback: !isStarter,
+        perVideo: perVideo(params.product),
         credits: new Intl.NumberFormat(locale).format(params.product.credits),
         renders: m['landing.pricing.comparison.about_renders']({
           renders: estimate,
@@ -270,11 +289,6 @@ export function Pricing({
     {
       label: m['landing.pricing.comparison.section_ai'](),
       rows: [
-        { key: 'models', label: m['landing.pricing.comparison.models']() },
-        {
-          key: 'fallback',
-          label: m['landing.pricing.comparison.fallback'](),
-        },
         {
           key: 'previews',
           label: m['landing.pricing.comparison.previews'](),
@@ -287,6 +301,7 @@ export function Pricing({
       rows: [
         { key: 'credits', label: m['landing.pricing.comparison.credits']() },
         { key: 'renders', label: m['landing.pricing.comparison.renders']() },
+        { key: 'perVideo', label: m['landing.pricing.comparison.per_video']() },
         { key: 'video', label: m['landing.pricing.comparison.video']() },
         { key: 'python', label: m['landing.pricing.comparison.python']() },
         {
@@ -308,7 +323,7 @@ export function Pricing({
       apiPost<{ checkout_url?: string }>('/api/payment/checkout', {
         product_id: plan.productId,
         payment_provider: provider,
-        redirect: localizeHref('/creator'),
+        redirect: localizeHref(checkoutReturnPath()),
         cancel_redirect: localizeHref('/pricing'),
       }),
     onSuccess: (data) => {
@@ -339,7 +354,9 @@ export function Pricing({
       return;
     }
     if (!session?.user) {
-      router.push('/sign-in?callbackUrl=%2Fpricing');
+      router.push(
+        `/sign-in?callbackUrl=${encodeURIComponent(`/pricing${window.location.search}`)}`
+      );
       return;
     }
     if (viewerTier !== 'free') {

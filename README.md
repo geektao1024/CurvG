@@ -9,8 +9,9 @@ CurvG is a math tool site with two halves that feed each other:
   idea becomes a narrated Manim video, with the scene plan and code kept
   inspectable instead of hidden behind an opaque text-to-video call.
 
-The curve encyclopedia (`/curves`), scene library (`/library`) and guides
-(`/blog`) sit around them for search and discovery.
+The curve encyclopedia (`/curves`, a top-level section) and guides (`/blog`,
+footer only) sit around them for search and discovery. The old scene library
+(`/library`) was retired on 2026-10-15; its URLs 301 to curves or labs.
 
 Website: [curvg.com](https://curvg.com) · Project brief and change log:
 [docs/PROJECT_BRIEF.md](docs/PROJECT_BRIEF.md)
@@ -22,8 +23,8 @@ Website: [curvg.com](https://curvg.com) · Project brief and change log:
 | `/`                                                                         | Homepage, labs first: a live lab + topic search, the lab index, lab → video, for teachers, what's new, pricing summary, FAQ | `SITE_ARCHITECTURE_PLAN.md`     |
 | `/labs`, `/labs/{math,physics}`, `/labs/{suite}`, `/labs/{suite}/{chapter}` | Interactive labs: hub with topic search → subject page → suite → chapter (full-screen workspace)                            | `LABS_PLAN.md`                  |
 | `/creator`                                                                  | AI animation generator (sign-in to render)                                                                                  | `CURVG_CREATOR_ARCHITECTURE.md` |
-| `/curves`, `/curves/{slug}`                                                 | 30-curve encyclopedia with live parameter previews                                                                          | `CURVE_ENCYCLOPEDIA.md`         |
-| `/library`, `/library/{hub}`, `/library/{hub}/{topic}`                      | Editorial library: math content graph; links curves and labs                                                                | `LIBRARY_PLAN.md`               |
+| `/curves`, `/curves/{slug}`                                                 | 60-curve encyclopedia in 7 categories: formula card, drawing animation, presets, live values, free SVG/PNG/CSV export, FAQ  | `CURVE_ENCYCLOPEDIA.md`         |
+| `/library/**`                                                               | Retired 2026-10-15: permanent redirects to `/curves#{category}` or the matching lab                                         | `POSITIONING.md` §8             |
 | `/pricing`                                                                  | Plans and credits                                                                                                           | —                               |
 | `/blog`, `/blog/{slug}`                                                     | Guides (MDX in `src/content/posts`)                                                                                         | —                               |
 | `/math-animation-tool`, `/free-math-video-creator`, `/manim-alternative`    | One-keyword landing pages                                                                                                   | `SEO_CONTENT_STRATEGY.md`       |
@@ -103,6 +104,30 @@ Implemented and build-verified, awaiting deployment (2026-10-12):
   Pricing), a homepage built around a live lab board and a topic search, and
   a footer "Free tools" column for the traffic pages.
 
+Implemented and build-verified, awaiting deployment (2026-10-15):
+
+- Resources reshuffle: the scene library `/library` is retired (every old URL
+  301s to the page with the same search intent; `tests/library-redirects.test.ts`),
+  the "Resources" dropdown is gone, the curve encyclopedia is a top-level nav
+  item with a seven-category dropdown, and guides moved to the footer.
+- Curve encyclopedia rebuilt around watch / play / export
+  (`docs/CURVE_ENCYCLOPEDIA.md` §8):
+  - 60 curves (was 30) in 7 categories, including a new fractal category
+    (Koch snowflake, Hilbert, dragon, Lévy C, Sierpiński arrowhead, Peano) and
+    classical curves such as the Cassini oval, conchoid, strophoid, quadratrix,
+    Bézier, Euler and Fibonacci spirals.
+  - Formula card: every form of the equation plus arc length, perimeter, area,
+    foci and so on, with live values that follow the sliders; 30+ values are
+    recomputed from the drawn curve in `tests/curves-seo.test.ts`.
+  - "Watch it draw": the construction behind the curve (rolling circle, polar
+    radius, focal strings, de Casteljau, Hippias' falling line) drawn by an
+    amber pen; each frame is a pure function of progress. Afterwards it
+    offers "Make it a video" (the paid Creator flow).
+  - Presets (e.g. hypocycloid k = 4 → astroid), free SVG / PNG / CSV export
+    and copy-LaTeX, and a FAQ section with matching FAQPage data.
+  - The index has a category jump bar, a name filter and a CSS-only hero
+    drawing; thumbnails are simplified with Ramer–Douglas–Peucker.
+
 Built, not yet published:
 
 - Lab lesson films (`pnpm video:labs`): each chapter's guide steps drive a
@@ -113,9 +138,10 @@ Built, not yet published:
 
 Not implemented yet:
 
-- Most editorial scene pages (`/library/scenes/{slug}`). Two scenes are
-  public (`parabola-rise`, `permutations-vs-combinations`); the P1 target is
-  at least eight, plus P2 paths and filters. See `docs/LIBRARY_PLAN.md`.
+- Desmos / GeoGebra paste-ready expressions for curves (each needs checking
+  in those apps). A separate curve MP4 export is deliberately not planned:
+  rendered video goes through the Creator, the one paid step
+  (`docs/MONETIZATION.md`).
 - The public gallery page. Gallery API routes exist; there is no gallery page
   route and no published entry in production. UGC gallery stays separate from
   the editorial library.
@@ -131,8 +157,8 @@ Delivery is designed around a valid artifact rather than a successful provider c
 - When upstream models are saturated, the Workflow queues and retries on a
   widening ladder (~17 minutes) with a live "retrying automatically" banner,
   instead of hard-failing in seconds. A third admin-configured
-  OpenAI-compatible failover route can be added behind KIE GPT-6.1 Sol, the
-  only model in routing since 2026-10-14.
+  OpenAI-compatible failover route can be added behind KIE Claude Haiku 5.5,
+  the only model in routing since 2026-10-15 (GPT-6.1 Sol on 2026-10-14).
 - Initial code delivery is deterministic: the approved spec is compiled locally,
   so a successful planning response does not depend on a second model response
   containing 14k tokens of Python.
@@ -245,10 +271,11 @@ Public pages follow the repo's block / component split (see `AGENTS.md`):
 Raster images are rendered from code with the site's own fonts, so they stay
 in step with the theme. Rerun after changing the source:
 
-| Command         | Writes                                                            | When                                                                    |
-| --------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `pnpm og:labs`  | `public/og/labs/{slug}.{lang}.png` (needs `pnpm dev` running)     | a board changed or a chapter was added (a test fails if one is missing) |
-| `pnpm og:brand` | `public/og/curvg-social.png`, `public/og/posts/{slug}.{lang}.png` | the social SVG changed, or a post was added or retitled                 |
+| Command                   | Writes                                                            | When                                                                            |
+| ------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `pnpm og:labs`            | `public/og/labs/{slug}.{lang}.png` (needs `pnpm dev` running)     | a board changed or a chapter was added (a test fails if one is missing)         |
+| `pnpm og:brand`           | `public/og/curvg-social.png`, `public/og/posts/{slug}.{lang}.png` | the social SVG changed, or a post was added or retitled                         |
+| `pnpm og:curves [slug …]` | `public/curves/{slug}.svg`, `public/og/curves/{slug}.{lang}.png`  | a curve was added or its default shape changed (a test fails if one is missing) |
 
 The logo is `public/logo.svg` (also `favicon.svg`); `apple-touch-icon.png`
 is a 180px raster of it.
@@ -292,9 +319,9 @@ Product and planning:
 - [Roadmap](docs/ROADMAP.md)
 - [Site architecture plan](docs/SITE_ARCHITECTURE_PLAN.md)
 - [SEO and content strategy](docs/SEO_CONTENT_STRATEGY.md)
-- [Curve encyclopedia](docs/CURVE_ENCYCLOPEDIA.md)
+- [Curve encyclopedia](docs/CURVE_ENCYCLOPEDIA.md) — `/curves` contract and the 2026-10-15 upgrade plan (§8).
 - [Interactive labs plan](docs/LABS_PLAN.md) — `/labs` IA, URL and redirect rules, per-chapter SEO, reserved slots (video, physics), new-chapter checklist.
-- [Scene library plan](docs/LIBRARY_PLAN.md) — editorial `/library`. P0 skeleton is implemented; scene pages are not. Source of truth for Hub/topic/scene IA, the math content graph, and what must not be copied from animg.app or shapeof.world.
+- [Scene library plan](docs/LIBRARY_PLAN.md) — archived: `/library` was retired on 2026-10-15. Kept for the animg.app / shapeof.world research only.
 - [Design system](docs/DESIGN_SYSTEM.md) — the 2026-10-12 "paper & amber" section at the top overrides older colour, type and logo notes below it.
 
 Research:
@@ -305,19 +332,20 @@ Research:
 
 ## Commands
 
-| Command            | Purpose                                                         |
-| ------------------ | --------------------------------------------------------------- |
-| `pnpm dev`         | Start the local development server                              |
-| `pnpm build`       | Build the standard Nitro production target                      |
-| `pnpm cf:build`    | Build the Cloudflare Workers module target                      |
-| `pnpm db:setup`    | Select the schema template for the configured database          |
-| `pnpm db:push`     | Apply schema changes during local development                   |
-| `pnpm db:generate` | Generate reviewable production migrations                       |
-| `pnpm db:migrate`  | Apply pending production migrations                             |
-| `pnpm rbac:init`   | Seed default roles and permissions                              |
-| `pnpm test`        | Unit tests (pipeline, board engine, lab content, library graph) |
-| `pnpm og:labs`     | Regenerate lab share images (dev server running)                |
-| `pnpm og:brand`    | Regenerate the default share image and post covers              |
+| Command            | Purpose                                                                                       |
+| ------------------ | --------------------------------------------------------------------------------------------- |
+| `pnpm dev`         | Start the local development server                                                            |
+| `pnpm build`       | Build the standard Nitro production target                                                    |
+| `pnpm cf:build`    | Build the Cloudflare Workers module target                                                    |
+| `pnpm db:setup`    | Select the schema template for the configured database                                        |
+| `pnpm db:push`     | Apply schema changes during local development                                                 |
+| `pnpm db:generate` | Generate reviewable production migrations                                                     |
+| `pnpm db:migrate`  | Apply pending production migrations                                                           |
+| `pnpm rbac:init`   | Seed default roles and permissions                                                            |
+| `pnpm test`        | Unit tests (pipeline, board engine, labs, wonders, curve facts and traces, library redirects) |
+| `pnpm og:labs`     | Regenerate lab share images (dev server running)                                              |
+| `pnpm og:brand`    | Regenerate the default share image and post covers                                            |
+| `pnpm og:curves`   | Regenerate curve graphs and share images (system Chrome)                                      |
 
 ## License
 

@@ -179,7 +179,7 @@ const CURATED_MODEL_PRESETS: CreatorCuratedModelPreset[] = [
     key: 'curvgPro',
     provider: 'kie',
     // Luna rows predate the 2026-10-14 switch; they keep the same label.
-    models: ['gpt-6-1-sol', 'gpt-5-6-luna'],
+    models: ['claude-haiku-5-5', 'gpt-6-1-sol', 'gpt-5-6-luna'],
     tier: 'free',
   },
   // Retired public entries: kept so historical conversations that recorded
@@ -207,7 +207,10 @@ const CURATED_MODEL_PRESETS: CreatorCuratedModelPreset[] = [
   },
 ];
 
-const DEFAULT_CREATOR_MODEL_VALUE = animationModelValue('kie', 'gpt-6-1-sol');
+const DEFAULT_CREATOR_MODEL_VALUE = animationModelValue(
+  'kie',
+  'claude-haiku-5-5'
+);
 
 interface CreatorSuggestionGroup {
   value: string;
@@ -219,7 +222,7 @@ export interface CreatorWorkspaceCopy {
   title: string;
   subtitle: string;
   newAnimation: string;
-  gallery: string;
+  curves: string;
   workflow: string;
   history: string;
   historyEmpty: string;
@@ -347,6 +350,12 @@ export interface CreatorWorkspaceCopy {
   queueElapsed: (minutes: number) => string;
   /** Composer warning when the balance cannot cover a render. */
   creditShortfall: (cost: number, balance: number) => string;
+  /** Composer note while the account's first render is still free. */
+  firstRenderFree: string;
+  /** Link to the plans wherever a render is short of credits. */
+  upgradeCta: string;
+  /** Toast when a free account has started its videos for the day. */
+  dailyLimit: string;
   toastCompleted: (title: string) => string;
   toastFailed: (title: string) => string;
   subjects: CreatorOption<AnimationSubject>[];
@@ -444,6 +453,31 @@ function localizedFailure(
   return failure ? copy.failureMessages[failure.code] : copy.failureDescription;
 }
 
+/** Plans page that returns to this conversation after checkout. */
+function upgradeHref(animationId?: string) {
+  const back = animationId
+    ? `/creator?animationId=${encodeURIComponent(animationId)}`
+    : '/creator';
+  return `/pricing?return=${encodeURIComponent(back)}`;
+}
+
+function UpgradeLink({
+  copy,
+  animationId,
+}: {
+  copy: CreatorWorkspaceCopy;
+  animationId?: string;
+}) {
+  return (
+    <Link
+      href={upgradeHref(animationId)}
+      className="text-primary font-semibold whitespace-nowrap hover:underline"
+    >
+      {copy.upgradeCta}
+    </Link>
+  );
+}
+
 function localizedMessage(
   copy: CreatorWorkspaceCopy,
   message: AnimationMessage
@@ -482,6 +516,10 @@ function requestFailureMessage(copy: CreatorWorkspaceCopy, error: unknown) {
     return copy.failureMessages.PRO_REQUIRED;
   }
   return copy.requestFailed;
+}
+
+function isDailyLimitError(error: unknown) {
+  return error instanceof Error && /daily limit/i.test(error.message);
 }
 
 function isAbortError(error: unknown) {
@@ -625,13 +663,13 @@ function WorkspaceNavigation({
           className={cn('space-y-1', collapsed && 'flex flex-col items-center')}
         >
           <Link
-            href="/library"
+            href="/curves"
             className={linkClassName}
-            aria-label={copy.gallery}
-            title={collapsed ? copy.gallery : undefined}
+            aria-label={copy.curves}
+            title={collapsed ? copy.curves : undefined}
           >
             <LayoutGrid className="size-4 shrink-0" />
-            {!collapsed && <span>{copy.gallery}</span>}
+            {!collapsed && <span>{copy.curves}</span>}
           </Link>
           <Link
             href="/#workflow"
@@ -1626,7 +1664,7 @@ function Welcome({
   onCreationModeChange: (value: AnimationCreationMode) => void;
   productionMode: AnimationProductionMode;
   onProductionModeChange: (value: AnimationProductionMode) => void;
-  creditNotice?: string;
+  creditNotice?: ReactNode;
   prompt: string;
   onPromptChange: (value: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -2709,6 +2747,11 @@ function SceneBlueprintFailure({
         <p className="text-muted-foreground mt-2 text-xs">
           {copy.failureNoCharge}
         </p>
+        {detail.parts.failure?.code === 'INSUFFICIENT_CREDITS' && (
+          <p className="mt-3 text-sm">
+            <UpgradeLink copy={copy} animationId={detail.id} />
+          </p>
+        )}
         <PlanningFailureRecord copy={copy} pipeline={detail.parts.pipeline} />
         {detail.parts.failure?.retryable && onRetry && (
           <Button
@@ -2830,6 +2873,11 @@ function StatusPanel({
               <p className="text-muted-foreground mt-1 text-xs">
                 {copy.failureNoCharge}
               </p>
+              {detail.parts.failure?.code === 'INSUFFICIENT_CREDITS' && (
+                <p className="mt-2 text-sm">
+                  <UpgradeLink copy={copy} animationId={detail.id} />
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -4561,14 +4609,20 @@ export function CreatorWorkspace({
   // Warn about an unrenderable balance before the user invests minutes in
   // planning — the render step discovering it after the wait was the worst
   // failure mode in production. Planning itself stays free and available.
-  const creditShortfallNotice =
-    user &&
-    catalog &&
-    catalog.renderCredits > 0 &&
-    typeof creditsQuery.data?.balance === 'number' &&
-    creditsQuery.data.balance < catalog.renderCredits
-      ? copy.creditShortfall(catalog.renderCredits, creditsQuery.data.balance)
-      : undefined;
+  // A new account's first render is free, so say so instead of warning.
+  const creditShortfallNotice: ReactNode =
+    user && catalog?.freeRender ? (
+      copy.firstRenderFree
+    ) : user &&
+      catalog &&
+      catalog.renderCredits > 0 &&
+      typeof creditsQuery.data?.balance === 'number' &&
+      creditsQuery.data.balance < catalog.renderCredits ? (
+      <>
+        {copy.creditShortfall(catalog.renderCredits, creditsQuery.data.balance)}{' '}
+        <UpgradeLink copy={copy} animationId={selectedId} />
+      </>
+    ) : undefined;
   const curatedModelOptions: CreatorModelOption[] =
     CURATED_MODEL_PRESETS.flatMap((preset) => {
       const match = catalog?.options.find(
@@ -5134,6 +5188,15 @@ export function CreatorWorkspace({
       generationStartedRef.current = false;
       activeAnimationIdRef.current = undefined;
       queryClient.invalidateQueries({ queryKey: animationsQueryKey });
+      if (isDailyLimitError(error)) {
+        toast.error(copy.dailyLimit, {
+          action: {
+            label: copy.upgradeCta,
+            onClick: () => router.push(upgradeHref()),
+          },
+        });
+        return;
+      }
       toast.error(requestFailureMessage(copy, error));
     },
   });

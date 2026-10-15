@@ -26,7 +26,7 @@ import { Clauses } from '@/components/wonder-card';
 import type { WonderStageLabels } from '@/components/wonder-stage';
 import { getCurve } from '@/content/curves';
 import { getLab, labPath } from '@/content/labs';
-import { libraryText, type LibraryLocale } from '@/content/library';
+import { localeText, type ContentLocale } from '@/content/text';
 import { wonderOgImage, wonderPath, type Wonder } from '@/content/wonders';
 
 import { WorkspaceAccount } from '../labs/-labs-page';
@@ -40,12 +40,12 @@ function plain(text: string): string {
 }
 
 export function wonderHead(wonder: Wonder, locale: string) {
-  const lang: LibraryLocale = locale === 'zh' ? 'zh' : 'en';
+  const lang: ContentLocale = locale === 'zh' ? 'zh' : 'en';
   const opts = { locale: locale as never };
-  const question = libraryText(wonder.question, lang);
-  const name = libraryText(wonder.name, lang);
-  const title = libraryText(wonder.metaTitle, lang);
-  const description = libraryText(wonder.summary, lang);
+  const question = localeText(wonder.question, lang);
+  const name = localeText(wonder.name, lang);
+  const title = localeText(wonder.metaTitle, lang);
+  const description = localeText(wonder.summary, lang);
   const path = wonderPath(wonder);
   const seo = localizedLinks({ path, locale });
   const inLanguage = lang === 'zh' ? 'zh-CN' : 'en';
@@ -64,7 +64,7 @@ export function wonderHead(wonder: Wonder, locale: string) {
     learningResourceType: ['Interactive simulation', 'Animation'],
     interactivityType: 'mixed',
     isAccessibleForFree: true,
-    teaches: libraryText(wonder.takeaway, lang),
+    teaches: localeText(wonder.takeaway, lang),
     provider: {
       '@type': 'Organization',
       name: envConfigs.app_name,
@@ -89,10 +89,10 @@ export function wonderHead(wonder: Wonder, locale: string) {
     '@type': 'FAQPage',
     mainEntity: wonder.faq.map((item) => ({
       '@type': 'Question',
-      name: libraryText(item.question, lang),
+      name: localeText(item.question, lang),
       acceptedAnswer: {
         '@type': 'Answer',
-        text: plain(libraryText(item.answer, lang)),
+        text: plain(localeText(item.answer, lang)),
       },
     })),
   };
@@ -129,7 +129,7 @@ function WonderTopBar({
   lang,
 }: {
   wonder: Wonder;
-  lang: LibraryLocale;
+  lang: ContentLocale;
 }) {
   return (
     <header className="wonder-top">
@@ -142,7 +142,7 @@ function WonderTopBar({
           label={m['common.nav.breadcrumb']()}
           items={[
             { href: '/wonders', label: m['wonders.breadcrumb']() },
-            { href: wonderPath(wonder), label: libraryText(wonder.name, lang) },
+            { href: wonderPath(wonder), label: localeText(wonder.name, lang) },
           ]}
         />
       </div>
@@ -159,7 +159,7 @@ function WonderTopBar({
 }
 
 /** Zoom factor in the reader's units: 1.2 万× / 12k×. */
-function formatZoom(factor: number, lang: LibraryLocale): string {
+function formatZoom(factor: number, lang: ContentLocale): string {
   const fixed = (x: number) =>
     x < 10 ? x.toFixed(1) : Math.round(x).toString();
   if (lang === 'zh') {
@@ -176,17 +176,17 @@ function formatZoom(factor: number, lang: LibraryLocale): string {
 }
 
 /** The interactive stage for a wonder, by slug. */
-function StageFor({ wonder, lang }: { wonder: Wonder; lang: LibraryLocale }) {
+function StageFor({ wonder, lang }: { wonder: Wonder; lang: ContentLocale }) {
   const overlay = (
     <div className="wonder-head">
       <p className="wonder-eyebrow">
         {m['wonders.page.no']({ number: wonder.number })} ·{' '}
-        {libraryText(wonder.field, lang)}
+        {localeText(wonder.field, lang)}
       </p>
       <h1>
-        <Clauses text={libraryText(wonder.question, lang)} />
+        <Clauses text={localeText(wonder.question, lang)} />
       </h1>
-      <p>{libraryText(wonder.summary, lang)}</p>
+      <p>{localeText(wonder.summary, lang)}</p>
       <a href="#explain" className="wonder-why">
         <ArrowDown />
         {m['wonders.page.why']()}
@@ -194,7 +194,7 @@ function StageFor({ wonder, lang }: { wonder: Wonder; lang: LibraryLocale }) {
     </div>
   );
   const stage = (canvas: string): WonderStageLabels => ({
-    beats: wonder.beats.map((beat) => libraryText(beat, lang)),
+    beats: wonder.beats.map((beat) => localeText(beat, lang)),
     play: m['wonders.stage.play'](),
     pause: m['wonders.stage.pause'](),
     replay: m['wonders.stage.replay'](),
@@ -305,7 +305,7 @@ export function WonderPage({
   wonder: Wonder;
   locale: string;
 }) {
-  const lang: LibraryLocale = locale === 'zh' ? 'zh' : 'en';
+  const lang: ContentLocale = locale === 'zh' ? 'zh' : 'en';
   const curves = wonder.relatedCurves.flatMap((slug) => {
     const curve = getCurve(slug);
     return curve ? [curve] : [];
@@ -325,7 +325,7 @@ export function WonderPage({
         <div className="wonder-article-inner">
           <p className="wonder-eyebrow">{m['wonders.page.explain']()}</p>
           <p className="wonder-takeaway mt-4">
-            {libraryText(wonder.takeaway, lang)}
+            {localeText(wonder.takeaway, lang)}
           </p>
 
           {wonder.sections.map((section, i) => (
@@ -336,10 +336,10 @@ export function WonderPage({
             >
               <h2>
                 <span className="num">{String(i + 1).padStart(2, '0')}</span>
-                {libraryText(section.title, lang)}
+                {localeText(section.title, lang)}
               </h2>
               <RichMath
-                source={libraryText(section.body, lang)}
+                source={localeText(section.body, lang)}
                 className="wonder-prose"
               />
             </section>
@@ -350,8 +350,8 @@ export function WonderPage({
             <div className="wonder-faq">
               {wonder.faq.map((item, i) => (
                 <details key={i}>
-                  <summary>{libraryText(item.question, lang)}</summary>
-                  <p>{libraryText(item.answer, lang)}</p>
+                  <summary>{localeText(item.question, lang)}</summary>
+                  <p>{localeText(item.answer, lang)}</p>
                 </details>
               ))}
             </div>
@@ -373,10 +373,10 @@ export function WonderPage({
                           {m['wonders.page.related_kind']()}
                         </span>
                         <span className="title mt-1 block">
-                          {libraryText(lab.chapterTitle, lang)}
+                          {localeText(lab.chapterTitle, lang)}
                         </span>
                         <span className="note block">
-                          {libraryText(lab.question, lang)}
+                          {localeText(lab.question, lang)}
                         </span>
                       </span>
                       <ArrowRight className="size-4 shrink-0 opacity-60" />

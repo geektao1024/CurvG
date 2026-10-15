@@ -1,4 +1,8 @@
-# CurvG 资源库规划
+# CurvG 资源库规划（已下线，仅存档）
+
+> **2026-10-15 起作废。** `/library` 已下线，旧地址 301 到曲线百科或实验室（`src/routes/library/-redirects.ts`）。
+> 原因见 `POSITIONING.md` 第 8 节：知识点由实验室承担，现象由数学奇观承担，曲线对象在 `/curves`。
+> 本文保留作历史记录（AnimG Library 与 shapeof.world 分类模型的调研仍可参考），不要再按它实施。
 
 记录时间：2026-09-22
 状态：**P0 已在代码里**。详情页样板是 `/library/scenes/permutations-vs-combinations`：16:9 成片在前，右侧 KaTeX，阶段表可跳到成片时间。源片在 `scripts/library-scenes/permutations_vs_combinations.py`。`parabola-rise` 仍是旧的 5 秒样片。

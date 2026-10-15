@@ -66,7 +66,9 @@ export function SiteFooter({
                 ? 'grid-cols-2 sm:grid-cols-3'
                 : columns.length === 4
                   ? 'grid-cols-2 sm:grid-cols-4'
-                  : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5'
+                  : columns.length === 5
+                    ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5'
+                    : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6'
             )}
           >
             {columns.map((col) => (

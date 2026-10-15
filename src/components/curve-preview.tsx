@@ -1,11 +1,35 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  ArrowRight,
+  Check,
+  Copy,
+  Download,
+  Play,
+  RotateCcw,
+  Square,
+} from 'lucide-react';
 
+import { Link } from '@/core/i18n/navigation';
+import {
+  curveCsv,
+  curveSvg,
+  downloadPng,
+  downloadText,
+  EXPORT_H,
+  EXPORT_W,
+} from '@/lib/curve-export';
 import { cn } from '@/lib/utils';
-import { defaultValues, type CurveDef } from '@/content/curves';
+import {
+  defaultValues,
+  traceExtent,
+  traceFrame,
+  type CurveDef,
+  type TraceGuide,
+} from '@/content/curves';
 import type { CurvePoints } from '@/content/curves/types';
 
-const VIEW_W = 720;
-const VIEW_H = 540;
+const VIEW_W = EXPORT_W;
+const VIEW_H = EXPORT_H;
 const PAD = 0.09;
 
 type Box = { minX: number; maxX: number; minY: number; maxY: number };
@@ -46,7 +70,11 @@ function fixedFrame(curve: CurveDef): Box {
   let box: Box | undefined;
   for (const values of combos) {
     try {
-      box = boxOf(curve.sample(values), box);
+      // Room for the construction lines too (rolling circles, foci).
+      box = boxOf(
+        [...curve.sample(values), traceExtent(curve.slug, values)],
+        box
+      );
     } catch {
       // Skip corner combinations the sampler cannot evaluate.
     }
@@ -70,26 +98,60 @@ function fitTransform(box: Box) {
   ];
 }
 
+/**
+ * Ramer–Douglas–Peucker in screen space: keep a point only when dropping it
+ * would move the drawn line by more than `tolerance` view units. Smooth
+ * curves shrink to a few dozen points; dense ones (the butterfly) keep the
+ * points they need instead of turning into a zigzag.
+ */
+function simplify(
+  points: Array<[number, number]>,
+  tolerance: number
+): Array<[number, number]> {
+  if (points.length < 3) return points;
+  const keep = new Uint8Array(points.length);
+  keep[0] = 1;
+  keep[points.length - 1] = 1;
+  const stack: Array<[number, number]> = [[0, points.length - 1]];
+  while (stack.length > 0) {
+    const [first, last] = stack.pop()!;
+    const [ax, ay] = points[first];
+    const [bx, by] = points[last];
+    const dx = bx - ax;
+    const dy = by - ay;
+    const length = Math.hypot(dx, dy);
+    let worst = 0;
+    let worstIndex = -1;
+    for (let index = first + 1; index < last; index += 1) {
+      const [px, py] = points[index];
+      const distance =
+        length > 0
+          ? Math.abs(dy * px - dx * py + bx * ay - by * ax) / length
+          : Math.hypot(px - ax, py - ay);
+      if (distance > worst) {
+        worst = distance;
+        worstIndex = index;
+      }
+    }
+    if (worstIndex > 0 && worst > tolerance) {
+      keep[worstIndex] = 1;
+      stack.push([first, worstIndex], [worstIndex, last]);
+    }
+  }
+  return points.filter((_, index) => keep[index] === 1);
+}
+
 function toPaths(
   polylines: CurvePoints,
   transform: (x: number, y: number) => [number, number],
-  maxPoints?: number
+  tolerance?: number
 ): string[] {
   return polylines.map((line) => {
-    const step = maxPoints
-      ? Math.max(1, Math.ceil(line.length / maxPoints))
-      : 1;
+    const screen = line.map(([x, y]) => transform(x, y));
+    const points = tolerance ? simplify(screen, tolerance) : screen;
     let d = '';
-    for (let index = 0; index < line.length; index += step) {
-      const [x, y] = transform(line[index][0], line[index][1]);
+    for (const [x, y] of points) {
       d += `${d ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`;
-    }
-    if (step > 1 && (line.length - 1) % step !== 0 && line.length > 1) {
-      const [x, y] = transform(
-        line[line.length - 1][0],
-        line[line.length - 1][1]
-      );
-      d += `L${x.toFixed(1)} ${y.toFixed(1)}`;
     }
     return d;
   });
@@ -100,11 +162,19 @@ function CurveSvg({
   origin,
   ariaLabel,
   className,
+  guideLines = 0,
+  faded,
+  children,
 }: {
   paths: string[];
   origin?: [number, number];
   ariaLabel: string;
   className?: string;
+  /** Leading paths that are construction (`CurveDef.guideLines`). */
+  guideLines?: number;
+  /** Dim the finished curve while an animation draws over it. */
+  faded?: boolean;
+  children?: ReactNode;
 }) {
   return (
     <svg
@@ -149,12 +219,14 @@ function CurveSvg({
           d={d}
           fill="none"
           stroke="var(--primary)"
-          strokeWidth={index === 0 && paths.length > 1 ? 1.6 : 2.6}
-          strokeOpacity={index === 0 && paths.length > 1 ? 0.45 : 1}
+          strokeWidth={index < guideLines ? 1.6 : 2.6}
+          strokeOpacity={(index < guideLines ? 0.45 : 1) * (faded ? 0.2 : 1)}
           strokeLinecap="round"
           strokeLinejoin="round"
+          className="transition-[stroke-opacity] duration-300"
         />
       ))}
+      {children}
     </svg>
   );
 }
@@ -173,7 +245,7 @@ export function CurveThumb({
     const polylines = curve.sample(defaultValues(curve));
     const transform = fitTransform(boxOf(polylines));
     return {
-      paths: toPaths(polylines, transform, 170),
+      paths: toPaths(polylines, transform, 0.6),
       origin: transform(0, 0),
     };
   }, [curve]);
@@ -183,7 +255,55 @@ export function CurveThumb({
       origin={origin}
       ariaLabel={ariaLabel}
       className={className}
+      guideLines={curve.guideLines}
     />
+  );
+}
+
+/**
+ * A curve that draws itself in a loop (CSS only, see `.curvg-draw-loop`),
+ * over its own faint outline. Decorative: the index hero.
+ */
+export function CurveDrawingLoop({
+  curve,
+  className,
+}: {
+  curve: CurveDef;
+  className?: string;
+}) {
+  const paths = useMemo(() => {
+    const polylines = curve.sample(defaultValues(curve));
+    const transform = fitTransform(boxOf(polylines));
+    return toPaths(polylines, transform, 0.6);
+  }, [curve]);
+  return (
+    <svg
+      viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+      className={cn('size-full', className)}
+      aria-hidden
+    >
+      {paths.map((d, index) => (
+        <g key={index}>
+          <path
+            d={d}
+            fill="none"
+            stroke="var(--primary)"
+            strokeOpacity={0.12}
+            strokeWidth={2}
+          />
+          <path
+            d={d}
+            pathLength={1}
+            fill="none"
+            stroke="var(--primary)"
+            strokeWidth={2.4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="curvg-draw-loop"
+          />
+        </g>
+      ))}
+    </svg>
   );
 }
 
@@ -197,24 +317,50 @@ export function CurveExplorer({
   parametersLabel,
   resetLabel,
   ariaLabel,
+  values,
+  onValuesChange,
+  presets,
+  presetsLabel,
+  drawLabels,
+  drawNext,
+  exports,
 }: {
   curve: CurveDef;
   locale: string;
   parametersLabel: string;
   resetLabel: string;
   ariaLabel: string;
+  /** Controlled: the page shares the values with its formula card. */
+  values: Record<string, number>;
+  onValuesChange: (values: Record<string, number>) => void;
+  /** Named settings shown as one-click buttons above the sliders. */
+  presets?: readonly { label: string; values: Record<string, number> }[];
+  presetsLabel?: string;
+  /** "Watch it draw" button; omitted = no animation. */
+  drawLabels?: { play: string; replay: string; stop: string };
+  /** Shown once a drawing has finished: the paid next step, a video. */
+  drawNext?: { href: string; label: string };
+  /** Free downloads of the shape as currently set; omitted = no export bar. */
+  exports?: ExportOptions;
 }) {
   const defaults = useMemo(() => defaultValues(curve), [curve]);
-  const [values, setValues] = useState<Record<string, number>>(defaults);
+  const draw = useDrawing();
   const frame = useMemo(
     () => (curve.fitMode === 'fixed' ? fixedFrame(curve) : undefined),
     [curve]
   );
 
-  const { paths, origin } = useMemo(() => {
+  const { polylines, paths, origin, transform } = useMemo(() => {
     const polylines = curve.sample(values);
-    const transform = fitTransform(frame ?? boxOf(polylines));
-    return { paths: toPaths(polylines, transform), origin: transform(0, 0) };
+    const transform = fitTransform(
+      frame ?? boxOf([...polylines, traceExtent(curve.slug, values)])
+    );
+    return {
+      polylines,
+      paths: toPaths(polylines, transform),
+      origin: transform(0, 0),
+      transform,
+    };
   }, [curve, values, frame]);
 
   const isDefault = curve.params.every(
@@ -223,8 +369,59 @@ export function CurveExplorer({
 
   return (
     <div className="bg-card overflow-hidden rounded-2xl border">
-      <div className="bg-muted/20 aspect-[4/3]">
-        <CurveSvg paths={paths} origin={origin} ariaLabel={ariaLabel} />
+      <div className="bg-muted/20 relative aspect-[4/3]">
+        <CurveSvg
+          paths={paths}
+          origin={origin}
+          ariaLabel={ariaLabel}
+          guideLines={curve.guideLines}
+          faded={draw.progress !== null}
+        >
+          {draw.progress !== null ? (
+            <TraceOverlay
+              slug={curve.slug}
+              values={values}
+              polylines={polylines}
+              transform={transform}
+              progress={draw.progress}
+            />
+          ) : null}
+        </CurveSvg>
+        {drawLabels ? (
+          <div className="absolute top-3 left-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                draw.progress !== null
+                  ? draw.stop()
+                  : draw.play(drawDuration(polylines, transform))
+              }
+              className="bg-card/90 hover:border-primary/50 hover:text-primary inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium shadow-xs backdrop-blur transition-colors"
+            >
+              {draw.progress !== null ? (
+                <Square className="size-3" aria-hidden />
+              ) : draw.played ? (
+                <RotateCcw className="size-3.5" aria-hidden />
+              ) : (
+                <Play className="size-3.5" aria-hidden />
+              )}
+              {draw.progress !== null
+                ? drawLabels.stop
+                : draw.played
+                  ? drawLabels.replay
+                  : drawLabels.play}
+            </button>
+            {drawNext && draw.played && draw.progress === null ? (
+              <Link
+                href={drawNext.href}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold shadow-xs transition-colors"
+              >
+                {drawNext.label}
+                <ArrowRight className="size-3.5" aria-hidden />
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       <div className="border-t px-5 py-4">
         <div className="flex items-center justify-between">
@@ -233,13 +430,44 @@ export function CurveExplorer({
           </p>
           <button
             type="button"
-            onClick={() => setValues(defaults)}
+            onClick={() => onValuesChange(defaults)}
             disabled={isDefault}
             className="text-primary text-xs font-medium underline-offset-4 hover:underline disabled:pointer-events-none disabled:opacity-40"
           >
             {resetLabel}
           </button>
         </div>
+        {presets && presets.length > 0 ? (
+          <div
+            className="mt-3 flex flex-wrap items-center gap-1.5"
+            role="group"
+            aria-label={presetsLabel}
+          >
+            {presets.map((preset) => {
+              const active = curve.params.every(
+                (param) => values[param.key] === preset.values[param.key]
+              );
+              return (
+                <button
+                  key={preset.label}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() =>
+                    onValuesChange({ ...defaults, ...preset.values })
+                  }
+                  className={cn(
+                    'rounded-full border px-2.5 py-1 text-xs transition-colors',
+                    active
+                      ? 'border-primary bg-accent text-primary'
+                      : 'hover:border-primary/50 hover:text-primary'
+                  )}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
         <div className="mt-3 grid gap-3">
           {curve.params.map((param) => (
             <label key={param.key} className="block">
@@ -256,10 +484,10 @@ export function CurveExplorer({
                 step={param.step}
                 value={values[param.key]}
                 onChange={(event) =>
-                  setValues((current) => ({
-                    ...current,
+                  onValuesChange({
+                    ...values,
                     [param.key]: Number(event.target.value),
-                  }))
+                  })
                 }
                 className="accent-primary mt-1.5 block w-full"
               />
@@ -267,6 +495,255 @@ export function CurveExplorer({
           ))}
         </div>
       </div>
+      {exports ? (
+        <ExportBar
+          options={exports}
+          slug={curve.slug}
+          guideLines={curve.guideLines ?? 0}
+          shape={{ polylines, paths, origin }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+type Transform = (x: number, y: number) => [number, number];
+
+/** Playback clock: progress 0 → 1 over one run, null when idle. */
+function useDrawing() {
+  const [run, setRun] = useState<{ duration: number } | null>(null);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [played, setPlayed] = useState(false);
+  useEffect(() => {
+    if (!run) return;
+    let frameId = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const u = Math.min(1, (now - start) / run.duration);
+      setProgress(u);
+      if (u < 1) {
+        frameId = requestAnimationFrame(tick);
+      } else {
+        setRun(null);
+        setProgress(null);
+        setPlayed(true);
+      }
+    };
+    frameId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameId);
+  }, [run]);
+  return {
+    progress,
+    played,
+    play: (duration: number) => {
+      setProgress(0);
+      setRun({ duration });
+    },
+    stop: () => {
+      setRun(null);
+      setProgress(null);
+      setPlayed(true);
+    },
+  };
+}
+
+/** Long curves get more time, within 3–9 s, so the pen speed feels even. */
+function drawDuration(polylines: CurvePoints, transform: Transform): number {
+  const line = polylines.at(-1) ?? [];
+  let length = 0;
+  for (let i = 1; i < line.length; i += 1) {
+    const [x0, y0] = transform(line[i - 1][0], line[i - 1][1]);
+    const [x1, y1] = transform(line[i][0], line[i][1]);
+    length += Math.hypot(x1 - x0, y1 - y0);
+  }
+  return Math.min(9000, Math.max(3000, 1500 + length * 1.6));
+}
+
+/**
+ * One frame of the drawing: the curve so far, the construction that makes
+ * it (rolling circle, radius, focal strings), and the amber pen.
+ */
+function TraceOverlay({
+  slug,
+  values,
+  polylines,
+  transform,
+  progress,
+}: {
+  slug: string;
+  values: Record<string, number>;
+  polylines: CurvePoints;
+  transform: Transform;
+  progress: number;
+}) {
+  const frame = traceFrame(slug, values, polylines, progress);
+  if (!frame) return null;
+  const line = polylines[frame.polyline];
+  const [penX, penY] = transform(frame.pen[0], frame.pen[1]);
+  let d = '';
+  for (let i = 0; i <= Math.floor(frame.upto); i += 1) {
+    const [x, y] = transform(line[i][0], line[i][1]);
+    d += `${d ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`;
+  }
+  d += `L${penX.toFixed(1)} ${penY.toFixed(1)}`;
+  const scale = transform(1, 0)[0] - transform(0, 0)[0];
+  return (
+    <g aria-hidden>
+      {frame.guides.map((guide, index) => (
+        <Guide key={index} guide={guide} transform={transform} scale={scale} />
+      ))}
+      <path
+        d={d}
+        fill="none"
+        stroke="var(--primary)"
+        strokeWidth={2.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle
+        cx={penX}
+        cy={penY}
+        r={7}
+        fill="var(--primary)"
+        stroke="var(--card)"
+        strokeWidth={2.5}
+      />
+    </g>
+  );
+}
+
+function Guide({
+  guide,
+  transform,
+  scale,
+}: {
+  guide: TraceGuide;
+  transform: Transform;
+  scale: number;
+}) {
+  const stroke = {
+    stroke: 'currentColor',
+    strokeOpacity: 'faint' in guide && guide.faint ? 0.22 : 0.55,
+    strokeWidth: 1.4,
+    fill: 'none',
+  };
+  if (guide.kind === 'circle') {
+    const [cx, cy] = transform(guide.cx, guide.cy);
+    return <circle cx={cx} cy={cy} r={Math.abs(guide.r * scale)} {...stroke} />;
+  }
+  if (guide.kind === 'segment') {
+    const [x1, y1] = transform(guide.from[0], guide.from[1]);
+    const [x2, y2] = transform(guide.to[0], guide.to[1]);
+    return (
+      <line
+        x1={x1}
+        y1={y1}
+        x2={x2}
+        y2={y2}
+        strokeDasharray={guide.dashed ? '5 5' : undefined}
+        {...stroke}
+      />
+    );
+  }
+  const [x, y] = transform(guide.at[0], guide.at[1]);
+  return <circle cx={x} cy={y} r={3.5} fill="currentColor" fillOpacity={0.6} />;
+}
+
+export type ExportOptions = {
+  /** LaTeX copied by the copy button: the curve's equations, one per line. */
+  latex: string;
+  /** Small credit printed in the corner of exported images. */
+  credit: string;
+  labels: {
+    title: string;
+    svg: string;
+    png: string;
+    csv: string;
+    copyLatex: string;
+    copied: string;
+  };
+};
+
+function ExportBar({
+  options,
+  slug,
+  guideLines,
+  shape,
+}: {
+  options: ExportOptions;
+  slug: string;
+  guideLines: number;
+  shape: {
+    polylines: CurvePoints;
+    paths: string[];
+    origin: [number, number];
+  };
+}) {
+  const { labels, credit, latex } = options;
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1800);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  const svg = (background?: string) =>
+    curveSvg({
+      paths: shape.paths,
+      origin: shape.origin,
+      guideLines,
+      credit,
+      background,
+    });
+  const button =
+    'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors hover:border-primary/50 hover:text-primary';
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t px-5 py-3">
+      <p className="text-muted-foreground mr-1 font-mono text-[10px] tracking-[0.14em] uppercase">
+        {labels.title}
+      </p>
+      <button
+        type="button"
+        className={button}
+        onClick={() => downloadText(svg(), 'image/svg+xml', `${slug}.svg`)}
+      >
+        <Download className="size-3.5" aria-hidden />
+        {labels.svg}
+      </button>
+      <button
+        type="button"
+        className={button}
+        onClick={() => void downloadPng(svg('#ffffff'), `${slug}.png`)}
+      >
+        <Download className="size-3.5" aria-hidden />
+        {labels.png}
+      </button>
+      <button
+        type="button"
+        className={button}
+        onClick={() =>
+          downloadText(curveCsv(shape.polylines), 'text/csv', `${slug}.csv`)
+        }
+      >
+        <Download className="size-3.5" aria-hidden />
+        {labels.csv}
+      </button>
+      <button
+        type="button"
+        className={button}
+        aria-live="polite"
+        onClick={() =>
+          void navigator.clipboard?.writeText(latex).then(() => setCopied(true))
+        }
+      >
+        {copied ? (
+          <Check className="size-3.5" aria-hidden />
+        ) : (
+          <Copy className="size-3.5" aria-hidden />
+        )}
+        {copied ? labels.copied : labels.copyLatex}
+      </button>
     </div>
   );
 }

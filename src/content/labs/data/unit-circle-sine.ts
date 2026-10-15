@@ -5,8 +5,6 @@ const W = 1.6; // where the unrolled wave starts, to the right of the circle
 export const unitCircleSine: Lab = {
   slug: 'unit-circle-sine',
   publication: 'public',
-  primaryCategoryId: 'harmonic',
-  additionalCategoryIds: ['maps-graphs'],
   levels: ['middle', 'high'],
   chapterTitle: { en: 'The unit circle', zh: '单位圆与正弦' },
   title: {

@@ -3,8 +3,6 @@ import type { Lab } from '../types';
 export const circularMotion: Lab = {
   slug: 'circular-motion',
   publication: 'public',
-  primaryCategoryId: 'harmonic',
-  additionalCategoryIds: ['parametric'],
   levels: ['high'],
   chapterTitle: { en: 'Circular motion', zh: '匀速圆周运动' },
   title: {

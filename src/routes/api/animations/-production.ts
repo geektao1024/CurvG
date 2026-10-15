@@ -15,6 +15,7 @@ import type { AnimationDetail } from '@/lib/animation';
 import {
   AnimationApiError,
   callbackUrl,
+  freeFirstRenderAvailable,
   qualityGateUrl,
   resolveAnimationOrchestrator,
   resolveRenderer,
@@ -60,9 +61,15 @@ export async function startSilentAnimationProduction(params: {
       params.configs.animation_render_credits || '20',
       10
     );
-    const costCredits = Number.isSafeInteger(configuredCost)
-      ? Math.max(0, Math.min(configuredCost, 1_000_000))
-      : 20;
+    const freeRender = await freeFirstRenderAvailable(
+      params.configs,
+      params.userId
+    );
+    const costCredits = freeRender
+      ? 0
+      : Number.isSafeInteger(configuredCost)
+        ? Math.max(0, Math.min(configuredCost, 1_000_000))
+        : 20;
     try {
       const task = await createTask({
         userId: params.userId,
@@ -71,7 +78,7 @@ export async function startSilentAnimationProduction(params: {
         model: 'deterministic-manim-v3',
         prompt: `animation:${params.animation.id}`,
         costCredits,
-        options: { animationId: params.animation.id },
+        options: { animationId: params.animation.id, freeRender },
       });
       creditTaskId = task.id;
     } catch (error) {

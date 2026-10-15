@@ -4,9 +4,8 @@ import { Link } from '@/core/i18n/navigation';
 import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
 import { SectionHeading } from '@/components/section-heading';
-import { CURVES } from '@/content/curves';
+import { CURVES, featuredCurves } from '@/content/curves';
 import { labPath, latestLabs, suiteForLab } from '@/content/labs';
-import { featuredCurves } from '@/content/library';
 import { formatPostDate, type BlogPost } from '@/content/posts';
 
 /**

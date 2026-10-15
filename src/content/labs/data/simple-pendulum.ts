@@ -5,8 +5,6 @@ const G = 9.8;
 export const simplePendulum: Lab = {
   slug: 'simple-pendulum',
   publication: 'public',
-  primaryCategoryId: 'harmonic',
-  additionalCategoryIds: ['parametric'],
   levels: ['high'],
   chapterTitle: { en: 'Simple pendulum', zh: '单摆' },
   title: {

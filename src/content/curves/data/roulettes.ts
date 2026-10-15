@@ -58,7 +58,7 @@ export const rouletteCurves: CurveDef[] = [
       en: 'Animate a cycloid: roll a unit circle along a line with the tracing point marked, draw two full arches, pause at a cusp to show zero velocity, then flip the curve and drop two beads from different heights to demonstrate the tautochrone property.',
       zh: '演示摆线：让单位圆沿直线滚动并标记圆周上的描点，画出两个完整的拱，在尖点处暂停以说明该瞬间速度为零；再把曲线倒置，从不同高度释放两颗小球，演示等时降线性质。',
     },
-    related: ['epicycloid', 'hypocycloid', 'involute-of-a-circle'],
+    related: ['epicycloid', 'hypocycloid', 'involute-of-a-circle', 'trochoid'],
   },
   {
     slug: 'epicycloid',
@@ -83,6 +83,7 @@ export const rouletteCurves: CurveDef[] = [
       },
     ],
     fitMode: 'refit',
+    guideLines: 1,
     sample: ({ k }) => {
       const r = 1 / k;
       const base = sweep(0, TAU, 200, (t) => [Math.cos(t), Math.sin(t)]);
@@ -151,6 +152,7 @@ export const rouletteCurves: CurveDef[] = [
       },
     ],
     fitMode: 'refit',
+    guideLines: 1,
     sample: ({ k }) => {
       const r = 1 / k;
       const base = sweep(0, TAU, 200, (t) => [Math.cos(t), Math.sin(t)]);
@@ -558,5 +560,72 @@ export const rouletteCurves: CurveDef[] = [
       zh: '把肾形线作为焦散来演示：向半圆镜内射入一组平行光线，逐条画出反射线，让反射线族逐渐累积，直到包络——双尖点的肾形线——清晰浮现。',
     },
     related: ['cardioid', 'epicycloid', 'deltoid-curve'],
+  },
+  {
+    slug: 'trochoid',
+    category: 'roulette',
+    name: { en: 'Trochoid', zh: '次摆线' },
+    short: {
+      en: 'A pen fixed at distance d from the centre of a rolling wheel: waves for d < r, the cycloid for d = r, loops for d > r.',
+      zh: '笔尖固定在滚动车轮上、离圆心 d 处：d < r 时是波浪，d = r 时是摆线，d > r 时打出小环。',
+    },
+    equations: ['x = rt - d\\sin t', 'y = r - d\\cos t'],
+    params: [
+      {
+        key: 'd',
+        label: { en: 'd (pen distance, r = 1)', zh: 'd（笔尖距离，r = 1）' },
+        min: 0.2,
+        max: 2,
+        step: 0.1,
+        defaultValue: 0.5,
+      },
+      {
+        key: 'arches',
+        label: { en: 'Turns of the wheel', zh: '车轮转的圈数' },
+        min: 1,
+        max: 4,
+        step: 1,
+        defaultValue: 2,
+      },
+    ],
+    fitMode: 'refit',
+    sample: ({ d, arches }) => [
+      sweep(0, arches * TAU, 1000, (t) => [t - d * Math.sin(t), 1 - d * Math.cos(t)]),
+    ],
+    intro: {
+      en: [
+        'Roll a wheel of radius r along a straight line and follow a point fixed to it at distance d from the centre. On the rim (d = r) the point traces the cycloid, with cusps where it touches the ground. Inside the rim (d < r, a curtate trochoid) the cusps soften into a smooth wave; outside it (d > r, a prolate trochoid, like a point on a train’s flanged wheel) they open into loops.',
+        'All three come from the same two lines, x = rt − d·sin t and y = r − d·cos t. The point’s height swings between r − d and r + d, and the pattern repeats every 2πr along the line, once per turn of the wheel.',
+      ],
+      zh: [
+        '让半径为 r 的车轮沿直线滚动，跟踪固定在轮上、离圆心 d 的一点。点在轮缘上（d = r）时描出摆线，接地处是尖点；点在轮缘内（d < r，短幅次摆线）时尖点变成平滑的波浪；点在轮缘外（d > r，长幅次摆线，好比火车轮缘上的点）时尖点打开成小环。',
+        '三种情形都来自同两行式子 x = rt − d·sin t、y = r − d·cos t。点的高度在 r − d 与 r + d 之间摆动，图案沿直线每 2πr 重复一次，也就是车轮每转一圈重复一次。',
+      ],
+    },
+    properties: {
+      en: [
+        'd = r gives the cycloid; d < r a curtate (wavy) trochoid; d > r a prolate (looped) trochoid.',
+        'Height ranges from r − d to r + d.',
+        'Period 2πr along the line: one turn of the wheel.',
+        'A prolate trochoid moves backwards for part of each loop, like the flange of a train wheel.',
+        'Rolling the wheel on a circle instead of a line gives the epitrochoid and hypotrochoid.',
+      ],
+      zh: [
+        'd = r 是摆线；d < r 是短幅（波浪形）次摆线；d > r 是长幅（带环）次摆线。',
+        '高度在 r − d 到 r + d 之间。',
+        '沿直线的周期为 2πr，即车轮转一圈。',
+        '长幅次摆线在每个环里有一段是向后走的，就像火车车轮的轮缘。',
+        '把直线换成圆，就得到外旋轮线和内旋轮线。',
+      ],
+    },
+    seenIn: {
+      en: 'Train-wheel flanges moving backwards, the reflector on a bicycle wheel, and wave profiles in water.',
+      zh: '火车轮缘上"向后走"的点、自行车车轮上的反光片，以及水波的剖面形状。',
+    },
+    prompt: {
+      en: 'Animate the trochoid: roll a unit wheel along the x-axis with three marked points at d = 0.5, 1 and 1.6, and trace the curtate wave, the cycloid and the looped prolate trochoid together.',
+      zh: '演示次摆线：让单位车轮沿 x 轴滚动，轮上标出 d = 0.5、1、1.6 三个点，同时描出短幅波浪、摆线和带环的长幅次摆线。',
+    },
+    related: ['cycloid', 'hypotrochoid', 'epitrochoid'],
   },
 ];

@@ -6,8 +6,6 @@ const END = 16.5;
 export const wavePropagation: Lab = {
   slug: 'wave-propagation',
   publication: 'public',
-  primaryCategoryId: 'harmonic',
-  additionalCategoryIds: ['maps-graphs'],
   levels: ['high'],
   chapterTitle: { en: 'Travelling waves', zh: '机械波的传播' },
   title: {

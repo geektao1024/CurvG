@@ -1,4 +1,4 @@
-import { sweep, TAU, type CurveDef } from '../types';
+import { polarPieces, sweep, TAU, type CurveDef } from '../types';
 
 export const cartesianCurves: CurveDef[] = [
   {
@@ -248,7 +248,7 @@ export const cartesianCurves: CurveDef[] = [
       en: 'Animate the witch of Agnesi: rotate a ray from the origin through a circle of radius 0.8 resting on the x-axis, combine the two intersection coordinates to plot each point, and trace the full bell curve with its asymptote.',
       zh: '演示箕舌线的生成：从原点旋转一条射线，穿过坐落在 x 轴上的半径 0.8 的圆，组合两个交点的坐标得到描点，最终画出完整的钟形曲线及其渐近线。',
     },
-    related: ['cissoid-of-diocles', 'catenary', 'parabola'],
+    related: ['cissoid-of-diocles', 'catenary', 'parabola', 'serpentine-curve'],
   },
   {
     slug: 'folium-of-descartes',
@@ -315,5 +315,576 @@ export const cartesianCurves: CurveDef[] = [
       zh: '演示笛卡尔叶形线 x³ + y³ = 3xy：描出经过原点的环与两条无限延伸的臂，画出渐近线 x + y + 1 = 0，并用隐函数求导展示顶点 (3/2, 3/2) 处切线斜率为 −1。',
     },
     related: ['cissoid-of-diocles', 'lemniscate-of-bernoulli', 'witch-of-agnesi'],
+  },
+  {
+    slug: 'devils-curve',
+    category: 'cartesian',
+    name: { en: 'Devil’s curve', zh: '魔鬼曲线' },
+    short: {
+      en: 'The quartic y²(y² − b²) = x²(x² − a²), studied by Cramer in 1750: a figure eight between two arcs, or a circle crossed by two lines.',
+      zh: '四次曲线 y²(y² − b²) = x²(x² − a²)，克莱姆在 1750 年研究过：夹在两段弧之间的 8 字形，或被两条直线穿过的圆。',
+    },
+    equations: [
+      'y^2(y^2 - b^2) = x^2(x^2 - a^2)',
+      'r^2 = \\frac{b^2\\sin^2\\theta - a^2\\cos^2\\theta}{\\sin^2\\theta - \\cos^2\\theta}',
+    ],
+    params: [
+      {
+        key: 'a',
+        label: { en: 'a (with b = 1)', zh: 'a（b = 1）' },
+        min: 0.2,
+        max: 1.6,
+        step: 0.05,
+        defaultValue: 0.8,
+      },
+    ],
+    fitMode: 'fixed',
+    sample: ({ a }) =>
+      polarPieces((t) => {
+        const s2 = Math.sin(t) ** 2;
+        const c2 = Math.cos(t) ** 2;
+        return (s2 - a * a * c2) / (s2 - c2);
+      }, 2.6),
+    intro: {
+      en: [
+        'Gabriel Cramer studied this quartic in 1750; the name probably comes from its resemblance to the devil-on-two-sticks juggling toy. On the axes it passes through the origin and through (±a, 0) and (0, ±b), and far from the origin it hugs the diagonals y = ±x.',
+        'Everything depends on how a compares with b. When a < b, a figure eight crosses itself at the origin between (±a, 0), while two separate arcs pass through (0, ±b) and run out along the diagonals. At a = b the curve falls apart into the circle x² + y² = b² and the two diagonals; when a > b the picture turns through 90°, with the figure eight upright. Dividing out r² gives a one-line polar form that makes each case easy to sketch.',
+      ],
+      zh: [
+        'Gabriel Cramer 在 1750 年研究了这条四次曲线；名字大概来自它和"空竹"（devil on two sticks）玩具的相似。它在坐标轴上经过原点、(±a, 0) 和 (0, ±b)，远离原点时贴着对角线 y = ±x。',
+        '形状全看 a 与 b 的比较：a < b 时，一个 8 字形横在 (±a, 0) 之间、在原点自交，另有两段分开的弧经过 (0, ±b)、沿对角线伸出去；a = b 时分解成圆 x² + y² = b² 和两条对角线；a > b 时整幅图转 90°，8 字形竖了起来。约去 r² 后得到一行极坐标式，每种情形都容易画出。',
+      ],
+    },
+    properties: {
+      en: [
+        'Crosses the axes at the origin, (±a, 0) and (0, ±b).',
+        'Asymptotes y = ±x.',
+        'a = b: the curve splits into the circle x² + y² = a² and the lines y = ±x.',
+        'Polar form: r² = (b²·sin²θ − a²·cos²θ) / (sin²θ − cos²θ).',
+        'Symmetric about both axes.',
+      ],
+      zh: [
+        '与坐标轴交于原点、(±a, 0) 和 (0, ±b)。',
+        '渐近线 y = ±x。',
+        'a = b 时曲线分解为圆 x² + y² = a² 和直线 y = ±x。',
+        '极坐标形式：r² = (b²·sin²θ − a²·cos²θ) / (sin²θ − cos²θ)。',
+        '关于两条坐标轴对称。',
+      ],
+    },
+    seenIn: {
+      en: 'Catalogues of named quartics and exercises on implicit curves and asymptotes.',
+      zh: '命名四次曲线的图谱，以及隐函数曲线与渐近线的练习。',
+    },
+    prompt: {
+      en: 'Animate the devil’s curve y²(y² − 1) = x²(x² − a²): draw the asymptotes y = ±x, trace the figure eight and the two outer arcs at a = 0.8, then slide a through 1 to show the split into a circle and two lines and the upright figure eight beyond.',
+      zh: '演示魔鬼曲线 y²(y² − 1) = x²(x² − a²)：先画渐近线 y = ±x，描出 a = 0.8 时的 8 字形和两段外弧，再让 a 经过 1，展示它分解成一个圆和两条直线，以及之后竖起来的 8 字形。',
+    },
+    related: ['lemniscate-of-bernoulli', 'cassini-oval', 'bicorn'],
+  },
+  {
+    slug: 'bicorn',
+    category: 'cartesian',
+    name: { en: 'Bicorn', zh: '双角曲线' },
+    short: {
+      en: 'The cocked-hat curve y²(a² − x²) = (x² + 2ay − a²)²: two arcs meeting in sharp cusps at (±a, 0).',
+      zh: '"三角帽"曲线 y²(a² − x²) = (x² + 2ay − a²)²：两段弧在 (±a, 0) 处交成尖角。',
+    },
+    equations: [
+      'y^2(a^2 - x^2) = (x^2 + 2ay - a^2)^2',
+      'x = a\\sin t,\\quad y = \\frac{a\\cos^2 t\\,(2 + \\cos t)}{3 + \\sin^2 t}',
+    ],
+    params: [
+      {
+        key: 'a',
+        label: { en: 'a (half-width)', zh: 'a（半宽）' },
+        min: 0.6,
+        max: 1.3,
+        step: 0.05,
+        defaultValue: 1,
+      },
+    ],
+    fitMode: 'fixed',
+    sample: ({ a }) => [
+      sweep(0, TAU, 900, (t) => [
+        a * Math.sin(t),
+        (a * Math.cos(t) ** 2 * (2 + Math.cos(t))) / (3 + Math.sin(t) ** 2),
+      ]),
+    ],
+    intro: {
+      en: [
+        'The bicorn, or cocked-hat curve, is a rational quartic studied by James Joseph Sylvester in 1864 and Arthur Cayley in 1867. Its outline is exactly what the name suggests: a hat with two points, one arc on top and one below, meeting in cusps at (±a, 0).',
+        'Being rational, it has a parametrisation by ordinary functions, x = a·sin t and y = a·cos²t·(2 + cos t)/(3 + sin²t). The upper arc crosses the y-axis at height a, the lower one at a/3.',
+      ],
+      zh: [
+        '双角曲线又叫"三角帽"曲线，是一条有理四次曲线，James Joseph Sylvester 在 1864 年、Arthur Cayley 在 1867 年研究过它。它的轮廓正如其名：一顶有两个角的帽子，上下两段弧在 (±a, 0) 处交成尖点。',
+        '因为是有理曲线，它可以用普通函数参数化：x = a·sin t，y = a·cos²t·(2 + cos t)/(3 + sin²t)。上弧在高度 a 处穿过 y 轴，下弧在 a/3 处。',
+      ],
+    },
+    properties: {
+      en: [
+        'Cusps at (±a, 0).',
+        'Crosses the y-axis at y = a and y = a/3.',
+        'Rational parametrisation: x = a·sin t, y = a·cos²t·(2 + cos t)/(3 + sin²t).',
+        'Symmetric about the y-axis.',
+        'A quartic studied by Sylvester (1864) and Cayley (1867).',
+      ],
+      zh: [
+        '尖点在 (±a, 0)。',
+        '与 y 轴交于 y = a 和 y = a/3。',
+        '有理参数式：x = a·sin t，y = a·cos²t·(2 + cos t)/(3 + sin²t)。',
+        '关于 y 轴对称。',
+        'Sylvester（1864）和 Cayley（1867）研究过的四次曲线。',
+      ],
+    },
+    seenIn: {
+      en: 'Galleries of named curves and examples of rational parametrisation.',
+      zh: '命名曲线图集，以及有理参数化的例子。',
+    },
+    prompt: {
+      en: 'Animate the bicorn with a = 1: trace x = sin t, y = cos²t(2 + cos t)/(3 + sin²t), pause at the two cusps (±1, 0), and mark where the arcs cross the y-axis at 1 and 1/3.',
+      zh: '演示 a = 1 的双角曲线：按 x = sin t、y = cos²t(2 + cos t)/(3 + sin²t) 描出曲线，在两个尖点 (±1, 0) 处停顿，并标出两段弧与 y 轴的交点 1 和 1/3。',
+    },
+    related: ['devils-curve', 'piriform-curve', 'astroid'],
+  },
+  {
+    slug: 'kampyle-of-eudoxus',
+    category: 'cartesian',
+    name: { en: 'Kampyle of Eudoxus', zh: '欧多克索斯曲线' },
+    short: {
+      en: 'x⁴ = a²(x² + y²): two branches opening outward from (±a, 0), traditionally linked to Eudoxus and the doubling of the cube.',
+      zh: 'x⁴ = a²(x² + y²)：从 (±a, 0) 向外张开的两支，传统上与欧多克索斯和倍立方问题联系在一起。',
+    },
+    equations: ['x^4 = a^2(x^2 + y^2)', 'r = a\\sec^2\\theta'],
+    params: [
+      {
+        key: 'a',
+        label: { en: 'a (vertex distance)', zh: 'a（顶点距离）' },
+        min: 0.6,
+        max: 1.3,
+        step: 0.05,
+        defaultValue: 1,
+      },
+    ],
+    fitMode: 'fixed',
+    sample: ({ a }) => {
+      const branch = (side: number) =>
+        sweep(-1.15, 1.15, 600, (t) => [
+          (side * a) / Math.cos(t),
+          (a * Math.tan(t)) / Math.cos(t),
+        ]);
+      return [branch(1), branch(-1)];
+    },
+    intro: {
+      en: [
+        'The kampyle (Greek for “curved”) is traditionally credited to Eudoxus of Cnidus in the fourth century BC, in connection with doubling the cube; the ancient sources are thin, so the attribution is conventional rather than certain. Its equation is the quartic x⁴ = a²(x² + y²).',
+        'In polar form it is simply r = a·sec²θ, and with x = a·sec t, y = a·tan t·sec t it is easy to plot. Each branch starts at a vertex (±a, 0) and opens outward, growing roughly like y ≈ ±x²/a far from the origin.',
+      ],
+      zh: [
+        'kampyle 在希腊语里是"弯曲的"。传统上把它归于公元前 4 世纪的欧多克索斯，并与倍立方问题相联系；古代文献很少，这个归属是沿袭的说法，并不确定。它的方程是四次曲线 x⁴ = a²(x² + y²)。',
+        '极坐标下它就是 r = a·sec²θ；用 x = a·sec t、y = a·tan t·sec t 也很容易画。每一支从顶点 (±a, 0) 出发向外张开，远处大致按 y ≈ ±x²/a 增长。',
+      ],
+    },
+    properties: {
+      en: [
+        'Polar form r = a·sec²θ.',
+        'Parametric form x = a·sec t, y = a·tan t·sec t.',
+        'Vertices at (±a, 0); no points with |x| < a.',
+        'Far from the origin, y ≈ ±x²/a.',
+        'Symmetric about both axes.',
+      ],
+      zh: [
+        '极坐标形式 r = a·sec²θ。',
+        '参数式 x = a·sec t，y = a·tan t·sec t。',
+        '顶点在 (±a, 0)；|x| < a 处没有曲线上的点。',
+        '远离原点时 y ≈ ±x²/a。',
+        '关于两条坐标轴对称。',
+      ],
+    },
+    seenIn: {
+      en: 'Histories of Greek geometry and the doubling of the cube.',
+      zh: '希腊几何史与倍立方问题的史料。',
+    },
+    prompt: {
+      en: 'Animate the kampyle of Eudoxus with a = 1: sweep a ray with r = sec²θ, trace both branches from the vertices (±1, 0), and compare them with the parabolas y = ±x² far from the origin.',
+      zh: '演示 a = 1 的欧多克索斯曲线：让射线按 r = sec²θ 扫过，从顶点 (±1, 0) 描出两支，再在远处与抛物线 y = ±x² 对比。',
+    },
+    related: ['hyperbola', 'conchoid-of-nicomedes', 'parabola'],
+  },
+  {
+    slug: 'piriform-curve',
+    category: 'cartesian',
+    name: { en: 'Piriform curve', zh: '梨形线' },
+    short: {
+      en: 'The pear-shaped quartic a⁴y² = b²x³(2a − x): a teardrop with a cusp, enclosing exactly the area πab of an ellipse.',
+      zh: '梨形四次曲线 a⁴y² = b²x³(2a − x)：带一个尖点的泪滴形，面积恰好等于椭圆的 πab。',
+    },
+    equations: [
+      'a^4y^2 = b^2x^3(2a - x)',
+      'x = a(1 + \\sin t),\\quad y = b\\cos t\\,(1 + \\sin t)',
+    ],
+    params: [
+      {
+        key: 'b',
+        label: { en: 'b (with a = 1)', zh: 'b（a = 1）' },
+        min: 0.3,
+        max: 1.2,
+        step: 0.05,
+        defaultValue: 0.7,
+      },
+    ],
+    fitMode: 'fixed',
+    sample: ({ b }) => [
+      sweep(0, TAU, 900, (t) => [
+        1 + Math.sin(t),
+        b * Math.cos(t) * (1 + Math.sin(t)),
+      ]),
+    ],
+    intro: {
+      en: [
+        'The piriform (Latin pirum, pear) is a quartic shaped like a teardrop lying on its side: it runs from a cusp at the origin to its blunt end at (2a, 0). Near the cusp it behaves like the semicubical parabola, since y² is proportional to x³ there.',
+        'Its parametrisation x = a(1 + sin t), y = b·cos t·(1 + sin t) makes the area easy to compute, and the answer is a pleasant surprise: πab, exactly the area of the ellipse with semi-axes a and b.',
+      ],
+      zh: [
+        '梨形线（拉丁语 pirum，梨）是一条横放的泪滴形四次曲线：从原点的尖点伸到 (2a, 0) 的圆头。在尖点附近 y² 与 x³ 成比例，表现得和半立方抛物线一样。',
+        '用参数式 x = a(1 + sin t)、y = b·cos t·(1 + sin t) 很容易算出面积，结果出人意料：πab，正好等于半轴为 a、b 的椭圆的面积。',
+      ],
+    },
+    properties: {
+      en: [
+        'Enclosed area πab, equal to the ellipse with the same a and b.',
+        'Cusp at the origin; the far end is (2a, 0).',
+        'Parametrisation: x = a(1 + sin t), y = b·cos t·(1 + sin t).',
+        'Symmetric about the x-axis.',
+        'Near the cusp, y² ≈ (2b²/a³)·x³, like a semicubical parabola.',
+      ],
+      zh: [
+        '围成的面积为 πab，与同样 a、b 的椭圆相等。',
+        '原点处有尖点，另一端是 (2a, 0)。',
+        '参数式：x = a(1 + sin t)，y = b·cos t·(1 + sin t)。',
+        '关于 x 轴对称。',
+        '在尖点附近 y² ≈ (2b²/a³)·x³，像半立方抛物线。',
+      ],
+    },
+    seenIn: {
+      en: 'Area-by-parametrisation exercises and modelling of drop and pear outlines.',
+      zh: '用参数式求面积的练习，以及水滴、梨形轮廓的建模。',
+    },
+    prompt: {
+      en: 'Animate the piriform curve with a = 1, b = 0.7: trace it from the cusp at the origin, shade its area, and slide in an ellipse with semi-axes 1 and 0.7 to show the two areas are both 0.7π.',
+      zh: '演示 a = 1、b = 0.7 的梨形线：从原点的尖点开始描出曲线，给面积涂上阴影，再移入半轴 1 和 0.7 的椭圆，展示两者面积都是 0.7π。',
+    },
+    related: ['semicubical-parabola', 'ellipse', 'bicorn'],
+  },
+  {
+    slug: 'serpentine-curve',
+    category: 'cartesian',
+    name: { en: 'Serpentine curve', zh: '蛇形线' },
+    short: {
+      en: 'y = abx/(x² + a²): an S-bend that rises to b/2, falls back and fades to the x-axis on both sides.',
+      zh: 'y = abx/(x² + a²)：一个 S 形弯，升到 b/2 后回落，两侧都逐渐贴近 x 轴。',
+    },
+    equations: ['y = \\frac{abx}{x^2 + a^2}', 'x^2y + a^2y - abx = 0'],
+    params: [
+      {
+        key: 'a',
+        label: { en: 'a (bend position)', zh: 'a（弯的位置）' },
+        min: 0.3,
+        max: 2,
+        step: 0.05,
+        defaultValue: 1,
+      },
+      {
+        key: 'b',
+        label: { en: 'b (height)', zh: 'b（高度）' },
+        min: 0.5,
+        max: 4,
+        step: 0.1,
+        defaultValue: 2,
+      },
+    ],
+    fitMode: 'fixed',
+    sample: ({ a, b }) => [
+      sweep(-6, 6, 800, (x) => [x, (a * b * x) / (x * x + a * a)]),
+    ],
+    intro: {
+      en: [
+        'The serpentine is a cubic curve that winds like a snake through the origin. It was studied by l’Hôpital and Huygens in the 1690s, and Isaac Newton gave it its name in his enumeration of cubic curves.',
+        'Written as a function, y = abx/(x² + a²), it is easy to analyse: an odd function with a maximum b/2 at x = a, a minimum −b/2 at x = −a, inflection points at x = 0 and x = ±√3·a, and the x-axis as its asymptote in both directions.',
+      ],
+      zh: [
+        '蛇形线是一条像蛇一样蜿蜒穿过原点的三次曲线。洛必达和惠更斯在 1690 年代研究过它，牛顿在他对三次曲线的分类中给了它这个名字。',
+        '写成函数 y = abx/(x² + a²) 后很容易分析：它是奇函数，在 x = a 处取最大值 b/2，在 x = −a 处取最小值 −b/2，拐点在 x = 0 和 x = ±√3·a，两侧都以 x 轴为渐近线。',
+      ],
+    },
+    properties: {
+      en: [
+        'Maximum b/2 at x = a; minimum −b/2 at x = −a.',
+        'Inflection points at x = 0 and x = ±√3·a.',
+        'The x-axis is an asymptote on both sides.',
+        'Odd function: symmetric about the origin.',
+        'Named by Newton in his classification of cubic curves.',
+      ],
+      zh: [
+        '在 x = a 处取最大值 b/2，在 x = −a 处取最小值 −b/2。',
+        '拐点在 x = 0 和 x = ±√3·a。',
+        '两侧都以 x 轴为渐近线。',
+        '奇函数：关于原点对称。',
+        '名字来自牛顿对三次曲线的分类。',
+      ],
+    },
+    seenIn: {
+      en: 'Calculus exercises on extrema and inflection points, and the shape of a damped response curve.',
+      zh: '微积分里求极值与拐点的练习，以及阻尼响应曲线的形状。',
+    },
+    prompt: {
+      en: 'Animate the serpentine y = 2x/(x² + 1): trace it from left to right, mark the maximum (1, 1) and minimum (−1, −1), then the inflection points at 0 and ±√3, and show it settling onto the x-axis.',
+      zh: '演示蛇形线 y = 2x/(x² + 1)：从左到右描出曲线，标出最大值点 (1, 1) 与最小值点 (−1, −1)，再标出 0 和 ±√3 处的拐点，最后展示它贴近 x 轴。',
+    },
+    related: ['witch-of-agnesi', 'sigmoid-function', 'sine-wave'],
+  },
+  {
+    slug: 'tschirnhausen-cubic',
+    category: 'cartesian',
+    name: { en: 'Tschirnhausen cubic', zh: '契恩豪斯三次曲线' },
+    short: {
+      en: '27ay² = (a − x)(8a + x)²: a cubic with a loop, the caustic of a parabola lit at right angles to its axis.',
+      zh: '27ay² = (a − x)(8a + x)²：带一个环的三次曲线，是光线垂直于轴照射抛物线时的焦散线。',
+    },
+    equations: [
+      '27ay^2 = (a - x)(8a + x)^2',
+      'r = a\\sec^3\\frac{\\theta}{3}',
+    ],
+    params: [
+      {
+        key: 'a',
+        label: { en: 'a (size)', zh: 'a（大小）' },
+        min: 0.5,
+        max: 1.2,
+        step: 0.05,
+        defaultValue: 1,
+      },
+    ],
+    fitMode: 'fixed',
+    sample: ({ a }) => [
+      sweep(-2.25, 2.25, 900, (t) => [a * (1 - 3 * t * t), a * t * (3 - t * t)]),
+    ],
+    intro: {
+      en: [
+        'Ehrenfried Walther von Tschirnhaus studied this cubic as a caustic: shine light at a parabola perpendicular to its axis, and the reflected rays envelope this curve. It also goes by l’Hôpital’s cubic and the trisectrix of Catalan.',
+        'Its polar form r = a·sec³(θ/3) and the parametrisation x = a(1 − 3t²), y = a·t(3 − t²) turn into each other with t = tan(θ/3). The curve crosses itself at (−8a, 0), closing a loop that reaches x = a and encloses area 72√3a²/5.',
+      ],
+      zh: [
+        'Ehrenfried Walther von Tschirnhaus 把这条三次曲线当作焦散线研究：让光线垂直于抛物线的轴照射，反射光线的包络就是它。它也叫洛必达三次曲线、卡塔兰三等分角线。',
+        '它的极坐标形式 r = a·sec³(θ/3) 与参数式 x = a(1 − 3t²)、y = a·t(3 − t²) 通过 t = tan(θ/3) 互相转换。曲线在 (−8a, 0) 处与自己相交，合成一个伸到 x = a 的环，环的面积为 72√3a²/5。',
+      ],
+    },
+    properties: {
+      en: [
+        'Self-intersection at (−8a, 0); the loop reaches (a, 0).',
+        'The loop encloses area 72√3a²/5.',
+        'Polar form r = a·sec³(θ/3); parametrisation x = a(1 − 3t²), y = a·t(3 − t²).',
+        'Catacaustic of a parabola for light perpendicular to its axis.',
+        'Also called l’Hôpital’s cubic and the trisectrix of Catalan.',
+      ],
+      zh: [
+        '自交点在 (−8a, 0)；环伸到 (a, 0)。',
+        '环围成的面积为 72√3a²/5。',
+        '极坐标 r = a·sec³(θ/3)；参数式 x = a(1 − 3t²)，y = a·t(3 − t²)。',
+        '光线垂直于轴照射时，抛物线的反射焦散线。',
+        '又称洛必达三次曲线、卡塔兰三等分角线。',
+      ],
+    },
+    seenIn: {
+      en: 'Optics of reflection (caustics) and catalogues of classical cubics.',
+      zh: '反射光学中的焦散线，以及经典三次曲线的图谱。',
+    },
+    prompt: {
+      en: 'Animate the Tschirnhausen cubic as a caustic: shine parallel rays at a parabola perpendicular to its axis, draw many reflected rays, and let their envelope appear as 27y² = (1 − x)(8 + x)², then shade its loop.',
+      zh: '把契恩豪斯三次曲线当作焦散线来演示：让平行光垂直于抛物线的轴照射，画出许多反射光线，让它们的包络显现为 27y² = (1 − x)(8 + x)²，最后给环涂上阴影。',
+    },
+    related: ['semicubical-parabola', 'parabola', 'trisectrix-of-maclaurin'],
+  },
+  {
+    slug: 'semicubical-parabola',
+    category: 'cartesian',
+    name: { en: 'Semicubical parabola', zh: '半立方抛物线' },
+    short: {
+      en: 'y² = ax³, the cusp curve: the first algebraic curve other than a straight line whose arc length was found exactly (Neile, 1657).',
+      zh: 'y² = ax³，带尖点的曲线：除直线外第一条求出精确弧长的代数曲线（Neile，1657 年）。',
+    },
+    equations: ['y^2 = ax^3', 'x = t^2,\\quad y = \\sqrt a\\,t^3'],
+    params: [
+      {
+        key: 'a',
+        label: { en: 'a (steepness)', zh: 'a（陡峭程度）' },
+        min: 0.3,
+        max: 3,
+        step: 0.1,
+        defaultValue: 1,
+      },
+    ],
+    fitMode: 'refit',
+    sample: ({ a }) => [
+      sweep(-1.2, 1.2, 900, (t) => [t * t, Math.sqrt(a) * t ** 3]),
+    ],
+    intro: {
+      en: [
+        'In 1657 William Neile found the exact length of an arc of y² = ax³, and the result surprised mathematicians who believed that curved lengths could not be expressed algebraically. The answer needs nothing beyond powers and roots.',
+        'The curve has a cusp at the origin, where its two branches meet tangent to the x-axis. It turns up again and again: it is the evolute of a parabola, and it is the isochrone of Leibniz’s 1687 challenge, a path along which a falling body descends at a constant vertical speed.',
+      ],
+      zh: [
+        '1657 年，William Neile 求出了 y² = ax³ 一段弧的精确长度。当时不少数学家认为曲线的长度不能用代数式表示，这个结果让他们吃惊：答案只需要幂和根式。',
+        '曲线在原点有一个尖点，两支在那里都与 x 轴相切。它在很多地方出现：它是抛物线的渐屈线；它也是莱布尼茨 1687 年挑战题中的"等时降线"，物体沿它下落时竖直方向的速度保持不变。',
+      ],
+    },
+    properties: {
+      en: [
+        'Cusp at the origin, with both branches tangent to the x-axis.',
+        'Arc length from the cusp to x: (8/27a)[(1 + 9ax/4)^(3/2) − 1].',
+        'Parametrisation x = t², y = √a·t³.',
+        'The evolute of a parabola is a semicubical parabola.',
+        'Solution of Leibniz’s isochrone problem (1687).',
+      ],
+      zh: [
+        '原点处有尖点，两支都与 x 轴相切。',
+        '从尖点到 x 的弧长：(8/27a)[(1 + 9ax/4)^(3/2) − 1]。',
+        '参数式 x = t²，y = √a·t³。',
+        '抛物线的渐屈线是半立方抛物线。',
+        '莱布尼茨等时降线问题（1687）的解。',
+      ],
+    },
+    seenIn: {
+      en: 'The history of rectification, evolutes in differential geometry, and cusps in algebraic geometry.',
+      zh: '求长问题的历史、微分几何中的渐屈线，以及代数几何中的尖点。',
+    },
+    prompt: {
+      en: 'Animate the semicubical parabola y² = x³: trace both branches out of the cusp, then unroll an arc from the cusp to x = 1 onto a straight ruler and show its length (8/27)((13/4)^(3/2) − 1).',
+      zh: '演示半立方抛物线 y² = x³：从尖点描出两支，再把从尖点到 x = 1 的一段弧"展开"到直尺上，标出它的长度 (8/27)((13/4)^(3/2) − 1)。',
+    },
+    related: ['tschirnhausen-cubic', 'parabola', 'piriform-curve'],
+  },
+  {
+    slug: 'quadratrix-of-hippias',
+    category: 'cartesian',
+    name: { en: 'Quadratrix of Hippias', zh: '希庇亚斯割圆曲线' },
+    short: {
+      en: 'Where a falling line meets a turning radius: one of the oldest named curves, used to trisect angles and square the circle.',
+      zh: '下降的直线与转动的半径的交点：最古老的命名曲线之一，可以三等分角、化圆为方。',
+    },
+    equations: [
+      'x = y\\cot\\frac{\\pi y}{2a}',
+      'r = \\frac{2a\\,\\theta}{\\pi\\sin\\theta}',
+    ],
+    params: [
+      {
+        key: 'a',
+        label: { en: 'a (square side)', zh: 'a（正方形边长）' },
+        min: 0.6,
+        max: 1.3,
+        step: 0.05,
+        defaultValue: 1,
+      },
+    ],
+    fitMode: 'fixed',
+    sample: ({ a }) => [
+      sweep(-1.6 * a, 1.6 * a, 1201, (y) => [
+        y / Math.tan((Math.PI * y) / (2 * a)),
+        y,
+      ]),
+    ],
+    intro: {
+      en: [
+        'Around 420 BC Hippias of Elis imagined two motions in a square of side a: the top side slides down to the bottom at constant speed while a radius from the corner turns from vertical to horizontal, also at constant speed, and both finish together. Their meeting point draws the quadratrix.',
+        'Because the descent is proportional to the angle, the curve divides angles in any ratio, so it trisects them. Dinostratus later noticed that it meets the base at x = 2a/π, which turns a length into π and squares the circle. The curve cannot be drawn with straightedge and compass, which is why it does not contradict the impossibility of those constructions.',
+      ],
+      zh: [
+        '约公元前 420 年，埃利斯的希庇亚斯在边长为 a 的正方形里设想了两种运动：上边匀速下降到底边，同时从角上出发的一条半径匀速从竖直转到水平，两者同时结束。它们的交点描出割圆曲线。',
+        '下降的距离与转过的角度成正比，所以这条曲线能把角按任意比例分开，自然也能三等分角。后来 Dinostratus 发现它与底边交于 x = 2a/π，于是可以作出 π 并化圆为方。这条曲线本身不能用尺规画出，所以并不与那些作图"不可能"的结论矛盾。',
+      ],
+    },
+    properties: {
+      en: [
+        'Cartesian form x = y·cot(πy/2a); polar form r = 2aθ/(π·sin θ).',
+        'Meets the x-axis at x = 2a/π (Dinostratus).',
+        'Horizontal asymptotes y = ±2a.',
+        'Divides an angle in any ratio, so it trisects angles.',
+        'Its inverse in a circle of radius a·√(2/π) is the cochleoid.',
+      ],
+      zh: [
+        '直角坐标 x = y·cot(πy/2a)；极坐标 r = 2aθ/(π·sin θ)。',
+        '与 x 轴交于 x = 2a/π（Dinostratus）。',
+        '水平渐近线 y = ±2a。',
+        '能把角按任意比例分开，因而能三等分角。',
+        '在半径为 a·√(2/π) 的圆中反演得到蜗牛线。',
+      ],
+    },
+    seenIn: {
+      en: 'Histories of the three classical problems of Greek geometry.',
+      zh: '古希腊三大几何作图问题的历史。',
+    },
+    prompt: {
+      en: 'Animate Hippias’ construction in a unit square: slide the top side down while a radius from the corner turns from 90° to 0° in step, mark their intersection as it draws the quadratrix, and finish by marking where it meets the base at 2/π.',
+      zh: '在单位正方形里演示希庇亚斯的作图：上边匀速下降，同时一条从角上出发的半径同步地从 90° 转到 0°，标出两者的交点并描出割圆曲线，最后标出它与底边的交点 2/π。',
+    },
+    related: ['cochleoid', 'trisectrix-of-maclaurin', 'conchoid-of-nicomedes'],
+  },
+  {
+    slug: 'sigmoid-function',
+    category: 'cartesian',
+    name: { en: 'Sigmoid function', zh: 'S 形函数（逻辑斯谛曲线）' },
+    short: {
+      en: 'The logistic curve y = 1/(1 + e^(−kx)): growth that starts slow, speeds up, and levels off at 1.',
+      zh: '逻辑斯谛曲线 y = 1/(1 + e^(−kx))：先慢、再快、最后趋于 1 的增长。',
+    },
+    equations: ['y = \\frac{1}{1 + e^{-kx}}', 'y\' = k\\,y(1 - y)'],
+    params: [
+      {
+        key: 'k',
+        label: { en: 'k (steepness)', zh: 'k（陡峭程度）' },
+        min: 0.25,
+        max: 4,
+        step: 0.25,
+        defaultValue: 1,
+      },
+    ],
+    fitMode: 'fixed',
+    sample: ({ k }) => [
+      sweep(-7, 7, 800, (x) => [x, 1 / (1 + Math.exp(-k * x))]),
+    ],
+    intro: {
+      en: [
+        'Pierre-François Verhulst introduced the logistic curve in the late 1830s to model a population that grows in proportion to its size until resources run short. Its differential equation y′ = k·y(1 − y) says exactly that: growth is fast when y is small and stops as y approaches the ceiling 1.',
+        'The same S-shape reappears wherever a quantity switches smoothly between two levels: as the activation function of early neural networks, in logistic regression, in dose–response curves and in the adoption of new technology. Its steepest point is the inflection (0, 1/2), where the slope is k/4.',
+      ],
+      zh: [
+        'Pierre-François Verhulst 在 1830 年代后期提出逻辑斯谛曲线，用来描述一个种群：数量越多增长越快，直到资源不足。它的微分方程 y′ = k·y(1 − y) 说的正是这件事：y 小时增长快，y 接近上限 1 时增长停止。',
+        '同样的 S 形出现在任何"在两个水平之间平滑切换"的地方：早期神经网络的激活函数、逻辑回归、剂量-反应曲线、新技术的普及。它最陡的地方是拐点 (0, 1/2)，那里斜率为 k/4。',
+      ],
+    },
+    properties: {
+      en: [
+        'Horizontal asymptotes y = 0 and y = 1.',
+        'Inflection point (0, 1/2), where the slope k/4 is the largest.',
+        'Derivative y′ = k·y(1 − y).',
+        'Point symmetry: σ(−x) = 1 − σ(x).',
+        'Inverse function: the logit, x = (1/k)·ln(y/(1 − y)).',
+      ],
+      zh: [
+        '水平渐近线 y = 0 和 y = 1。',
+        '拐点 (0, 1/2)，那里斜率 k/4 最大。',
+        '导数 y′ = k·y(1 − y)。',
+        '中心对称：σ(−x) = 1 − σ(x)。',
+        '反函数是 logit：x = (1/k)·ln(y/(1 − y))。',
+      ],
+    },
+    seenIn: {
+      en: 'Population models, logistic regression, neural-network activations and technology adoption curves.',
+      zh: '种群模型、逻辑回归、神经网络激活函数，以及技术普及曲线。',
+    },
+    prompt: {
+      en: 'Animate the sigmoid y = 1/(1 + e^(−x)): draw the asymptotes y = 0 and y = 1, trace the curve, mark the inflection point (0, 1/2) with its tangent of slope 1/4, then vary k from 0.5 to 4 to show the S sharpening into a step.',
+      zh: '演示 S 形函数 y = 1/(1 + e^(−x))：画出渐近线 y = 0 和 y = 1，描出曲线，标出拐点 (0, 1/2) 及斜率为 1/4 的切线；再让 k 从 0.5 变到 4，展示 S 形逐渐变成台阶。',
+    },
+    related: ['serpentine-curve', 'catenary', 'sine-wave'],
   },
 ];

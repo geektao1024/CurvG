@@ -2,15 +2,15 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { envConfigs } from '@/config';
 import { baseLocale } from '@/paraglide/runtime.js';
+import { CURVES } from '@/content/curves';
 import {
   labPath,
   publicSubjects,
   subjectPath,
   suitesForSubject,
 } from '@/content/labs';
-import { rootCategories } from '@/content/library';
-import { libraryText } from '@/content/library/types';
 import { getLocalPosts, mergePosts } from '@/content/posts';
+import { localeText } from '@/content/text';
 import { publicWonders, wonderPath } from '@/content/wonders';
 
 const STATIC_PAGES: { path: string; title: string; description: string }[] = [
@@ -42,7 +42,7 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
     path: '/free-math-video-creator',
     title: 'Free Math Video Creator',
     description:
-      'What the free tier includes: starter credits, free scene planning, Manim code export, and refund rules.',
+      'What the free tier includes: the first video rendered free, free scene planning, Manim code export, and refund rules.',
   },
   {
     path: '/manim-alternative',
@@ -59,14 +59,7 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
   {
     path: '/curves',
     title: 'Math Curve Encyclopedia',
-    description:
-      '30 classic curves with interactive graphs, LaTeX equations, key properties, and one-click Manim animation briefs.',
-  },
-  {
-    path: '/library',
-    title: 'Math Animation Library',
-    description:
-      'Inspectable shelves for geometry, algebra, calculus, and waves. Curve objects link to the encyclopedia; scene pages are added as they are written.',
+    description: `${CURVES.length} classic and fractal curves: interactive graphs with presets, formulas with key values (arc length, area), a drawing animation of how each curve is made, free SVG/PNG/CSV export, and a one-click video brief.`,
   },
   {
     path: '/privacy-policy',
@@ -90,7 +83,7 @@ const PRODUCT_FACTS = [
   'The Creator can generate a scene plan and Manim code that users can review, copy, and download.',
   'Direct code editing and compilation in the browser are not currently available.',
   'Hosted cloud rendering is available; paid plans include render credits, and failed or canceled renders are refunded.',
-  'New accounts start with free credits.',
+  'Every verified account renders its first video free; plans are priced by the number of videos.',
 ];
 
 export const Route = createFileRoute('/llms.txt')({
@@ -131,26 +124,22 @@ export const Route = createFileRoute('/llms.txt')({
           ...STATIC_PAGES.map(
             (p) => `- [${p.title}](${app_url}${p.path}): ${p.description}`
           ),
-          ...rootCategories.map(
-            (hub) =>
-              `- [${libraryText(hub.title, 'en')}](${app_url}/library/${hub.id}): ${libraryText(hub.description, 'en')}`
-          ),
           '',
           '## Interactive Labs',
           '',
           ...publicSubjects().flatMap((subject) => [
-            `### [${libraryText(subject.name, 'en')}](${app_url}${subjectPath(subject.id)})`,
+            `### [${localeText(subject.name, 'en')}](${app_url}${subjectPath(subject.id)})`,
             '',
-            libraryText(subject.description, 'en'),
+            localeText(subject.description, 'en'),
             '',
             ...suitesForSubject(subject.id).flatMap((suite) => [
-              `#### ${libraryText(suite.name, 'en')}`,
+              `#### ${localeText(suite.name, 'en')}`,
               '',
               ...suite.chapters
                 .filter((lab) => lab.publication === 'public')
                 .map(
                   (lab) =>
-                    `- [${libraryText(lab.title, 'en')}](${app_url}${labPath(lab)}): ${libraryText(lab.summary, 'en')}`
+                    `- [${localeText(lab.title, 'en')}](${app_url}${labPath(lab)}): ${localeText(lab.summary, 'en')}`
                 ),
               '',
             ]),
@@ -161,7 +150,7 @@ export const Route = createFileRoute('/llms.txt')({
           '',
           ...publicWonders().map(
             (wonder) =>
-              `- [${libraryText(wonder.question, 'en')}](${app_url}${wonderPath(wonder)}): ${libraryText(wonder.summary, 'en')}`
+              `- [${localeText(wonder.question, 'en')}](${app_url}${wonderPath(wonder)}): ${localeText(wonder.summary, 'en')}`
           ),
           '',
         ];

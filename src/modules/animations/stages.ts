@@ -48,6 +48,12 @@ export async function recordPlanningAttempt(params: {
         errorCode: params.report.errorCode || null,
         errorMessage: params.report.errorMessage?.slice(0, 500) || null,
         latencyMs: Math.max(0, Math.round(params.report.latencyMs)),
+        inputTokens: params.report.usage?.inputTokens ?? null,
+        outputTokens: params.report.usage?.outputTokens ?? null,
+        providerMillicredits:
+          params.report.usage?.providerCredits === undefined
+            ? null
+            : Math.round(params.report.usage.providerCredits * 1000),
       });
   } catch (error) {
     console.warn('animation attempt telemetry insert failed', error);

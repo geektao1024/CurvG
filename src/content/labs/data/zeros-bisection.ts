@@ -3,8 +3,6 @@ import { pick, type Lab } from '../types';
 export const zerosBisection: Lab = {
   slug: 'zeros-bisection',
   publication: 'public',
-  primaryCategoryId: 'maps-graphs',
-  additionalCategoryIds: ['series-limits'],
   levels: ['high'],
   chapterTitle: { en: 'Zeros & bisection', zh: '零点与二分法' },
   title: {

@@ -3,7 +3,6 @@ import { pick, type Lab } from '../types';
 export const riemannSumArea: Lab = {
   slug: 'riemann-sum-area',
   publication: 'public',
-  primaryCategoryId: 'accumulation',
   levels: ['high', 'university'],
   chapterTitle: { en: 'Riemann sums', zh: '定积分与黎曼和' },
   title: {

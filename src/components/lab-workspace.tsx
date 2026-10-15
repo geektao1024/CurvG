@@ -50,7 +50,7 @@ import { QuizCard } from '@/components/lab-quiz';
 import { LocaleSelector } from '@/components/locale-selector';
 import { InlineTex, RichMath } from '@/components/rich-math';
 import type { Lab, LabVideo } from '@/content/labs';
-import { libraryText, type LibraryLocale } from '@/content/library';
+import { localeText, type ContentLocale } from '@/content/text';
 
 /**
  * Full-screen lab workspace after wedulab's lab pages: a top bar with
@@ -100,7 +100,6 @@ export type WorkspaceLabels = {
   relatedLabs: string;
   relatedWonders: string;
   relatedCurves: string;
-  relatedLibrary: string;
   video: string;
   captions: string;
   makeVideo: string;
@@ -111,7 +110,7 @@ export type WorkspaceLabels = {
 
 /** A link out of the lab: another lab, a curve page or a library topic. */
 export type WorkspaceLink = {
-  kind: 'lab' | 'wonder' | 'curve' | 'library';
+  kind: 'lab' | 'wonder' | 'curve';
   href: string;
   label: string;
   note?: string;
@@ -193,7 +192,7 @@ export function LabWorkspace({
   index: number;
   lab: Lab;
   board: CompiledBoard;
-  locale: LibraryLocale;
+  locale: ContentLocale;
   labels: WorkspaceLabels;
   /** Level and knowledge-point chips under the lead. */
   tags: readonly string[];
@@ -423,7 +422,7 @@ export function LabWorkspace({
 type ChapterViewProps = {
   lab: Lab;
   board: CompiledBoard;
-  locale: LibraryLocale;
+  locale: ContentLocale;
   labels: WorkspaceLabels;
   index: number;
   total: number;
@@ -465,7 +464,7 @@ function ChapterView({
   const [transform, setTransform] = useState<ViewTransform>(IDENTITY_VIEW);
   const [step, setStep] = useState<number | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
-  const t = (text: { en: string; zh: string }) => libraryText(text, locale);
+  const t = (text: { en: string; zh: string }) => localeText(text, locale);
 
   useEffect(() => {
     const box = boxRef.current;
@@ -1119,7 +1118,6 @@ function RelatedLinks({
     { kind: 'lab', title: labels.relatedLabs },
     { kind: 'wonder', title: labels.relatedWonders },
     { kind: 'curve', title: labels.relatedCurves },
-    { kind: 'library', title: labels.relatedLibrary },
   ] as const;
   return (
     <div className="lw-related">

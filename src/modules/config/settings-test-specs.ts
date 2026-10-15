@@ -203,7 +203,7 @@ export const testSpecs: Record<string, TestSpec> = {
         name: 'model',
         label: 'Model',
         type: 'text',
-        defaultValue: 'gpt-6-1-sol',
+        defaultValue: 'claude-haiku-5-5',
         required: true,
       },
       {

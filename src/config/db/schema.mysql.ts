@@ -522,6 +522,11 @@ export const animationPlanningAttempt = table(
     errorCode: varchar('error_code', { length: 64 }),
     errorMessage: text('error_message'),
     latencyMs: int('latency_ms').notNull().default(0),
+    // Upstream usage as reported by the provider (null when not reported).
+    inputTokens: int('input_tokens'),
+    outputTokens: int('output_tokens'),
+    /** Provider billing units × 1000 (Kie credits; 1 credit ≈ $0.005). */
+    providerMillicredits: int('provider_millicredits'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [

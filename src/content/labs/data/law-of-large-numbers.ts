@@ -41,8 +41,6 @@ const lg = LLN_NS.map((n) => Math.log10(n));
 export const lawOfLargeNumbers: Lab = {
   slug: 'law-of-large-numbers',
   publication: 'public',
-  primaryCategoryId: 'series-limits',
-  additionalCategoryIds: ['numbers-structure'],
   levels: ['high'],
   chapterTitle: { en: 'Law of large numbers', zh: '大数定律' },
   title: {

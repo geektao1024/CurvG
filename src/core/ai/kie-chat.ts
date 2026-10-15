@@ -6,6 +6,7 @@ import {
   type ChatFailureCode,
   type ChatProvider,
   type ChatTurn,
+  type ChatUsage,
 } from './chat';
 
 type KieChatProtocol = 'chat-completions' | 'responses' | 'anthropic-messages';
@@ -60,6 +61,11 @@ export const kieChatModelRoutes = {
   'gpt-5-6-luna': {
     protocol: 'responses',
     path: 'codex/v1/responses',
+    supportsStreaming: false,
+  },
+  'claude-haiku-5-5': {
+    protocol: 'anthropic-messages',
+    path: 'claude/v1/messages',
     supportsStreaming: false,
   },
   'claude-sonnet-4-6': {
@@ -224,13 +230,66 @@ function parseResponses(data: Record<string, unknown>) {
 }
 
 function parseAnthropic(data: Record<string, unknown>) {
-  return textParts(data.content).trim();
+  // Only answer text: thinking blocks never reach the caller.
+  const blocks = Array.isArray(data.content)
+    ? data.content.filter(
+        (block) =>
+          block &&
+          typeof block === 'object' &&
+          (block as Record<string, unknown>).type === 'text'
+      )
+    : data.content;
+  return textParts(blocks).trim();
 }
 
+const count = (value: unknown) =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+
+/**
+ * Token usage and Kie's own charge (`credits_consumed`), so the real cost of
+ * a video can be read from the attempt log instead of estimated.
+ */
+function parseUsage(data: Record<string, unknown>): ChatUsage | undefined {
+  const usage =
+    data.usage && typeof data.usage === 'object'
+      ? (data.usage as Record<string, unknown>)
+      : {};
+  const result: ChatUsage = {
+    inputTokens:
+      count(usage.input_tokens) ?? count(usage.prompt_tokens) ?? undefined,
+    outputTokens:
+      count(usage.output_tokens) ?? count(usage.completion_tokens) ?? undefined,
+    providerCredits: count(data.credits_consumed),
+  };
+  return Object.values(result).some((value) => value !== undefined)
+    ? result
+    : undefined;
+}
+
+/** Claude on Kie has one thinking switch; on for the deeper effort tiers. */
+function wantsThinking(effort: ChatCompletionInput['reasoningEffort']) {
+  return effort === 'high' || effort === 'xhigh' || effort === 'max';
+}
+
+/** Thinking shares the output budget, so it gets room of its own. */
+const THINKING_TOKEN_HEADROOM = 8_000;
+
+/**
+ * Responses API content types follow the speaker: an earlier assistant turn
+ * (a repair pass replays the rejected draft) must be `output_text`; the API
+ * rejects `input_text` there, which failed every scene repair in production.
+ */
 function responsesInput(messages: ChatTurn[]) {
   return messages.map((message) => ({
     role: message.role === 'system' ? 'developer' : message.role,
-    content: [{ type: 'input_text', text: message.content }],
+    content: [
+      {
+        type: message.role === 'assistant' ? 'output_text' : 'input_text',
+        text: message.content,
+      },
+    ],
   }));
 }
 
@@ -302,9 +361,11 @@ export class KieChatProvider implements ChatProvider {
       body = {
         model,
         messages: anthropicMessages(input.messages),
-        max_tokens: input.maxTokens ?? 4096,
+        max_tokens:
+          (input.maxTokens ?? 4096) +
+          (wantsThinking(input.reasoningEffort) ? THINKING_TOKEN_HEADROOM : 0),
         stream: false,
-        thinkingFlag: false,
+        thinkingFlag: wantsThinking(input.reasoningEffort),
         ...(system ? { system } : {}),
         ...(input.temperature === undefined
           ? {}
@@ -425,6 +486,7 @@ export class KieChatProvider implements ChatProvider {
       content,
       model: typeof data.model === 'string' ? data.model : model,
       provider: this.name,
+      usage: parseUsage(data),
     };
   }
 

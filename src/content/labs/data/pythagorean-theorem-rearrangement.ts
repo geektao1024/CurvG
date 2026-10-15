@@ -30,7 +30,6 @@ const tri = (points: readonly (readonly [string, string])[], color: 'blue' | 'gr
 export const pythagoreanTheoremRearrangement: Lab = {
   slug: 'pythagorean-theorem-rearrangement',
   publication: 'public',
-  primaryCategoryId: 'visual-proofs',
   levels: ['middle', 'high'],
   chapterTitle: { en: 'Proof by rearrangement', zh: '勾股定理' },
   title: {

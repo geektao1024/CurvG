@@ -8,6 +8,7 @@ import {
 } from '../src/core/payment/paypal';
 import {
   mapStripeWebhookEventType,
+  STRIPE_DEFAULT_TAX_CODE,
   StripeProvider,
 } from '../src/core/payment/stripe';
 import {
@@ -332,6 +333,55 @@ test('Stripe writes the same server order number to durable webhook objects', as
     orderNo: 'ORD_ONCE',
   });
   assert.equal(calls[1].options.idempotencyKey, 'ORD_ONCE');
+});
+
+test('Stripe sessions meet Managed Payments: tax code, inclusive price, no unsupported params', async () => {
+  const sessionFor = async (configs: Record<string, unknown>) => {
+    const provider = new StripeProvider({
+      secretKey: 'sk_test_fake',
+      publishableKey: 'pk_test_fake',
+      ...configs,
+    });
+    let params: any;
+    (provider as any).client = {
+      checkout: {
+        sessions: {
+          create: async (p: any) => {
+            params = p;
+            return { id: 'cs_1', url: 'https://example.test/pay' };
+          },
+        },
+      },
+    };
+    await provider.createPayment({
+      order: {
+        type: PaymentType.ONE_TIME,
+        requestId: 'ORD_TAX',
+        price: { amount: 990, currency: 'usd' },
+        description: 'Starter Monthly',
+      },
+    });
+    return params;
+  };
+
+  const managed = await sessionFor({});
+  const priceData = managed.line_items[0].price_data;
+  assert.equal(priceData.product_data.tax_code, STRIPE_DEFAULT_TAX_CODE);
+  assert.equal(priceData.tax_behavior, 'inclusive');
+  assert.deepEqual(managed.managed_payments, { enabled: true });
+  assert.equal(managed.invoice_creation, undefined);
+  assert.equal(managed.payment_method_types, undefined);
+
+  const own = await sessionFor({
+    managedPayments: false,
+    taxCode: 'txcd_10103000',
+  });
+  assert.equal(
+    own.line_items[0].price_data.product_data.tax_code,
+    'txcd_10103000'
+  );
+  assert.equal(own.managed_payments, undefined);
+  assert.deepEqual(own.invoice_creation, { enabled: true });
 });
 
 test('PayPal subscription APPROVED stays pending at the provider status layer', () => {

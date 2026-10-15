@@ -8,7 +8,6 @@ const R = '2 / (1 - e * cos(t))';
 export const conicSectionsEccentricity: Lab = {
   slug: 'conic-sections-eccentricity',
   publication: 'public',
-  primaryCategoryId: 'conic',
   levels: ['high', 'university'],
   chapterTitle: { en: 'Eccentricity', zh: '离心率' },
   title: {

@@ -28,8 +28,6 @@ function wavefront(k: number): BoardObject {
 export const dopplerEffect: Lab = {
   slug: 'doppler-effect',
   publication: 'public',
-  primaryCategoryId: 'harmonic',
-  additionalCategoryIds: ['rates'],
   levels: ['high'],
   chapterTitle: { en: 'Doppler effect', zh: '多普勒效应' },
   title: {

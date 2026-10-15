@@ -62,6 +62,68 @@ export const fourierEpicycles: Wonder = {
       en: 'Your turn: switch the wave, change the number of circles, or draw something yourself.',
     },
   ],
+  film: [
+    {
+      text: {
+        zh: '一串旋转的圆，能画出任何曲线吗？先看一个圆：它只能画出一种曲线，正弦波。',
+        en: 'Can a chain of spinning circles draw any curve? Start with one. On its own it can only draw a sine wave.',
+      },
+    },
+    {
+      text: {
+        zh: '在它边上挂第二个圆，转速 3 倍，半径三分之一。波形开始变方了。',
+        en: 'Hang a second circle on its rim: three times as fast, a third of the size. The wave starts to square off.',
+      },
+    },
+    {
+      text: {
+        zh: '继续加圆，5 倍、7 倍、9 倍，一个比一个小。曲线越来越像方波。',
+        en: 'Keep going: five, seven, nine times the speed, each one smaller. It looks more and more like a square wave.',
+      },
+    },
+    {
+      text: {
+        zh: '但拐角处总冒出一个尖角，高出约 9%。加到 60 个圆，它变窄了，却一点没变矮。这叫吉布斯现象。',
+        en: 'But every corner grows a spike, about 9% too high. With 60 circles it gets narrower, not shorter. That is the Gibbs phenomenon.',
+      },
+      speak: {
+        zh: '但拐角处总冒出一个尖角，高出约百分之九。加到六十个圆，它变窄了，却一点没变矮。这叫吉布斯现象。',
+        en: 'But every corner grows a spike, about nine percent too high. With sixty circles it gets narrower, not shorter. That is the Gibbs phenomenon.',
+      },
+    },
+    {
+      text: {
+        zh: '把同样的圆放到平面里转。只要大小和起点排对，它们能画出任何闭合图形，比如一个 π。',
+        en: 'Now let the circles turn in the plane. Get the sizes and starting angles right, and they can trace any closed shape, even π.',
+      },
+      speak: {
+        zh: '把同样的圆放到平面里转。只要大小和起点排对，它们能画出任何闭合图形，比如一个派。',
+        en: 'Now let the circles turn in the plane. Get the sizes and starting angles right, and they can trace any closed shape, even pi.',
+      },
+    },
+    {
+      text: {
+        zh: '只留 3 个圆，π 糊成一团。把圆一个个加回去，到 100 个，笔画就清清楚楚。',
+        en: 'Keep only three circles and π is a blob. Add them back one by one, and by a hundred every stroke is crisp.',
+      },
+      speak: {
+        zh: '只留三个圆，派糊成一团。把圆一个个加回去，到一百个，笔画就清清楚楚。',
+        en: 'Keep only three circles and pi is a blob. Add them back one by one, and by a hundred every stroke is crisp.',
+      },
+    },
+    {
+      text: {
+        zh: '丢掉小圆，只留 30 个大圆，图形几乎不变。JPEG 和 MP3 压缩，用的就是这个思路。',
+        en: 'Drop the small circles, keep the 30 largest, and the shape barely changes. JPEG and MP3 compression run on the same idea.',
+      },
+    },
+    {
+      text: {
+        zh: '想自己试试？打开 CurvG，换个波形，或者随手画一笔，让圆替你画出来。',
+        en: 'Want to try? Open CurvG, switch the wave, or draw anything you like, and watch the circles draw it back.',
+      },
+    },
+  ],
   sections: [
     {
       id: 'one-circle',

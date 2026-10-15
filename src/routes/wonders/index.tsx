@@ -14,7 +14,7 @@ import { getLocale } from '@/paraglide/runtime.js';
 import { SitePage } from '@/blocks/site-page';
 import { PageHero } from '@/components/page-hero';
 import { WonderCard } from '@/components/wonder-card';
-import { libraryText } from '@/content/library';
+import { localeText } from '@/content/text';
 import { publicWonders, wonderPath } from '@/content/wonders';
 
 /**
@@ -53,9 +53,9 @@ function WondersIndexPage() {
                 key={wonder.slug}
                 slug={wonder.slug}
                 href={wonderPath(wonder)}
-                meta={`${m['wonders.page.no']({ number: wonder.number })} · ${libraryText(wonder.field, lang)}`}
-                title={libraryText(wonder.question, lang)}
-                body={libraryText(wonder.takeaway, lang)}
+                meta={`${m['wonders.page.no']({ number: wonder.number })} · ${localeText(wonder.field, lang)}`}
+                title={localeText(wonder.question, lang)}
+                body={localeText(wonder.takeaway, lang)}
               />
             ))}
           </div>
@@ -111,7 +111,7 @@ export const Route = createFileRoute('/wonders/')({
       url: seo.canonical,
       hasPart: publicWonders().map((wonder) => ({
         '@type': 'LearningResource',
-        name: libraryText(wonder.question, lang),
+        name: localeText(wonder.question, lang),
         url: localizedUrl(wonderPath(wonder), locale),
       })),
     };

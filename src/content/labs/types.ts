@@ -1,10 +1,6 @@
 import type { BoardSpecInput } from '@/lib/board/spec';
 
-import type {
-  LibraryLocale,
-  LibraryPublication,
-  LibraryText,
-} from '../library/types';
+import type { ContentLocale, LocaleText, Publication } from '../text';
 
 /**
  * Interactive lab: one concept, one board you can move, and the text that
@@ -16,46 +12,43 @@ import type {
 export type LabLevel = 'middle' | 'high' | 'university';
 
 export type LabGuideStep = {
-  title: LibraryText;
+  title: LocaleText;
   /** Inline TeX with `$…$`. Written to be read aloud. */
-  body: LibraryText;
+  body: LocaleText;
   /** Param values this step moves the board to. */
   set?: Readonly<Record<string, number>>;
 };
 
 export type LabSection = {
   id: string;
-  title: LibraryText;
+  title: LocaleText;
   /** Paragraphs split by blank lines; `$…$`, `$$…$$` and `**bold**`. */
-  body: LibraryText;
+  body: LocaleText;
 };
 
 export type LabQuizItem = {
-  question: LibraryText;
-  choices: readonly LibraryText[];
+  question: LocaleText;
+  choices: readonly LocaleText[];
   /** Index into `choices`. */
   answer: number;
-  explanation: LibraryText;
+  explanation: LocaleText;
 };
 
 export type Lab = {
   slug: string;
-  publication: LibraryPublication;
-  /** Library category this lab is filed under (breadcrumb + topic page). */
-  primaryCategoryId: string;
-  additionalCategoryIds?: readonly string[];
+  publication: Publication;
   levels: readonly LabLevel[];
   /** Short name for the chapter rail, e.g. 导数的几何意义 / Secant to tangent. */
-  chapterTitle: LibraryText;
-  title: LibraryText;
+  chapterTitle: LocaleText;
+  title: LocaleText;
   /** The question the lab answers. Page H1 and card hook. */
-  question: LibraryText;
+  question: LocaleText;
   /** One or two sentences. Meta description and card body. */
-  summary: LibraryText;
+  summary: LocaleText;
   /** Knowledge points shown as tags. */
-  keyPoints: readonly LibraryText[];
+  keyPoints: readonly LocaleText[];
   /** Board labels are localized, so the spec is built per locale. */
-  board: (lang: LibraryLocale) => BoardSpecInput;
+  board: (lang: ContentLocale) => BoardSpecInput;
   guide: readonly LabGuideStep[];
   sections: readonly LabSection[];
   quiz: readonly LabQuizItem[];
@@ -64,7 +57,7 @@ export type Lab = {
   curveSlugs?: readonly string[];
   related?: readonly string[];
   /** Hand-off into the video creator. */
-  videoPrompt: LibraryText;
+  videoPrompt: LocaleText;
   /** ISO date of the last content change: sitemap lastmod, dateModified. */
   updated: string;
 };
@@ -92,13 +85,13 @@ export type LabSubjectId = 'math' | 'physics';
 
 export type LabSubject = {
   id: LabSubjectId;
-  publication: LibraryPublication;
-  name: LibraryText;
-  description: LibraryText;
+  publication: Publication;
+  name: LocaleText;
+  description: LocaleText;
   /** Subject page H1, e.g. 数学交互实验：函数、微积分…. */
-  headline: LibraryText;
-  metaTitle: LibraryText;
-  metaDescription: LibraryText;
+  headline: LocaleText;
+  metaTitle: LocaleText;
+  metaDescription: LocaleText;
 };
 
 /**
@@ -107,13 +100,13 @@ export type LabSubject = {
  */
 export type LabSuite = {
   slug: string;
-  publication: LibraryPublication;
+  publication: Publication;
   subject: LabSubjectId;
-  name: LibraryText;
-  summary: LibraryText;
+  name: LocaleText;
+  summary: LocaleText;
   chapters: readonly Lab[];
 };
 
-export function pick(lang: LibraryLocale) {
+export function pick(lang: ContentLocale) {
   return (en: string, zh: string) => (lang === 'zh' ? zh : en);
 }

@@ -163,6 +163,8 @@ const PAYMENT_MANAGER_CONFIG_KEYS = [
   'stripe_publishable_key',
   'stripe_signing_secret',
   'stripe_webhook_secret',
+  'stripe_tax_code',
+  'stripe_managed_payments',
   'creem_enabled',
   'creem_api_key',
   'creem_signing_secret',
@@ -281,6 +283,8 @@ export function buildPaymentManager(configs: ConfigMap): PaymentManager {
         signingSecret: c('stripe_signing_secret') || c('stripe_webhook_secret'),
         allowPromotionCodes: true,
         allowedPaymentMethods: ['card', 'wechat_pay', 'alipay'],
+        taxCode: c('stripe_tax_code') || undefined,
+        managedPayments: c('stripe_managed_payments') !== 'false',
       }),
       isDefault('stripe')
     );

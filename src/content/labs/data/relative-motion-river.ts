@@ -6,7 +6,6 @@ const D = 6;
 export const relativeMotionRiver: Lab = {
   slug: 'relative-motion-river',
   publication: 'public',
-  primaryCategoryId: 'parametric',
   levels: ['high'],
   chapterTitle: { en: 'Crossing a river', zh: '相对运动：小船过河' },
   title: {

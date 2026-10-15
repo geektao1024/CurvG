@@ -7,7 +7,6 @@ const R = 'a * bb / hypot(bb * cos(t), a * sin(t))';
 export const ellipseDefinition: Lab = {
   slug: 'ellipse-definition',
   publication: 'public',
-  primaryCategoryId: 'conic',
   levels: ['high'],
   chapterTitle: { en: 'Ellipse', zh: '椭圆的定义' },
   title: {

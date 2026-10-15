@@ -3,8 +3,6 @@ import { createFileRoute } from '@tanstack/react-router';
 import { envConfigs } from '@/config';
 import { baseLocale } from '@/paraglide/runtime.js';
 import { CURVES } from '@/content/curves';
-import { rootCategories } from '@/content/library';
-import { libraryText } from '@/content/library/types';
 import { getLocalPosts, mergePosts } from '@/content/posts';
 
 const STATIC_PAGES: { path: string; title: string; description: string }[] = [
@@ -36,7 +34,7 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
     path: '/free-math-video-creator',
     title: 'Free Math Video Creator',
     description:
-      'What the free tier includes: starter credits, free scene planning, Manim code export, and refund rules.',
+      'What the free tier includes: the first video rendered free, free scene planning, Manim code export, and refund rules.',
   },
   {
     path: '/manim-alternative',
@@ -47,14 +45,7 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
   {
     path: '/curves',
     title: 'Math Curve Encyclopedia',
-    description:
-      '30 classic curves with interactive graphs, LaTeX equations, key properties, and one-click Manim animation briefs.',
-  },
-  {
-    path: '/library',
-    title: 'Math Animation Library',
-    description:
-      'Inspectable shelves for geometry, algebra, calculus, and waves. Curve objects link to the encyclopedia; scene pages are added as they are written.',
+    description: `${CURVES.length} classic and fractal curves: interactive graphs with presets, formulas with key values (arc length, area), a drawing animation of how each curve is made, free SVG/PNG/CSV export, and a one-click video brief.`,
   },
   {
     path: '/privacy-policy',
@@ -76,7 +67,7 @@ const PRODUCT_FACTS = [
   'The Creator can generate a scene plan and Manim code that users can review, copy, and download.',
   'Direct code editing and compilation in the browser are not currently available.',
   'Hosted cloud rendering is available; paid plans include render credits, and failed or canceled renders are refunded.',
-  'New accounts start with free credits.',
+  'Every verified account renders its first video free; plans are priced by the number of videos.',
 ];
 
 export const Route = createFileRoute('/llms-full.txt')({
@@ -102,10 +93,6 @@ export const Route = createFileRoute('/llms-full.txt')({
           '',
           '## Scene Library',
           '',
-          ...rootCategories.map(
-            (hub) =>
-              `- [${libraryText(hub.title, 'en')}](${app_url}/library/${hub.id}): ${libraryText(hub.description, 'en')}`
-          ),
           '',
           '## Curve Encyclopedia',
           '',

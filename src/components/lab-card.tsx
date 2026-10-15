@@ -12,7 +12,7 @@ import {
   type LabLevel,
   type LabSuite,
 } from '@/content/labs';
-import { libraryText, type LibraryLocale } from '@/content/library';
+import { localeText, type ContentLocale } from '@/content/text';
 
 export function LabLevelChips({
   levels,
@@ -44,7 +44,7 @@ export function LabCard({
   boardAria,
 }: {
   lab: Lab;
-  locale: LibraryLocale;
+  locale: ContentLocale;
   levelLabels: Record<LabLevel, string>;
   openLabel: string;
   boardAria: string;
@@ -69,15 +69,15 @@ export function LabCard({
           <LabLevelChips levels={lab.levels} labels={levelLabels} />
         </div>
         <h3 className="group-hover:text-primary mt-3 text-lg font-semibold tracking-tight transition-colors">
-          {libraryText(lab.title, locale)}
+          {localeText(lab.title, locale)}
         </h3>
         <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
-          {libraryText(lab.question, locale)}
+          {localeText(lab.question, locale)}
         </p>
         <p className="text-muted-foreground mt-3 text-xs">
           {lab.keyPoints
             .slice(0, 3)
-            .map((point) => libraryText(point, locale))
+            .map((point) => localeText(point, locale))
             .join(' · ')}
         </p>
         <span className="text-primary mt-auto inline-flex items-center gap-1.5 pt-4 text-sm font-medium">
@@ -103,7 +103,7 @@ export function LabSuiteCard({
   headingLevel: Heading = 'h3',
 }: {
   suite: LabSuite;
-  locale: LibraryLocale;
+  locale: ContentLocale;
   chaptersLabel: string;
   startLabel: string;
   boardAria: string;
@@ -134,11 +134,11 @@ export function LabSuiteCard({
         </p>
         <Heading className="mt-2 text-lg font-semibold tracking-tight">
           <Link href={href} className="hover:text-primary transition-colors">
-            {libraryText(suite.name, locale)}
+            {localeText(suite.name, locale)}
           </Link>
         </Heading>
         <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
-          {libraryText(suite.summary, locale)}
+          {localeText(suite.summary, locale)}
         </p>
         <ol className="mt-4 space-y-1 border-t pt-3">
           {suite.chapters.map((chapter, i) => (
@@ -151,7 +151,7 @@ export function LabSuiteCard({
                   {String(i + 1).padStart(2, '0')}
                 </span>
                 <span className="font-medium">
-                  {libraryText(chapter.chapterTitle, locale)}
+                  {localeText(chapter.chapterTitle, locale)}
                 </span>
               </Link>
             </li>

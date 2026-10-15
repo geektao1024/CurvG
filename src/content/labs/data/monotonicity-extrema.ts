@@ -3,8 +3,6 @@ import { pick, type Lab } from '../types';
 export const monotonicityExtrema: Lab = {
   slug: 'monotonicity-extrema',
   publication: 'public',
-  primaryCategoryId: 'rates',
-  additionalCategoryIds: ['maps-graphs'],
   levels: ['high', 'university'],
   chapterTitle: { en: 'Monotonicity & extrema', zh: '单调性与极值' },
   title: {

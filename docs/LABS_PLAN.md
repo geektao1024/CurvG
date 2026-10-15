@@ -38,7 +38,7 @@
 | Description | `lab.summary`                                                                                                                                                                                 |
 | 分享图      | `public/og/labs/{slug}.{lang}.png`，1200×630，由 `node scripts/lab-og-images.mjs` 从真实画板截取；改画板或加章节后重跑（测试会检查文件存在）                                                  |
 | 结构化数据  | `LearningResource`（含 `isPartOf` 实验集与全部章节、`dateModified`、学段、知识点）+ `Quiz`（随堂检测，Google 练习题格式）+ `BreadcrumbList`（实验 › 实验集 › 章节）；有视频时加 `VideoObject` |
-| 内链        | 右栏「继续探索」：相关实验（`related`）、曲线百科（`curveSlugs`）、资源库主题（不可收录的主题回退到 Hub）                                                                                     |
+| 内链        | 右栏「继续探索」：相关实验（`related`）、引用本章的奇观、曲线百科（`curveSlugs`）。资源库已于 2026-10-15 下线，实验不再挂分类                                                                 |
 | sitemap     | 每章一条，`lastmod = lab.updated`                                                                                                                                                             |
 | llms.txt    | 按实验集分组列出章节                                                                                                                                                                          |
 
@@ -99,7 +99,6 @@ pnpm video:labs:publish [--local] [--dry-run] [slug …]   # 上传 R2，更新 
 - 角度给学生看的一律用度（`deg`），在 `scalars` 里换成弧度；只有绕固定圆心拖动的点才用弧度参数（`drag.angle`）。
 - 表达式没有 `==`、`&&`：用 `abs(x) < 0.001` 判等，用 `(条件1) * (条件2) > 0` 表示"且"。
 - 箭头按固定比例画（`k * v`），并用 `min()` 封顶，避免大参数时冲出画板；纯文字标签（`label`）不是 TeX，写 `vy` 而不是 `v_y`。
-- 物理章节挂在资源库已有的数学分类上（如 v-t 图 → `rates` / `accumulation`，抛体 → `parametric`），不新开分类。
 - 每章在 `tests/labs-content.test.ts` 的 "lab guide claims" 里钉住引导步骤提到的每个数字。
 - 线段的 `label` 画在中点：短箭头（力的分量）不要用 `label`，改在箭头末端放一个 `text`，否则标签会压住物体。
 - 受力图里各个力按同一比例画（如重力固定画 3 个单位，其余乘 `3 / mg`），分量用虚线，摩擦力从接触面画出。

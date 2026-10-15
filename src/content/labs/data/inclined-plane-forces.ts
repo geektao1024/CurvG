@@ -5,8 +5,6 @@ const G = 9.8;
 export const inclinedPlaneForces: Lab = {
   slug: 'inclined-plane-forces',
   publication: 'public',
-  primaryCategoryId: 'visual-proofs',
-  additionalCategoryIds: ['maps-graphs'],
   levels: ['high'],
   chapterTitle: { en: 'Forces on a slope', zh: '斜面受力分解' },
   title: {

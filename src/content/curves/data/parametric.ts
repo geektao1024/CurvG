@@ -77,7 +77,7 @@ export const parametricCurves: CurveDef[] = [
       en: 'Animate the Lissajous curve x = sin(3t + π/2), y = sin(2t): show the two component oscillations on the edges of a square, trace the curve as t sweeps one period, and count the lobes to read off the 3 : 2 frequency ratio.',
       zh: '演示利萨如曲线 x = sin(3t + π/2)、y = sin(2t)：在正方形两条边上展示两路分量振动，让 t 扫过一个周期描出曲线，并通过数瓣读出 3:2 的频率比。',
     },
-    related: ['rose-curve', 'sine-wave', 'hypotrochoid', 'ellipse'],
+    related: ['rose-curve', 'sine-wave', 'hypotrochoid', 'lemniscate-of-gerono'],
   },
   {
     slug: 'superellipse',
@@ -155,7 +155,7 @@ export const parametricCurves: CurveDef[] = [
       en: 'Animate the superellipse |x/1.25|ⁿ + |y|ⁿ = 1 as n sweeps from 0.7 to 6: hold the bounding box fixed, morph the shape through astroid-like, rhombus, ellipse, squircle, and near-rectangle stages, labeling n at each landmark.',
       zh: '演示超椭圆 |x/1.25|ⁿ + |y|ⁿ = 1 随 n 从 0.7 变到 6 的过程：外接框保持不动，形状依次经过类星形、菱形、椭圆、方圆形、近矩形几个阶段，并在每个关键点标注 n 值。',
     },
-    related: ['ellipse', 'astroid', 'heart-curve'],
+    related: ['ellipse', 'astroid', 'heart-curve', 'superformula'],
   },
   {
     slug: 'butterfly-curve',
@@ -272,14 +272,14 @@ export const parametricCurves: CurveDef[] = [
     properties: {
       en: [
         'Symmetric about the y-axis; the bottom point sits at (0, −17), the top notch at (0, 5).',
-        'Width 32 (from x = ±16 at t = ±π/2) and height 22 before scaling.',
+        'Before scaling: width 32 (x = ±16 at t = ±π/2), 22 from the notch to the tip, and about 28.9 in full height (the lobes peak at y ≈ 11.92).',
         'The y-series is a four-harmonic cosine sum — a hand-crafted Fourier sketch.',
         'The implicit heart (x² + y² − 1)³ = x²y³ is an algebraic alternative of degree six.',
         'Related: the cardioid gets its name from the same Greek word for heart.',
       ],
       zh: [
         '关于 y 轴对称；底部尖点在 (0, −17)，顶部凹口在 (0, 5)。',
-        '缩放前宽 32（t = ±π/2 时 x = ±16）、高 22。',
+        '缩放前：宽 32（t = ±π/2 时 x = ±16），凹口到底尖 22，整体高约 28.9（两瓣顶部在 y ≈ 11.92）。',
         'y 分量是四个余弦谐波之和——一段手工绘制的傅里叶素描。',
         '隐式爱心 (x² + y² − 1)³ = x²y³ 是六次代数曲线版本。',
         '相关：心脏线（cardioid）的名字来自同一个表示"心"的希腊词根。',
@@ -294,5 +294,169 @@ export const parametricCurves: CurveDef[] = [
       zh: '演示爱心曲线 x = 16sin³t、y = 13cos t − 5cos 2t − 2cos 3t − cos 4t：把 y 分量按余弦谐波一项一项叠加，展示每一项如何塑造凹口与尖点，最后完整描出爱心。',
     },
     related: ['cardioid', 'butterfly-curve', 'superellipse'],
+  },
+  {
+    slug: 'bezier-curve',
+    category: 'parametric',
+    name: { en: 'Bézier curve', zh: '贝塞尔曲线' },
+    short: {
+      en: 'The cubic curve behind fonts, SVG paths and CSS easing: two end points and two handles, blended by repeated linear interpolation.',
+      zh: '字体、SVG 路径和 CSS 缓动背后的三次曲线：两个端点、两个控制柄，用反复的线性插值混合出来。',
+    },
+    equations: [
+      'B(t) = (1-t)^3P_0 + 3(1-t)^2t\\,P_1 + 3(1-t)t^2P_2 + t^3P_3',
+    ],
+    params: [
+      {
+        key: 'x1',
+        label: { en: 'P₁ x', zh: 'P₁ 的 x' },
+        min: -0.5,
+        max: 1.5,
+        step: 0.05,
+        defaultValue: 0.15,
+      },
+      {
+        key: 'y1',
+        label: { en: 'P₁ y', zh: 'P₁ 的 y' },
+        min: -1,
+        max: 1.5,
+        step: 0.05,
+        defaultValue: 1,
+      },
+      {
+        key: 'x2',
+        label: { en: 'P₂ x', zh: 'P₂ 的 x' },
+        min: -0.5,
+        max: 1.5,
+        step: 0.05,
+        defaultValue: 0.85,
+      },
+      {
+        key: 'y2',
+        label: { en: 'P₂ y', zh: 'P₂ 的 y' },
+        min: -1,
+        max: 1.5,
+        step: 0.05,
+        defaultValue: -0.6,
+      },
+    ],
+    fitMode: 'fixed',
+    guideLines: 1,
+    sample: ({ x1, y1, x2, y2 }) => [
+      // The control polygon P₀P₁P₂P₃, drawn as a faint guide.
+      [
+        [0, 0],
+        [x1, y1],
+        [x2, y2],
+        [1, 0],
+      ] as Array<[number, number]>,
+      sweep(0, 1, 400, (t) => {
+        const u = 1 - t;
+        return [
+          3 * u * u * t * x1 + 3 * u * t * t * x2 + t ** 3,
+          3 * u * u * t * y1 + 3 * u * t * t * y2,
+        ];
+      }),
+    ],
+    intro: {
+      en: [
+        'Paul de Casteljau at Citroën (1959) and Pierre Bézier at Renault (in the 1960s) independently found a way to describe smooth car-body curves with a handful of control points. The cubic version uses four: it starts at P₀ heading towards P₁, ends at P₃ arriving from P₂, and never leaves the convex hull of the four points.',
+        'De Casteljau’s algorithm builds the point B(t) by nothing but repeated linear interpolation: split each side of the control polygon at ratio t, then split the new segments, then once more. The same arithmetic outlines the glyphs of TrueType and OpenType fonts (quadratic curves in TrueType, cubic in CFF), every curve in an SVG path, and every cubic-bezier() easing in CSS.',
+      ],
+      zh: [
+        '雪铁龙的 Paul de Casteljau（1959）和雷诺的 Pierre Bézier（1960 年代）各自找到了用少数控制点描述光滑车身曲线的方法。三次的版本用四个点：从 P₀ 出发朝 P₁ 的方向走，到达 P₃ 时来自 P₂ 的方向，而且始终不越出这四点的凸包。',
+        'de Casteljau 算法只用反复的线性插值就得到点 B(t)：把控制多边形每条边按比例 t 分开，再把新线段按 t 分开，再做一次。同样的算术勾出 TrueType 和 OpenType 字体的字形（TrueType 用二次曲线，CFF 用三次），也画出 SVG 路径里的每段曲线和 CSS 里每个 cubic-bezier() 缓动。',
+      ],
+    },
+    properties: {
+      en: [
+        'Passes through P₀ and P₃; generally not through P₁ or P₂.',
+        'End tangents: B′(0) = 3(P₁ − P₀), B′(1) = 3(P₃ − P₂).',
+        'Lies inside the convex hull of its four control points.',
+        'De Casteljau’s algorithm evaluates it by three rounds of linear interpolation.',
+        'The weights (1 − t)³, 3(1 − t)²t, 3(1 − t)t², t³ are the Bernstein polynomials and sum to 1.',
+      ],
+      zh: [
+        '经过 P₀ 和 P₃；一般不经过 P₁、P₂。',
+        '端点切向：B′(0) = 3(P₁ − P₀)，B′(1) = 3(P₃ − P₂)。',
+        '整条曲线位于四个控制点的凸包之内。',
+        'de Casteljau 算法用三轮线性插值求出曲线上的点。',
+        '权重 (1 − t)³、3(1 − t)²t、3(1 − t)t²、t³ 是伯恩斯坦多项式，和为 1。',
+      ],
+    },
+    seenIn: {
+      en: 'Font outlines, the SVG path “C” command, vector drawing tools, CSS cubic-bezier() easing and animation curves.',
+      zh: '字体轮廓、SVG 路径的 "C" 命令、矢量绘图工具、CSS 的 cubic-bezier() 缓动，以及动画曲线。',
+    },
+    prompt: {
+      en: 'Animate a cubic Bézier curve with de Casteljau’s construction: show the control polygon P₀P₁P₂P₃, then for t from 0 to 1 draw the three levels of interpolated points and segments, with the final point tracing the curve.',
+      zh: '用 de Casteljau 作图演示三次贝塞尔曲线：先画控制多边形 P₀P₁P₂P₃，再让 t 从 0 走到 1，画出三层插值点和线段，最后一层的点描出曲线。',
+    },
+    related: ['parabola', 'superellipse', 'lissajous-curve'],
+  },
+  {
+    slug: 'lemniscate-of-gerono',
+    category: 'parametric',
+    name: { en: 'Lemniscate of Gerono', zh: 'Gerono 双纽线' },
+    short: {
+      en: 'The figure eight x⁴ = a²(x² − y²), drawn by x = a·cos t, y = a·sin t·cos t: two lobes of total area 4a²/3.',
+      zh: '8 字形曲线 x⁴ = a²(x² − y²)，由 x = a·cos t、y = a·sin t·cos t 画出：两瓣合计面积 4a²/3。',
+    },
+    equations: [
+      'x^4 = a^2(x^2 - y^2)',
+      'x = a\\cos t,\\quad y = a\\sin t\\cos t',
+    ],
+    params: [
+      {
+        key: 'a',
+        label: { en: 'a (half-width)', zh: 'a（半宽）' },
+        min: 0.6,
+        max: 1.3,
+        step: 0.05,
+        defaultValue: 1,
+      },
+    ],
+    fitMode: 'fixed',
+    sample: ({ a }) => [
+      sweep(0, TAU, 900, (t) => [
+        a * Math.cos(t),
+        a * Math.sin(t) * Math.cos(t),
+      ]),
+    ],
+    intro: {
+      en: [
+        'Named after the French mathematician Camille-Christophe Gerono, this is the simplest figure eight to draw: x = a·cos t and y = a·sin t·cos t, which is a Lissajous figure with frequencies 1 and 2. Eliminating t gives the quartic x⁴ = a²(x² − y²).',
+        'Unlike the lemniscate of Bernoulli, it is not defined by foci; its lobes are taller and rounder. Each lobe reaches height a/2, and the two together enclose exactly 4a²/3.',
+      ],
+      zh: [
+        '它以法国数学家 Camille-Christophe Gerono 命名，是最容易画的 8 字形：x = a·cos t、y = a·sin t·cos t，也就是频率为 1 和 2 的利萨如图形。消去 t 得到四次方程 x⁴ = a²(x² − y²)。',
+        '和伯努利双纽线不同，它不是用焦点定义的；它的两瓣更高更圆。每一瓣最高到 a/2，两瓣合计围成的面积恰好是 4a²/3。',
+      ],
+    },
+    properties: {
+      en: [
+        'Cartesian form x⁴ = a²(x² − y²).',
+        'Same as the 1 : 2 Lissajous figure x = cos t, y = sin 2t / 2, scaled by a.',
+        'Total enclosed area 4a²/3.',
+        'Each lobe peaks at height a/2, at x = ±a/√2.',
+        'Crosses itself at the origin with tangents y = ±x.',
+      ],
+      zh: [
+        '直角坐标形式 x⁴ = a²(x² − y²)。',
+        '就是 1 : 2 的利萨如图形 x = cos t、y = sin 2t / 2 放大 a 倍。',
+        '两瓣合计面积 4a²/3。',
+        '每一瓣在 x = ±a/√2 处达到最高 a/2。',
+        '在原点与自己相交，切线为 y = ±x。',
+      ],
+    },
+    seenIn: {
+      en: 'Figure-eight paths in robotics and drone tests, and the infinity-loop logo shape.',
+      zh: '机器人和无人机测试里的 8 字路径，以及"无限循环"标志的形状。',
+    },
+    prompt: {
+      en: 'Animate the lemniscate of Gerono: drive x = cos t and y = sin t cos t with two rotating phasors, trace the figure eight, then overlay the lemniscate of Bernoulli to compare the two shapes.',
+      zh: '演示 Gerono 双纽线：用两个旋转相量分别驱动 x = cos t 和 y = sin t cos t，描出 8 字形，再叠上伯努利双纽线比较两种形状。',
+    },
+    related: ['lemniscate-of-bernoulli', 'lissajous-curve', 'cassini-oval'],
   },
 ];

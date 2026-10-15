@@ -3,8 +3,6 @@ import { pick, type Lab } from '../types';
 export const uniformAccelerationVt: Lab = {
   slug: 'uniform-acceleration-vt',
   publication: 'public',
-  primaryCategoryId: 'rates',
-  additionalCategoryIds: ['accumulation'],
   levels: ['high'],
   chapterTitle: { en: 'Velocity–time graphs', zh: '匀变速直线运动与 v-t 图' },
   title: {

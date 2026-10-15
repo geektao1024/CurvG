@@ -3,7 +3,6 @@ import { pick, type Lab } from '../types';
 export const derivativeTangentSlope: Lab = {
   slug: 'derivative-tangent-slope',
   publication: 'public',
-  primaryCategoryId: 'rates',
   levels: ['high', 'university'],
   chapterTitle: { en: 'Secant to tangent', zh: '导数的几何意义' },
   title: {

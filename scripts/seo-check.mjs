@@ -24,8 +24,6 @@ const englishPaths = [
   '/wonders/mandelbrot-set',
   '/curves',
   '/curves/cardioid',
-  '/library',
-  '/library/calculus',
 ];
 const pagePaths = [
   ...englishPaths,
@@ -231,7 +229,10 @@ try {
     if (!body.includes(`/blog/${articleSlug}`)) {
       fail('/sitemap.xml', 'missing the new article');
     }
-    for (const pathname of ['/labs', '/wonders', '/curves', '/library']) {
+    if (body.includes('/library')) {
+      fail('/sitemap.xml', 'lists the retired /library section');
+    }
+    for (const pathname of ['/labs', '/wonders', '/curves']) {
       if (!body.includes(`${pathname}</loc>`)) {
         fail('/sitemap.xml', `missing section hub ${pathname}`);
       }

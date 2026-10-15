@@ -455,6 +455,23 @@ export function getSettings(): Setting[] {
       group: 'stripe',
       tab: 'payment',
     },
+    {
+      name: 'stripe_tax_code',
+      title: 'Product tax code (default txcd_10105001, AI as a service)',
+      type: 'text',
+      placeholder: 'txcd_10105001',
+      group: 'stripe',
+      tab: 'payment',
+    },
+    {
+      name: 'stripe_managed_payments',
+      title:
+        'Managed Payments (Stripe as merchant of record); "false" to turn off',
+      type: 'text',
+      placeholder: 'true',
+      group: 'stripe',
+      tab: 'payment',
+    },
 
     // ─── Payment / Creem ─────────────────────────────────────────────
     {

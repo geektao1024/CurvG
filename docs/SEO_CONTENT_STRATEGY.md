@@ -28,6 +28,9 @@
 每条曲线有静态图像文件（供图片搜索收录）、专属分享图和 LearningResource 结构化数据；曲线与奇观双向链接（外摆线/内旋轮线 ↔ 傅里叶，
 心脏线 ↔ 曼德博，费马螺线/黄金螺线 ↔ 向日葵）；指南文章链到实验室与奇观；中文曲线文案统一全角标点。
 
+**2026-10-15 追加**：曲线页加了公式卡（方程 + 周长 / 面积等数值）与 FAQ（FAQPage），条目从 30 扩到 60（含分形分类，选题依据见 `CURVE_ENCYCLOPEDIA.md` 第 8 节）。
+复查时单独看新 30 条的收录与展示，以及老 30 条在加了公式卡后的点击率变化。
+
 **复查**：部署后 4–6 周对比本节数据，重点看曲线页的点击率与平均排名、首页非品牌展示、`/labs` 与 `/wonders` 的收录。
 
 ## 0. 词簇分配（2026-08-04 定版）
@@ -37,17 +40,17 @@
 online free）无任何专业玩家的专门页面经营（animg.app 首页自身定位是 "Manim AI Generator"，
 排名属被动获得）。因此：
 
-| 页面                                | 主词簇                                                           | 说明                                                                                            |
-| ----------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `/`                                 | math animation maker、ai math animations、online free 变体       | 首页承接外圈大词；Manim 降级到副标题                                                            |
-| `/creator`                          | manim ai generator、Manim AI 生成器                              | 功能页承接 Manim 词簇，与首页不再互相蚕食                                                       |
-| `/math-animation-tool`              | online math animation tool                                       | 功能展示内页（2026-08-04 上线）                                                                 |
-| `/free-math-video-creator`          | create animated math videos free                                 | 免费入口内页（2026-08-04 上线）                                                                 |
-| `/manim-alternative`                | manim alternative no coding                                      | 诚实对比页（2026-08-04 上线）                                                                   |
-| `/blog/best-math-video-apps`        | best app for making math videos                                  | Listicle 博文，自我收录含利益声明                                                               |
-| `/labs` + 实验集 / 章节页           | {知识点} 交互演示、{concept} interactive、{知识点} 几何意义 长尾 | 免费交互实验，每章一页；规则见 `LABS_PLAN.md`，转化到 `/creator`                                |
-| `/curves` + 30 详情页               | {curve name} equation / graph / animation 长尾                   | 曲线百科：交互预览 + LaTeX + 预填 Creator                                                       |
-| `/library` 及已有对象的 Hub / Topic | {concept} animation、visual proof 长尾                           | P0 骨架已进 sitemap。空主题 `noindex`。`/library/scenes/*` 尚未有条目，不要对外写成已发布场景库 |
+| 页面                         | 主词簇                                                           | 说明                                                                           |
+| ---------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `/`                          | math animation maker、ai math animations、online free 变体       | 首页承接外圈大词；Manim 降级到副标题                                           |
+| `/creator`                   | manim ai generator、Manim AI 生成器                              | 功能页承接 Manim 词簇，与首页不再互相蚕食                                      |
+| `/math-animation-tool`       | online math animation tool                                       | 功能展示内页（2026-08-04 上线）                                                |
+| `/free-math-video-creator`   | create animated math videos free                                 | 免费入口内页（2026-08-04 上线）                                                |
+| `/manim-alternative`         | manim alternative no coding                                      | 诚实对比页（2026-08-04 上线）                                                  |
+| `/blog/best-math-video-apps` | best app for making math videos                                  | Listicle 博文，自我收录含利益声明                                              |
+| `/labs` + 实验集 / 章节页    | {知识点} 交互演示、{concept} interactive、{知识点} 几何意义 长尾 | 免费交互实验，每章一页；规则见 `LABS_PLAN.md`，转化到 `/creator`               |
+| `/curves` + 60 详情页        | {curve name} equation / graph / animation 长尾                   | 曲线百科：公式卡 + FAQ + 作画动画 + 免费导出 + 预填 Creator                    |
+| ~~`/library`~~               | —                                                                | 2026-10-15 下线，全部 301 到 `/curves#{category}` 或对应实验；sitemap 不再列出 |
 
 生产环境已上线云端渲染与免费注册额度（2026-08 确认），"free"、"render online" 可以如实使用。
 文案角度红线：不使用内部运维口吻（"已配置""生产环境""故障切换""早期访问"等）；
@@ -83,7 +86,7 @@ CurvG 的差异不是“输入一句话立即得到视频”，而是让公式�
 | `/math-animation-tool`     | online math animation tool                                   | functions、geometry、calculus、no install | 进入 Creator             |
 | `/free-math-video-creator` | create animated math videos free                             | starter credits、免费边界、退款规则       | 注册并首次渲染           |
 | `/manim-alternative`       | manim alternative no coding                                  | comparison、code export、no lock-in       | 进入 Creator             |
-| `/curves` 及 30 详情页     | {curve} equation / graph / animation 长尾                    | LaTeX、interactive、parameter             | 预填进入 Creator         |
+| `/curves` 及 60 详情页     | {curve} equation / graph / area 长尾                         | LaTeX、interactive、parameter             | 预填进入 Creator         |
 | `/pricing`                 | CurvG pricing                                                | 套餐、渲染积分、账单                      | 升级付费                 |
 | `/blog`                    | manim math animation guides、best app for making math videos | listicle、教学工作流                      | 导流内页与 Creator       |
 | 法律页面                   | 品牌导航查询                                                 | privacy、terms                            | 建立信任，不承担获客任务 |

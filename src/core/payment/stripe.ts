@@ -29,7 +29,23 @@ export interface StripeConfigs extends PaymentConfigs {
   apiVersion?: string;
   allowedPaymentMethods?: string[];
   allowPromotionCodes?: boolean;
+  /**
+   * Product tax code sent with every inline product. Managed Payments (Stripe
+   * as merchant of record, on by default for new accounts) rejects a session
+   * whose product has none.
+   */
+  taxCode?: string;
+  /** Prices include tax, so the checkout total matches the pricing page. */
+  taxInclusive?: boolean;
+  /**
+   * Stripe acts as merchant of record and handles indirect tax. It rejects
+   * `payment_method_types` and `invoice_creation`, so they are left out.
+   */
+  managedPayments?: boolean;
 }
+
+/** Default tax code: AI as a service, cloud based, personal use. */
+export const STRIPE_DEFAULT_TAX_CODE = 'txcd_10105001';
 
 /**
  * Stripe payment provider implementation
@@ -70,7 +86,11 @@ export class StripeProvider implements PaymentProvider {
           unit_amount: order.price.amount, // unit: cents
           product_data: {
             name: order.description || '',
+            tax_code: this.configs.taxCode || STRIPE_DEFAULT_TAX_CODE,
           },
+          ...(this.configs.taxInclusive === false
+            ? {}
+            : { tax_behavior: 'inclusive' as const }),
         };
 
       if (order.type === PaymentType.SUBSCRIPTION) {
@@ -139,7 +159,12 @@ export class StripeProvider implements PaymentProvider {
       // If currency is CNY, enable WeChat Pay and Alipay (only for one-time payments)
       // Note: WeChat Pay and Alipay through Stripe only supports one-time payments, not subscriptions
       const currency = order.price.currency.toLowerCase();
-      if (currency === 'cny' && order.type === PaymentType.ONE_TIME) {
+      const managed = this.configs.managedPayments !== false;
+      if (
+        !managed &&
+        currency === 'cny' &&
+        order.type === PaymentType.ONE_TIME
+      ) {
         // Enable WeChat Pay and Alipay for CNY one-time payments
         sessionParams.payment_method_types = [];
         sessionParams.payment_method_options = {};
@@ -167,7 +192,14 @@ export class StripeProvider implements PaymentProvider {
         }
       }
 
-      if (order.type === PaymentType.ONE_TIME) {
+      if (managed) {
+        // Not in the SDK's types yet; documented on Checkout Sessions.
+        (
+          sessionParams as Stripe.Checkout.SessionCreateParams & {
+            managed_payments?: { enabled: boolean };
+          }
+        ).managed_payments = { enabled: true };
+      } else if (order.type === PaymentType.ONE_TIME) {
         sessionParams.invoice_creation = {
           enabled: true,
         };

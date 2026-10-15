@@ -14,8 +14,6 @@ const bar = (x: number, expr: string): Array<[number | string, number | string]>
 export const energyConservation: Lab = {
   slug: 'energy-conservation',
   publication: 'public',
-  primaryCategoryId: 'accumulation',
-  additionalCategoryIds: ['rates'],
   levels: ['high'],
   chapterTitle: { en: 'Energy conservation', zh: '动能定理与能量守恒' },
   title: {

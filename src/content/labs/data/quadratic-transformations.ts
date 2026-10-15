@@ -3,7 +3,6 @@ import { pick, type Lab } from '../types';
 export const quadraticTransformations: Lab = {
   slug: 'quadratic-transformations',
   publication: 'public',
-  primaryCategoryId: 'maps-graphs',
   levels: ['middle', 'high'],
   chapterTitle: { en: 'Transformations', zh: '图像变换' },
   title: {

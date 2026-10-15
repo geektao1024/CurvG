@@ -6,8 +6,6 @@ const G = 9.8;
 export const projectileMotion: Lab = {
   slug: 'projectile-motion',
   publication: 'public',
-  primaryCategoryId: 'parametric',
-  additionalCategoryIds: ['cartesian'],
   levels: ['high'],
   chapterTitle: { en: 'Projectile motion', zh: '平抛与斜抛' },
   title: {

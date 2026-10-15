@@ -3,8 +3,6 @@ import { pick, type Lab } from '../types';
 export const exponentialLogarithm: Lab = {
   slug: 'exponential-logarithm',
   publication: 'public',
-  primaryCategoryId: 'maps-graphs',
-  additionalCategoryIds: ['cartesian'],
   levels: ['high'],
   chapterTitle: { en: 'Exponentials & logs', zh: '指数与对数' },
   title: {

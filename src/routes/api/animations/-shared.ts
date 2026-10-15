@@ -1,4 +1,4 @@
-import { and, eq, isNull, lte, or } from 'drizzle-orm';
+import { and, count, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
 
 import {
   ChatModelCircuitBreaker,
@@ -23,7 +23,12 @@ import {
   type AnimationAccessTier,
   type AnimationModelPolicy,
 } from '@/config/animation-models';
-import { animationGenerationLease } from '@/config/db/schema';
+import {
+  aiTask,
+  animationGenerationLease,
+  chat,
+  user,
+} from '@/config/db/schema';
 import { AnimationConflictError } from '@/modules/animations/service';
 import type { ConfigMap } from '@/modules/config/service';
 import { getAnimationAccessTier } from '@/modules/subscriptions/service';
@@ -62,7 +67,8 @@ export class AnimationApiError extends Error {
       | 'INVALID_MODEL'
       | 'INVALID_PRODUCTION_MODE'
       | 'INSUFFICIENT_CREDITS'
-      | 'CAPACITY_LIMIT',
+      | 'CAPACITY_LIMIT'
+      | 'DAILY_LIMIT',
     readonly status: number,
     readonly retryAfterSeconds?: number
   ) {
@@ -438,6 +444,72 @@ function resilientProvider(
   );
 }
 
+/**
+ * Every verified account's first rendered video is free, so a new user sees
+ * what CurvG makes before being asked to pay. A failed or canceled render does
+ * not use it up; a queued, running or finished one does. Admins can switch it
+ * off with `animation_free_first_render = false`.
+ */
+export async function freeFirstRenderAvailable(
+  configs: ConfigMap,
+  userId: string
+): Promise<boolean> {
+  if (configs.animation_free_first_render === 'false') return false;
+  const [account] = await db()
+    .select({ verified: user.emailVerified })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1);
+  if (!account?.verified) return false;
+  const [used] = await db()
+    .select({ id: aiTask.id })
+    .from(aiTask)
+    .where(
+      and(
+        eq(aiTask.userId, userId),
+        eq(aiTask.mediaType, 'animation_render'),
+        inArray(aiTask.status, ['pending', 'processing', 'success'])
+      )
+    )
+    .limit(1);
+  return !used;
+}
+
+/**
+ * Planning is the expensive step and it is free, so accounts without a paid
+ * plan may start `animation_free_daily_creations` (default 3) new videos in
+ * any 24 hours. Deleted conversations still count. Paid plans are not capped;
+ * `0` turns the cap off.
+ */
+export async function enforceFreeDailyCreations(
+  configs: ConfigMap,
+  userId: string
+): Promise<void> {
+  const limit = Number.parseInt(
+    configs.animation_free_daily_creations ?? '3',
+    10
+  );
+  if (!Number.isSafeInteger(limit) || limit <= 0) return;
+  if ((await getAnimationAccessTier(userId)) !== 'free') return;
+  const [row] = await db()
+    .select({ started: count() })
+    .from(chat)
+    .where(
+      and(
+        eq(chat.userId, userId),
+        gte(chat.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000))
+      )
+    );
+  if ((row?.started ?? 0) >= limit) {
+    throw new AnimationApiError(
+      `Daily limit reached: free accounts can start ${limit} new videos a day.`,
+      'DAILY_LIMIT',
+      429,
+      60 * 60
+    );
+  }
+}
+
 export async function listAnimationModels(
   configs: ConfigMap,
   userId: string
@@ -474,6 +546,7 @@ export async function listAnimationModels(
     renderCredits: Number.isSafeInteger(configuredRenderCredits)
       ? Math.max(0, Math.min(configuredRenderCredits, 1_000_000))
       : 20,
+    freeRender: await freeFirstRenderAvailable(configs, userId),
   };
 }
 

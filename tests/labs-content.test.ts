@@ -23,7 +23,6 @@ import {
   LLN_EPS,
   LLN_NS,
 } from '../src/content/labs/data/law-of-large-numbers';
-import { getCategory } from '../src/content/library';
 import {
   dragTargets,
   evaluateBoard,
@@ -89,16 +88,6 @@ describe('lab content', () => {
   for (const lab of LABS) {
     describe(lab.slug, () => {
       it('links only to things that exist', () => {
-        for (const id of [
-          lab.primaryCategoryId,
-          ...(lab.additionalCategoryIds ?? []),
-        ]) {
-          assert.equal(
-            getCategory(id)?.publication,
-            'public',
-            `category ${id}`
-          );
-        }
         for (const slug of lab.curveSlugs ?? []) {
           assert.ok(
             CURVES.some((curve) => curve.slug === slug),

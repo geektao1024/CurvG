@@ -7,8 +7,6 @@ const SCALE = 1.6;
 export const springOscillator: Lab = {
   slug: 'spring-oscillator',
   publication: 'public',
-  primaryCategoryId: 'harmonic',
-  additionalCategoryIds: ['maps-graphs'],
   levels: ['high'],
   chapterTitle: { en: 'Mass on a spring', zh: '弹簧振子' },
   title: {

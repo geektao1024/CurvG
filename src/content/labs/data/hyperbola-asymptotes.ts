@@ -3,7 +3,6 @@ import { pick, type Lab } from '../types';
 export const hyperbolaAsymptotes: Lab = {
   slug: 'hyperbola-asymptotes',
   publication: 'public',
-  primaryCategoryId: 'conic',
   levels: ['high'],
   chapterTitle: { en: 'Hyperbola', zh: '双曲线与渐近线' },
   title: {

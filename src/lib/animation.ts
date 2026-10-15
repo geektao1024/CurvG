@@ -40,6 +40,11 @@ export interface AnimationModelCatalog {
    * letting the render step discover the shortfall after the wait.
    */
   renderCredits: number;
+  /**
+   * The viewer's next render is free: every verified account's first video
+   * costs nothing, so a new user sees the output before being asked to pay.
+   */
+  freeRender?: boolean;
 }
 
 export function animationModelValue(

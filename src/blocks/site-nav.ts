@@ -2,14 +2,21 @@ import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
 import type { NavLink } from '@/components/site-header';
 import {
+  CURVE_CATEGORY_ORDER,
+  CURVES,
+  getCurvesByCategory,
+} from '@/content/curves';
+import {
   chapterPath,
   publicLabs,
   publicSubjects,
   subjectPath,
   suitesForSubject,
 } from '@/content/labs';
-import { libraryText } from '@/content/library';
+import { localeText } from '@/content/text';
 import { publicWonders, wonderPath } from '@/content/wonders';
+
+import { curveCategoryHref, curveCategoryLabel } from './curve-categories';
 
 /**
  * The one list of top-level sections (docs/NAVIGATION.md §2). The site
@@ -26,11 +33,11 @@ export function siteNavLinks(): NavLink[] {
       label: m['landing.nav.labs'](),
       menu: {
         groups: publicSubjects().map((subject) => ({
-          title: libraryText(subject.name, lang),
+          title: localeText(subject.name, lang),
           href: subjectPath(subject.id),
           links: suitesForSubject(subject.id).map((suite) => ({
             href: chapterPath(suite, suite.chapters[0]),
-            label: libraryText(suite.name, lang),
+            label: localeText(suite.name, lang),
             note: m['labs.index.chapters']({ count: suite.chapters.length }),
           })),
         })),
@@ -48,8 +55,8 @@ export function siteNavLinks(): NavLink[] {
           {
             links: wonders.map((wonder) => ({
               href: wonderPath(wonder),
-              label: libraryText(wonder.name, lang),
-              note: libraryText(wonder.question, lang),
+              label: localeText(wonder.name, lang),
+              note: localeText(wonder.question, lang),
             })),
           },
         ],
@@ -59,34 +66,29 @@ export function siteNavLinks(): NavLink[] {
         },
       },
     },
-    { href: '/creator', label: m['landing.nav.create']() },
     {
       href: '/curves',
-      label: m['landing.nav.resources'](),
+      label: m['landing.nav.curves'](),
       menu: {
         groups: [
           {
-            links: [
-              {
-                href: '/curves',
-                label: m['landing.nav.curves'](),
-                note: m['landing.nav.curves_note'](),
-              },
-              {
-                href: '/library',
-                label: m['landing.nav.library'](),
-                note: m['landing.nav.library_note'](),
-              },
-              {
-                href: '/blog',
-                label: m['landing.nav.guides'](),
-                note: m['landing.nav.guides_note'](),
-              },
-            ],
+            links: CURVE_CATEGORY_ORDER.map((category) => ({
+              href: curveCategoryHref(category),
+              label: curveCategoryLabel(category),
+              note: getCurvesByCategory(category)
+                .slice(0, 3)
+                .map((curve) => curve.name[lang])
+                .join(lang === 'zh' ? '、' : ', '),
+            })),
           },
         ],
+        footer: {
+          href: '/curves',
+          label: m['landing.nav.all_curves']({ count: CURVES.length }),
+        },
       },
     },
+    { href: '/creator', label: m['landing.nav.create']() },
     { href: '/pricing', label: m['landing.nav.pricing']() },
   ];
 }

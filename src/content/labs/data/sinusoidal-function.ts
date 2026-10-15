@@ -3,8 +3,6 @@ import { pick, type Lab } from '../types';
 export const sinusoidalFunction: Lab = {
   slug: 'sinusoidal-function',
   publication: 'public',
-  primaryCategoryId: 'harmonic',
-  additionalCategoryIds: ['maps-graphs'],
   levels: ['high'],
   chapterTitle: { en: 'y = A sin(ωx + φ)', zh: '正弦型函数' },
   title: {

@@ -145,6 +145,8 @@ async function testStripe(
       configs.stripe_webhook_secret ||
       undefined,
     allowedPaymentMethods: ['card'],
+    taxCode: configs.stripe_tax_code || undefined,
+    managedPayments: configs.stripe_managed_payments !== 'false',
   });
 
   const order: PaymentOrder = {

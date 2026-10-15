@@ -44,8 +44,6 @@ function crests(cx: string, color: 'blue' | 'purple'): BoardObject[] {
 export const waveInterference: Lab = {
   slug: 'wave-interference',
   publication: 'public',
-  primaryCategoryId: 'harmonic',
-  additionalCategoryIds: ['conic'],
   levels: ['high'],
   chapterTitle: { en: 'Interference', zh: '波的叠加与干涉' },
   title: {

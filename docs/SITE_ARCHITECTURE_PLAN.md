@@ -1,7 +1,7 @@
 # CurvG 网站架构规划（第一性原理版）
 
 更新时间：2026-10-12（实验室优先的信息架构，见文首修订）；正文进度标注仍停在 2026-08-04
-状态：战略层。渲染与 Creator 细节见 `ANIMATION_ORCHESTRATION.md` 与 `CURVG_CREATOR_ARCHITECTURE.md`。曲线百科见 `CURVE_ENCYCLOPEDIA.md`。
+状态：战略层。**2026-10-15：资源库 `/library` 已下线、「资源」下拉撤掉、曲线百科升为一级导航，本文中关于资源库的段落均已作废，以 `POSITIONING.md` 为准。**渲染与 Creator 细节见 `ANIMATION_ORCHESTRATION.md` 与 `CURVG_CREATOR_ARCHITECTURE.md`。曲线百科见 `CURVE_ENCYCLOPEDIA.md`。
 
 > **修订（2026-10-12，信息架构以本节为准；导航、首页、学科页已于当日实施）**：站点改为「实验室优先」的工具站，
 > 按「泛流量引流 → 核心流量转化」双轨道组织页面和导航。下文 2026-09 及更早的内容仅作历史参考。

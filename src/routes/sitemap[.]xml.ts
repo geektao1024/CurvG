@@ -10,11 +10,6 @@ import {
   subjectPath,
 } from '@/content/labs';
 import {
-  indexableTopics,
-  publicLibraryScenes,
-  rootCategories,
-} from '@/content/library';
-import {
   getLocalPostLocales,
   getLocalPosts,
   type BlogPost,
@@ -109,36 +104,6 @@ const STATIC_ENTRIES: Entry[] = [
   ...CURVES.map(
     (curve): Entry => ({
       path: `/curves/${curve.slug}`,
-      availableLocales: ALL_LOCALES,
-      changeFrequency: 'monthly',
-      priority: 0.6,
-    })
-  ),
-  {
-    path: '/library',
-    availableLocales: ALL_LOCALES,
-    changeFrequency: 'weekly',
-    priority: 0.8,
-  },
-  ...rootCategories.map(
-    (hub): Entry => ({
-      path: `/library/${hub.id}`,
-      availableLocales: ALL_LOCALES,
-      changeFrequency: 'weekly',
-      priority: 0.7,
-    })
-  ),
-  ...publicLibraryScenes.map(
-    (scene): Entry => ({
-      path: `/library/scenes/${scene.slug}`,
-      availableLocales: ALL_LOCALES,
-      changeFrequency: 'monthly',
-      priority: 0.7,
-    })
-  ),
-  ...indexableTopics().map(
-    (topic): Entry => ({
-      path: `/library/${topic.primaryParentId}/${topic.id}`,
       availableLocales: ALL_LOCALES,
       changeFrequency: 'monthly',
       priority: 0.6,

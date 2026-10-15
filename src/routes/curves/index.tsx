@@ -1,6 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
 
-import { Link } from '@/core/i18n/navigation';
 import {
   breadcrumbJsonLd,
   localizedLinks,
@@ -10,27 +9,41 @@ import {
 } from '@/lib/seo';
 import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
+import { curveCategoryLabel } from '@/blocks/curve-categories';
 import { SitePage } from '@/blocks/site-page';
-import { CurveThumb } from '@/components/curve-preview';
+import { CurveIndex } from '@/components/curve-index';
+import { CurveDrawingLoop } from '@/components/curve-preview';
 import { PageHero } from '@/components/page-hero';
 import {
   CURVE_CATEGORY_ORDER,
   CURVES,
+  getCurve,
   getCurvesByCategory,
 } from '@/content/curves';
 
-const CATEGORY_LABEL = {
-  parametric: () => m['curves.category.parametric'](),
-  polar: () => m['curves.category.polar'](),
-  roulette: () => m['curves.category.roulette'](),
-  spiral: () => m['curves.category.spiral'](),
-  conic: () => m['curves.category.conic'](),
-  cartesian: () => m['curves.category.cartesian'](),
+const CATEGORY_DESCRIPTION = {
+  parametric: () => m['curves.category_desc.parametric'](),
+  polar: () => m['curves.category_desc.polar'](),
+  roulette: () => m['curves.category_desc.roulette'](),
+  spiral: () => m['curves.category_desc.spiral'](),
+  conic: () => m['curves.category_desc.conic'](),
+  cartesian: () => m['curves.category_desc.cartesian'](),
+  fractal: () => m['curves.category_desc.fractal'](),
 } as const;
+
+/** The curve drawing itself beside the hero: a spirograph pattern. */
+const HERO_CURVE = 'hypotrochoid';
 
 function CurvesIndexPage() {
   const { locale } = Route.useLoaderData();
   const lang = locale === 'zh' ? 'zh' : 'en';
+  const hero = getCurve(HERO_CURVE);
+  const groups = CURVE_CATEGORY_ORDER.map((category) => ({
+    id: category,
+    title: curveCategoryLabel(category),
+    description: CATEGORY_DESCRIPTION[category](),
+    curves: getCurvesByCategory(category),
+  })).filter((group) => group.curves.length > 0);
 
   return (
     <SitePage>
@@ -43,52 +56,26 @@ function CurvesIndexPage() {
         eyebrow={m['curves.index.eyebrow']()}
         title={m['curves.index.h1']()}
         lead={m['curves.index.intro']({ count: CURVES.length })}
-      />
-
-      {CURVE_CATEGORY_ORDER.map((category) => {
-        const curves = getCurvesByCategory(category);
-        if (curves.length === 0) return null;
-        return (
-          <section
-            key={category}
-            className="curvg-stage curvg-frame border-b px-6 py-12 sm:px-10"
-            aria-labelledby={`curves-${category}`}
-          >
-            <h2
-              id={`curves-${category}`}
-              className="curvg-heading text-2xl sm:text-3xl"
-            >
-              {CATEGORY_LABEL[category]()}
-            </h2>
-            <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {curves.map((curve) => (
-                <Link
-                  key={curve.slug}
-                  href={`/curves/${curve.slug}`}
-                  className="group bg-card hover:border-primary/50 block overflow-hidden rounded-2xl border transition-colors"
-                >
-                  <div className="bg-muted/20 aspect-[4/3] border-b">
-                    <CurveThumb
-                      curve={curve}
-                      ariaLabel={m['curves.detail.preview_aria']({
-                        name: curve.name[lang],
-                      })}
-                    />
-                  </div>
-                  <div className="p-5">
-                    <h3 className="group-hover:text-primary text-lg font-semibold tracking-tight transition-colors">
-                      {curve.name[lang]}
-                    </h3>
-                    <p className="text-muted-foreground mt-2 line-clamp-2 text-sm leading-relaxed">
-                      {curve.short[lang]}
-                    </p>
-                  </div>
-                </Link>
-              ))}
+        aside={
+          hero ? (
+            <div className="aspect-[4/3] w-full">
+              <CurveDrawingLoop curve={hero} />
             </div>
-          </section>
-        );
-      })}
+          ) : undefined
+        }
+      />
+      <CurveIndex
+        groups={groups}
+        locale={lang}
+        labels={{
+          search: m['curves.index.search'](),
+          clear: m['curves.index.clear'](),
+          results: (count) => m['curves.index.results']({ count }),
+          empty: m['curves.index.empty'](),
+          jump: m['curves.index.jump'](),
+          previewAria: (name) => m['curves.detail.preview_aria']({ name }),
+        }}
+      />
     </SitePage>
   );
 }

@@ -3,7 +3,6 @@ import { pick, type Lab } from '../types';
 export const parabolaFocalChord: Lab = {
   slug: 'parabola-focal-chord',
   publication: 'public',
-  primaryCategoryId: 'conic',
   levels: ['high'],
   chapterTitle: { en: 'Parabola', zh: '抛物线与焦点弦' },
   title: {

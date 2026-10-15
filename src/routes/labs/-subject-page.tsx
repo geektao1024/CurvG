@@ -11,6 +11,7 @@ import {
 } from '@/lib/seo';
 import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
+import { SitePage } from '@/blocks/site-page';
 import { LabCard } from '@/components/lab-card';
 import { PageBreadcrumbs } from '@/components/page-breadcrumbs';
 import {
@@ -21,9 +22,8 @@ import {
   suitesForSubject,
   type LabSubjectId,
 } from '@/content/labs';
-import { libraryText } from '@/content/library';
+import { contentLocale, localeText } from '@/content/text';
 
-import { libraryLocale, LibraryShell } from '../library/-library-page';
 import { levelLabels } from './-labs-page';
 
 /**
@@ -32,7 +32,7 @@ import { levelLabels } from './-labs-page';
  * "physics simulations" searches land on; suites and chapters keep their URLs.
  */
 function SubjectPage({ id }: { id: LabSubjectId }) {
-  const lang = libraryLocale(getLocale());
+  const lang = contentLocale(getLocale());
   const subject = getSubject(id)!;
   const suites = suitesForSubject(id);
   const chapters = suites.reduce(
@@ -43,21 +43,21 @@ function SubjectPage({ id }: { id: LabSubjectId }) {
   const levels = levelLabels();
 
   return (
-    <LibraryShell>
+    <SitePage>
       <section className="curvg-stage curvg-frame border-b px-6 pt-10 pb-12 sm:px-10">
         <PageBreadcrumbs
           label={m['common.nav.breadcrumb']()}
           items={[
             { href: '/', label: m['common.nav.home']() },
             { href: '/labs', label: m['labs.breadcrumb']() },
-            { href: subjectPath(id), label: libraryText(subject.name, lang) },
+            { href: subjectPath(id), label: localeText(subject.name, lang) },
           ]}
         />
         <h1 className="curvg-heading mt-8 max-w-4xl text-4xl text-balance sm:text-5xl">
-          {libraryText(subject.headline, lang)}
+          {localeText(subject.headline, lang)}
         </h1>
         <p className="text-muted-foreground mt-5 max-w-2xl text-base leading-relaxed sm:text-lg">
-          {libraryText(subject.description, lang)}
+          {localeText(subject.description, lang)}
         </p>
         <p className="text-muted-foreground mt-6 font-mono text-xs tracking-[0.14em] uppercase">
           {m['labs.subject.count']({ suites: suites.length, chapters })}
@@ -70,7 +70,7 @@ function SubjectPage({ id }: { id: LabSubjectId }) {
                 href={`#${suite.slug}`}
                 className="hover:border-primary/50 hover:text-primary rounded-full border px-3.5 py-1.5 text-sm transition-colors"
               >
-                {libraryText(suite.name, lang)}
+                {localeText(suite.name, lang)}
               </a>
             </li>
           ))}
@@ -87,10 +87,10 @@ function SubjectPage({ id }: { id: LabSubjectId }) {
             <div className="max-w-2xl">
               <span className="bg-primary block h-0.5 w-10" aria-hidden />
               <h2 className="curvg-heading mt-4 text-2xl sm:text-3xl">
-                {libraryText(suite.name, lang)}
+                {localeText(suite.name, lang)}
               </h2>
               <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
-                {libraryText(suite.summary, lang)}
+                {localeText(suite.summary, lang)}
               </p>
             </div>
             <Link
@@ -110,7 +110,7 @@ function SubjectPage({ id }: { id: LabSubjectId }) {
                 levelLabels={levels}
                 openLabel={m['labs.index.open']()}
                 boardAria={m['labs.board.aria']({
-                  title: libraryText(lab.title, lang),
+                  title: localeText(lab.title, lang),
                 })}
               />
             ))}
@@ -131,10 +131,10 @@ function SubjectPage({ id }: { id: LabSubjectId }) {
                   className="bg-card hover:border-primary/50 group block rounded-2xl border p-5 transition-colors"
                 >
                   <span className="group-hover:text-primary text-lg font-semibold transition-colors">
-                    {libraryText(other.name, lang)}
+                    {localeText(other.name, lang)}
                   </span>
                   <span className="text-muted-foreground mt-1 block text-sm">
-                    {libraryText(other.description, lang)}
+                    {localeText(other.description, lang)}
                   </span>
                 </Link>
               </li>
@@ -142,7 +142,7 @@ function SubjectPage({ id }: { id: LabSubjectId }) {
           </ul>
         </section>
       ) : null}
-    </LibraryShell>
+    </SitePage>
   );
 }
 
@@ -157,16 +157,16 @@ export function subjectRouteOptions(id: LabSubjectId) {
     head: ({ loaderData }: { loaderData?: { locale: string } }) => {
       if (!loaderData) return {};
       const { locale } = loaderData;
-      const lang = libraryLocale(locale);
+      const lang = contentLocale(locale);
       const subject = getSubject(id)!;
       const opts = { locale: locale as never };
-      const title = libraryText(subject.metaTitle, lang);
-      const description = libraryText(subject.metaDescription, lang);
+      const title = localeText(subject.metaTitle, lang);
+      const description = localeText(subject.metaDescription, lang);
       const path = subjectPath(id);
       const seoLinks = localizedLinks({ path, locale });
       const items = suitesForSubject(id).flatMap((suite) =>
         suite.chapters.map((chapter) => ({
-          name: `${libraryText(suite.name, lang)} · ${libraryText(chapter.chapterTitle, lang)}`,
+          name: `${localeText(suite.name, lang)} · ${localeText(chapter.chapterTitle, lang)}`,
           url: localizedUrl(chapterPath(suite, chapter), locale),
         }))
       );
@@ -174,7 +174,7 @@ export function subjectRouteOptions(id: LabSubjectId) {
         {
           '@context': 'https://schema.org',
           '@type': 'CollectionPage',
-          name: libraryText(subject.headline, lang),
+          name: localeText(subject.headline, lang),
           description,
           url: seoLinks.canonical,
           inLanguage: lang === 'zh' ? 'zh-CN' : 'en',
@@ -193,7 +193,7 @@ export function subjectRouteOptions(id: LabSubjectId) {
           [
             { name: m['common.nav.home']({}, opts), path: '/' },
             { name: m['labs.breadcrumb']({}, opts), path: '/labs' },
-            { name: libraryText(subject.name, lang), path: subjectPath(id) },
+            { name: localeText(subject.name, lang), path: subjectPath(id) },
           ],
           locale
         ),

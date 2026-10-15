@@ -1,8 +1,7 @@
 import { compileBoard, type CompiledBoard } from '@/lib/board/evaluate';
 import { parseBoardSpec } from '@/lib/board/spec';
 
-import { getPrimaryTrail } from '../library/graph';
-import type { LibraryLocale } from '../library/types';
+import type { ContentLocale } from '../text';
 import { binomialDistribution } from './data/binomial-distribution';
 import { circularMotion } from './data/circular-motion';
 import { conicSectionsEccentricity } from './data/conic-sections-eccentricity';
@@ -314,25 +313,8 @@ export function labPath(lab: Lab): string {
 }
 
 /** Pre-rendered share image for a chapter (scripts/lab-og-images.mjs). */
-export function labOgImage(lab: Lab, lang: LibraryLocale): string {
+export function labOgImage(lab: Lab, lang: ContentLocale): string {
   return `/og/labs/${lab.slug}.${lang}.png`;
-}
-
-export function labsForCategory(categoryId: string): Lab[] {
-  return publicLabs().filter(
-    (lab) =>
-      lab.primaryCategoryId === categoryId ||
-      lab.additionalCategoryIds?.includes(categoryId)
-  );
-}
-
-/** Labs filed anywhere under a library hub, through any of their categories. */
-export function labsForHub(hubId: string): Lab[] {
-  return publicLabs().filter((lab) =>
-    [lab.primaryCategoryId, ...(lab.additionalCategoryIds ?? [])].some(
-      (id) => id === hubId || getPrimaryTrail(id)[0]?.id === hubId
-    )
-  );
 }
 
 export function labsForCurve(curveSlug: string): Lab[] {
@@ -342,7 +324,7 @@ export function labsForCurve(curveSlug: string): Lab[] {
 const compiled = new Map<string, CompiledBoard>();
 
 /** Parsed and compiled board for one locale. Throws on an invalid spec. */
-export function labBoard(lab: Lab, lang: LibraryLocale): CompiledBoard {
+export function labBoard(lab: Lab, lang: ContentLocale): CompiledBoard {
   const key = `${lab.slug}:${lang}`;
   let board = compiled.get(key);
   if (!board) {
@@ -353,7 +335,7 @@ export function labBoard(lab: Lab, lang: LibraryLocale): CompiledBoard {
 }
 
 /** Every public chapter as a search entry: what the knowledge-point box searches. */
-export function labSearchEntries(lang: LibraryLocale) {
+export function labSearchEntries(lang: ContentLocale) {
   const t = (text: { en: string; zh: string }) => text[lang];
   return publicSubjects().flatMap((subject) =>
     suitesForSubject(subject.id).flatMap((suite) =>
@@ -384,7 +366,7 @@ function isoDuration(seconds: number): string {
 }
 
 /** The narrated film of this chapter in one language, once published. */
-export function labVideo(lab: Lab, lang: LibraryLocale): LabVideo | undefined {
+export function labVideo(lab: Lab, lang: ContentLocale): LabVideo | undefined {
   const film = PUBLISHED_LAB_FILMS[lab.slug]?.[lang];
   if (!film) return undefined;
   const base = `/media/labs/${lab.slug}`;
@@ -401,6 +383,6 @@ export function labVideo(lab: Lab, lang: LibraryLocale): LabVideo | undefined {
 }
 
 /** The creator, prefilled with this chapter's video prompt. */
-export function labVideoHref(lab: Lab, lang: LibraryLocale): string {
+export function labVideoHref(lab: Lab, lang: ContentLocale): string {
   return `/creator?prompt=${encodeURIComponent(lab.videoPrompt[lang])}`;
 }

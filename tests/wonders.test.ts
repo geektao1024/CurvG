@@ -9,6 +9,12 @@ import { mandelbrotSet } from '../src/content/wonders/data/mandelbrot-set';
 import { sunflowerGoldenAngle } from '../src/content/wonders/data/sunflower-golden-angle';
 import { richMathTex } from '../src/lib/rich-math';
 import {
+  buildWonderFilm,
+  cueAt,
+  storyTimeAt,
+  wonderFilmCaptions,
+} from '../src/lib/wonders/film';
+import {
   normalizeStroke,
   partialSum,
   pathEpicycles,
@@ -188,6 +194,9 @@ test('wonder content is complete and links resolve', () => {
       wonder.takeaway,
       wonder.name,
       ...wonder.beats,
+      ...(wonder.film ?? []).flatMap((line) =>
+        line.speak ? [line.text, line.speak] : [line.text]
+      ),
       ...wonder.sections.flatMap((s) => [s.title, s.body]),
       ...wonder.faq.flatMap((f) => [f.question, f.answer]),
     ]) {
@@ -388,4 +397,41 @@ test('wonder curve links resolve and copy facts hold', async () => {
   for (const wonder of WONDERS) {
     for (const slug of wonder.relatedCurves) assert.ok(getCurve(slug), slug);
   }
+});
+
+test('wonder films: one line per beat, voice never reads a symbol', () => {
+  for (const wonder of WONDERS) {
+    if (!wonder.film) continue;
+    assert.equal(wonder.film.length, wonder.beats.length, wonder.slug);
+    for (const line of wonder.film)
+      for (const lang of ['zh', 'en'] as const)
+        assert.doesNotMatch((line.speak ?? line.text)[lang], /π|%|\//);
+  }
+});
+
+test('a film fits the voice and only slows the story, never freezes it', () => {
+  const lines = fourierEpicycles.film!.map((line) => line.text.zh);
+  // Long clips on beats 0 and 3, short elsewhere.
+  const voice = lines.map((_, i) => (i === 0 || i === 3 ? 9 : 3));
+  const film = buildWonderFilm({
+    beats: FOURIER_BEATS,
+    length: FOURIER_STORY_LENGTH,
+    lines,
+    lang: 'zh',
+    voiceSeconds: voice,
+  });
+  film.cues.forEach((cue, i) => {
+    assert.ok(cue.end - cue.start >= voice[i] + 0.8, `beat ${i} fits its line`);
+    close(storyTimeAt(film, cue.start), FOURIER_BEATS[i], 1e-9);
+    assert.equal(cueAt(film, cue.start + 0.01)?.index, i);
+  });
+  let previous = -Infinity;
+  for (let t = 0; t <= film.duration; t += 1 / 30) {
+    const s = storyTimeAt(film, t);
+    assert.ok(s > previous, `story time rises at ${t.toFixed(2)}`);
+    previous = s;
+  }
+  assert.ok(storyTimeAt(film, film.duration) > FOURIER_STORY_LENGTH);
+  assert.ok(film.outroStart < film.duration);
+  assert.match(wonderFilmCaptions(film), /^WEBVTT\n\n1\n00:00:00\.350 --> /);
 });

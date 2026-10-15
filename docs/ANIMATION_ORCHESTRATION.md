@@ -5,7 +5,7 @@
 ```mermaid
 flowchart TD
   A[CurvG Worker] --> B[(D1 animation and stage state)]
-  A --> C[Provider router: KIE GPT-6.1 Sol]
+  A --> C[Provider router: KIE Claude Haiku 5.5]
   A --> D[Cloudflare Workflow]
   D --> E[Deterministic IR to Manim compiler]
   D --> I[Cloudflare Sandbox Renderer]
@@ -87,20 +87,29 @@ deployment is asserted by this document.
 ## Provider routing
 
 `animationProviderTargetPlan` in `src/routes/api/animations/-shared.ts` is the
-single source of ordering. Since 2026-10-14 the public catalog is one model,
-`kie/gpt-6-1-sol` (planning effort `xhigh`, composition `high`), followed only
-by the optional admin-configured OpenAI-compatible backup route.
+single source of ordering. Since 2026-10-15 the public catalog is one model,
+`kie/claude-haiku-5-5` on Kie's Anthropic Messages route (`claude/v1/messages`)
+with thinking on (`thinkingFlag`, set by effort `high`; 8k tokens of headroom
+are added to `max_tokens` because thinking shares the output budget), followed
+only by the optional admin-configured OpenAI-compatible backup route. It
+replaced GPT-6.1 Sol (2026-10-14 only): better scenes in the owner's
+comparison at a tenth of the token price ($0.06 / $0.30 per 1M in/out).
 
-Why: in the 30 days before the switch, 108 users started 163 runs and none
+Every attempt row in `animation_planning_attempt` records `input_tokens`,
+`output_tokens` and `provider_millicredits` (Kie's `credits_consumed` × 1000;
+1 credit ≈ $0.005), so the cost of a video is measured, not estimated
+(migration `drizzle/0005_clean_frightful_four.sql`).
+
+Why one vendor (2026-10-14): in the 30 days before the switch, 108 users started 163 runs and none
 delivered a video. Kuaipao had $0.009 of quota left from mid-September, and it
 was the only fallback behind DeepSeek, so every DeepSeek truncation or slow
 scene ended the run. DeepSeek and Kuaipao adapters, admin settings and keys
 remain in the codebase but never join the chain.
 
-Retired catalog entries (`deepseek-v4-flash`, `gpt-5-6-luna`, `gpt-5-6-sol`,
-`gemini-3.6-flash`) keep `publicCatalog: false` allowlist rows so historical
+Retired catalog entries (`gpt-6-1-sol`, `deepseek-v4-flash`, `gpt-5-6-luna`,
+`gpt-5-6-sol`, `gemini-3.6-flash`) keep `publicCatalog: false` allowlist rows so historical
 conversations keep their labels; `resolveChatProvider` reroutes any non-public
-selection to Auto, so approve and repair on old rows run on GPT-6.1 Sol.
+selection to Auto, so approve and repair on old rows run on Claude Haiku 5.5.
 
 Earlier chains (2026-08-04 to 2026-10-14): Lite = DeepSeek v4-flash → Kuaipao
 GPT-5.6 Sol; Pro = KIE GPT-5.6 Luna → Kuaipao → DeepSeek. Historical rows in

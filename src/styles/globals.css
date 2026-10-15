@@ -429,6 +429,34 @@
     }
   }
 
+  /* 曲线百科首屏：一条曲线被画出来、停一会儿、淡出，再画。纯 CSS，路径需设 pathLength="1"。 */
+  .curvg-draw-loop {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: curvg-draw-loop 9s ease-in-out infinite;
+  }
+  @keyframes curvg-draw-loop {
+    0% {
+      stroke-dashoffset: 1;
+      opacity: 1;
+    }
+    55%,
+    85% {
+      stroke-dashoffset: 0;
+      opacity: 1;
+    }
+    100% {
+      stroke-dashoffset: 0;
+      opacity: 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .curvg-draw-loop {
+      animation: none;
+      stroke-dashoffset: 0;
+    }
+  }
+
   @keyframes curvg-corner-spin {
     to {
       transform: rotate(360deg);

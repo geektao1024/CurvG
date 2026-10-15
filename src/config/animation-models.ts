@@ -6,7 +6,11 @@
  * endpoint. Unknown models fail closed instead of silently inheriting access
  * when an upstream platform adds new aliases.
  *
- * Single public model (2026-10-14): KIE GPT-6.1 Sol. DeepSeek and Kuaipao
+ * Single public model (2026-10-15): KIE Claude Haiku 5.5 — better scenes in
+ * the owner's comparison and a tenth of GPT-6.1 Sol's token price ($0.06 /
+ * $0.30 per 1M in/out), which is what makes the plans profitable at full use
+ * (docs/MONETIZATION.md). GPT-6.1 Sol was the single model on 2026-10-14.
+ * DeepSeek and Kuaipao
  * were removed from routing after 30 days without one delivered video (Kuaipao
  * out of quota since mid-September, DeepSeek truncating). Retired entries stay
  * allowlisted with `publicCatalog: false` only so historical conversations
@@ -15,10 +19,17 @@
 export const animationModelPolicies = [
   {
     provider: 'kie',
-    model: 'gpt-6-1-sol',
+    model: 'claude-haiku-5-5',
     presetKey: 'curvgPro',
     requiredTier: 'free',
     publicCatalog: true,
+  },
+  {
+    provider: 'kie',
+    model: 'gpt-6-1-sol',
+    presetKey: 'curvgPro',
+    requiredTier: 'free',
+    publicCatalog: false,
   },
   {
     provider: 'deepseek',
@@ -53,7 +64,7 @@ export const animationModelPolicies = [
 export type AnimationModelPolicy = (typeof animationModelPolicies)[number];
 export type AnimationAccessTier = 'free' | 'starter' | 'pro';
 
-export const DEFAULT_ANIMATION_MODEL = 'gpt-6-1-sol';
+export const DEFAULT_ANIMATION_MODEL = 'claude-haiku-5-5';
 export const DEFAULT_ANIMATION_PROVIDER = 'kie';
 
 /**
@@ -69,6 +80,8 @@ export function getAnimationReasoningEffort(
   if (model === 'gpt-5-6-luna') return 'max';
   if (model === 'deepseek-v4-flash') return 'high';
   if (model === 'gpt-6-1-sol' || model === 'gpt-5-6-sol') return 'xhigh';
+  // Claude on Kie has a thinking on/off switch only; `high` turns it on.
+  if (model === 'claude-haiku-5-5') return 'high';
   return model === 'gemini-3.6-flash' ? 'high' : undefined;
 }
 
@@ -84,17 +97,18 @@ export function getAnimationCompositionReasoningEffort(
   if (model === 'gpt-5-6-luna') return 'max';
   if (model === 'deepseek-v4-flash') return 'high';
   if (model === 'gpt-6-1-sol' || model === 'gpt-5-6-sol') return 'high';
+  if (model === 'claude-haiku-5-5') return 'high';
   return model === 'gemini-3.6-flash' ? 'medium' : undefined;
 }
 
 // Auto candidates in preference order; resolveChatProvider picks the first
 // with a configured credential. One target while KIE is the only vendor.
 export const FREE_AUTO_MODEL_TARGETS = [
-  { provider: 'kie', model: 'gpt-6-1-sol' },
+  { provider: 'kie', model: 'claude-haiku-5-5' },
 ] as const;
 
 export const PRO_AUTO_MODEL_TARGETS = [
-  { provider: 'kie', model: 'gpt-6-1-sol' },
+  { provider: 'kie', model: 'claude-haiku-5-5' },
 ] as const;
 
 export function getAnimationModelPolicy(

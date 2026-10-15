@@ -11,7 +11,6 @@ const between = (u: string, v: string) =>
 export const inscribedAngleTheorem: Lab = {
   slug: 'inscribed-angle-theorem',
   publication: 'public',
-  primaryCategoryId: 'visual-proofs',
   levels: ['middle', 'high'],
   chapterTitle: { en: 'Inscribed angle theorem', zh: '圆周角定理' },
   title: {

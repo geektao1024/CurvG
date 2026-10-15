@@ -36,6 +36,13 @@
       "when": 1785776889265,
       "tag": "0004_giant_colleen_wing",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792032954604,
+      "tag": "0005_clean_frightful_four",
+      "breakpoints": true
     }
   ]
 }

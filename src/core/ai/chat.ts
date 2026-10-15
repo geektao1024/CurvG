@@ -29,6 +29,14 @@ export interface ChatCompletionInput {
   onAttempt?: (attempt: ChatAttemptReport) => void | Promise<void>;
 }
 
+/** Upstream usage for one completion, as far as the provider reports it. */
+export interface ChatUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  /** Provider billing units (Kie credits) charged for the call. */
+  providerCredits?: number;
+}
+
 export interface ChatAttemptReport {
   attemptNo: number;
   provider: string;
@@ -37,6 +45,7 @@ export interface ChatAttemptReport {
   errorCode?: string;
   errorMessage?: string;
   latencyMs: number;
+  usage?: ChatUsage;
 }
 
 /** Safe, bounded metadata for diagnosing provider/protocol failures. */
@@ -58,6 +67,7 @@ export interface ChatCompletionResult {
   model: string;
   provider: string;
   diagnostic?: ChatProviderDiagnostic;
+  usage?: ChatUsage;
 }
 
 export interface ChatProvider {
@@ -969,7 +979,8 @@ export class ProviderFailoverChatProvider implements ChatProvider {
     target: ChatProviderTarget,
     startedAt: number,
     ok: boolean,
-    error?: ChatProviderError
+    error?: ChatProviderError,
+    usage?: ChatUsage
   ): void {
     if (!input.onAttempt) return;
     // Fire-and-forget: telemetry must never delay a completion or eat the
@@ -986,6 +997,7 @@ export class ProviderFailoverChatProvider implements ChatProvider {
           errorCode: error?.code,
           errorMessage: error?.message?.slice(0, 500),
           latencyMs: this.now() - startedAt,
+          usage,
         })
       ).catch(() => undefined);
     } catch {
@@ -1019,7 +1031,15 @@ export class ProviderFailoverChatProvider implements ChatProvider {
         );
         this.resultTargets.set(result, target);
         this.circuitBreaker.recordSuccess(target.provider.name, target.model);
-        this.reportAttempt(input, attemptNo, target, attemptStartedAt, true);
+        this.reportAttempt(
+          input,
+          attemptNo,
+          target,
+          attemptStartedAt,
+          true,
+          undefined,
+          result.usage
+        );
         return result;
       } catch (error) {
         lastError = normalizedError(error, target.provider.name, target.model);
@@ -1087,7 +1107,15 @@ export class ProviderFailoverChatProvider implements ChatProvider {
         if (!target.provider.stream) onDelta(result.content);
         this.resultTargets.set(result, target);
         this.circuitBreaker.recordSuccess(target.provider.name, target.model);
-        this.reportAttempt(input, attemptNo, target, attemptStartedAt, true);
+        this.reportAttempt(
+          input,
+          attemptNo,
+          target,
+          attemptStartedAt,
+          true,
+          undefined,
+          result.usage
+        );
         return result;
       } catch (error) {
         lastError = normalizedError(error, target.provider.name, target.model);

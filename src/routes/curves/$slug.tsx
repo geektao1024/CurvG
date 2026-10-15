@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { createFileRoute, notFound } from '@tanstack/react-router';
 import { ArrowRight, WandSparkles } from 'lucide-react';
 
 import { Link } from '@/core/i18n/navigation';
+import { envConfigs } from '@/config';
 import { plainMath } from '@/lib/plain-math';
 import {
   absoluteUrl,
@@ -14,42 +16,50 @@ import {
 } from '@/lib/seo';
 import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
+import { curveCategoryLabel } from '@/blocks/curve-categories';
+import { curveFactRows, curveFaq, curveLatex } from '@/blocks/curve-facts';
 import { SitePage } from '@/blocks/site-page';
+import { CurveFormulaCard } from '@/components/curve-formula-card';
 import { CurveExplorer, CurveThumb } from '@/components/curve-preview';
 import { LabCard } from '@/components/lab-card';
-import { MathTex } from '@/components/math-tex';
 import { PageBreadcrumbs } from '@/components/page-breadcrumbs';
 import {
+  CURVE_PRESETS,
   curveGraphImage,
   curveOgImage,
+  defaultValues,
   getCurve,
   getRelatedCurves,
+  type CurveDef,
 } from '@/content/curves';
 import { labsForCurve } from '@/content/labs';
-import { libraryText, scenesForCurve } from '@/content/library';
+import { localeText } from '@/content/text';
 import { wonderPath, wondersForCurve } from '@/content/wonders';
 
 import { labCardLabels } from '../labs/-labs-page';
 
-const CATEGORY_LABEL = {
-  parametric: () => m['curves.category.parametric'](),
-  polar: () => m['curves.category.polar'](),
-  roulette: () => m['curves.category.roulette'](),
-  spiral: () => m['curves.category.spiral'](),
-  conic: () => m['curves.category.conic'](),
-  cartesian: () => m['curves.category.cartesian'](),
-} as const;
-
 function CurveDetailPage() {
   const { locale, slug } = Route.useLoaderData();
   const curve = getCurve(slug);
-  if (!curve) return null;
+  // Keyed by slug: moving to a related curve starts from its own defaults.
+  return curve ? (
+    <CurveDetail key={curve.slug} curve={curve} locale={locale} />
+  ) : null;
+}
+
+function CurveDetail({ curve, locale }: { curve: CurveDef; locale: string }) {
+  const [values, setValues] = useState(() => defaultValues(curve));
   const lang = locale === 'zh' ? 'zh' : 'en';
   const creatorHref = `/creator?prompt=${encodeURIComponent(curve.prompt[lang])}`;
   const related = getRelatedCurves(curve);
-  const scenes = scenesForCurve(curve.slug);
   const labs = labsForCurve(curve.slug);
   const wonders = wondersForCurve(curve.slug);
+  const facts = curveFactRows(curve, locale, values);
+  const presets = (CURVE_PRESETS[curve.slug] ?? []).map((preset) => ({
+    label: preset.label[lang],
+    values: preset.values,
+  }));
+  const faq = curveFaq(curve, locale);
 
   return (
     <SitePage>
@@ -68,11 +78,11 @@ function CurveDetailPage() {
               {curve.name[lang]}
             </h1>
             <span className="curvg-pill text-muted-foreground px-3 py-1 font-mono text-xs">
-              {CATEGORY_LABEL[curve.category]()}
+              {curveCategoryLabel(curve.category)}
             </span>
           </div>
           <p className="text-muted-foreground mt-4 max-w-2xl text-base leading-relaxed sm:text-lg">
-            {curve.short[lang]}
+            {plainMath(curve.short[lang])}
           </p>
 
           {/* min-w-0: a long equation scrolls inside its card instead of widening the page. */}
@@ -85,24 +95,42 @@ function CurveDetailPage() {
               ariaLabel={m['curves.detail.preview_aria']({
                 name: curve.name[lang],
               })}
+              values={values}
+              onValuesChange={setValues}
+              presets={presets}
+              presetsLabel={m['curves.detail.presets']()}
+              drawLabels={{
+                play: m['curves.draw.play'](),
+                replay: m['curves.draw.replay'](),
+                stop: m['curves.draw.stop'](),
+              }}
+              drawNext={{
+                href: creatorHref,
+                label: m['curves.draw.video'](),
+              }}
+              exports={{
+                latex: curveLatex(curve),
+                credit: new URL(envConfigs.app_url).host,
+                labels: {
+                  title: m['curves.export.title'](),
+                  svg: m['curves.export.svg'](),
+                  png: m['curves.export.png'](),
+                  csv: m['curves.export.csv'](),
+                  copyLatex: m['curves.export.copy_latex'](),
+                  copied: m['curves.export.copied'](),
+                },
+              }}
             />
             <div className="flex flex-col gap-6">
-              <section
-                className="bg-card rounded-2xl border p-5"
-                aria-labelledby="curve-equation"
-              >
-                <h2
-                  id="curve-equation"
-                  className="text-muted-foreground font-mono text-[10px] tracking-[0.14em] uppercase"
-                >
-                  {m['curves.detail.equation']()}
-                </h2>
-                <div className="mt-2">
-                  {curve.equations.map((tex) => (
-                    <MathTex key={tex} tex={tex} />
-                  ))}
-                </div>
-              </section>
+              {facts ? (
+                <CurveFormulaCard
+                  id="curve-formulas"
+                  title={m['curves.detail.formulas']()}
+                  rows={facts.rows}
+                  where={facts.where}
+                  currentLabel={m['curves.detail.current']()}
+                />
+              ) : null}
               <section className="bg-card rounded-2xl border p-5">
                 <div className="flex items-start gap-3">
                   <span className="bg-accent text-primary flex size-10 shrink-0 items-center justify-center rounded-lg border">
@@ -138,7 +166,7 @@ function CurveDetailPage() {
                   key={paragraph.slice(0, 32)}
                   className="text-muted-foreground text-base leading-relaxed"
                 >
-                  {paragraph}
+                  {plainMath(paragraph)}
                 </p>
               ))}
             </div>
@@ -172,7 +200,7 @@ function CurveDetailPage() {
                 <span className="text-primary select-none" aria-hidden>
                   —
                 </span>
-                {property}
+                {plainMath(property)}
               </li>
             ))}
           </ul>
@@ -185,40 +213,24 @@ function CurveDetailPage() {
           </p>
         </section>
 
-        {scenes.length > 0 && (
-          <section className="curvg-stage curvg-frame border-b px-6 py-12 sm:px-10">
-            <h2 className="curvg-heading text-2xl sm:text-3xl">
-              {m['library.breadcrumb']()}
+        {faq.length > 0 && (
+          <section
+            className="curvg-stage curvg-frame border-b px-6 py-12 sm:px-10"
+            aria-labelledby="curve-faq"
+          >
+            <h2 id="curve-faq" className="curvg-heading text-2xl sm:text-3xl">
+              {m['curves.faq.heading']({ name: curve.name[lang] })}
             </h2>
-            <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {scenes.map((scene) => (
-                <Link
-                  key={scene.slug}
-                  href={`/library/scenes/${scene.slug}`}
-                  className="group bg-card hover:border-primary/50 block overflow-hidden rounded-2xl border transition-colors"
-                >
-                  <div className="bg-muted/30 grid aspect-video place-items-center border-b">
-                    {scene.video ? (
-                      <img
-                        src={scene.video.poster}
-                        alt=""
-                        className="size-full bg-black object-contain"
-                      />
-                    ) : (
-                      <span className="font-heading text-3xl tracking-[0.2em]">
-                        ABC
-                      </span>
-                    )}
-                  </div>
-                  <div className="p-5">
-                    <h3 className="group-hover:text-primary text-lg font-semibold tracking-tight">
-                      {libraryText(scene.title, lang)}
-                    </h3>
-                    <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
-                      {libraryText(scene.question, lang)}
-                    </p>
-                  </div>
-                </Link>
+            <div className="mt-6 max-w-3xl divide-y border-y">
+              {faq.map((item) => (
+                <div key={item.question} className="py-5">
+                  <h3 className="text-base font-semibold tracking-tight">
+                    {item.question}
+                  </h3>
+                  <p className="text-muted-foreground mt-2 text-base leading-relaxed">
+                    {item.answer}
+                  </p>
+                </div>
               ))}
             </div>
           </section>
@@ -255,10 +267,10 @@ function CurveDetailPage() {
                   className="group bg-card hover:border-primary/50 flex flex-col gap-1.5 rounded-2xl border p-5 transition-colors"
                 >
                   <span className="text-primary font-mono text-[11px] tracking-[0.14em] uppercase">
-                    {libraryText(wonder.name, lang)}
+                    {localeText(wonder.name, lang)}
                   </span>
                   <span className="font-heading group-hover:text-primary text-lg leading-snug transition-colors">
-                    {libraryText(wonder.question, lang)}
+                    {localeText(wonder.question, lang)}
                   </span>
                 </Link>
               ))}
@@ -363,7 +375,21 @@ export const Route = createFileRoute('/curves/$slug')({
       isAccessibleForFree: true,
       teaches: curve.properties[lang].map(plainMath),
     };
-    const structuredData = [breadcrumb, resource];
+    const faq = curveFaq(curve, locale);
+    const faqPage = faq.length
+      ? {
+          '@context': 'https://schema.org',
+          '@type': 'FAQPage',
+          mainEntity: faq.map((item) => ({
+            '@type': 'Question',
+            name: item.question,
+            acceptedAnswer: { '@type': 'Answer', text: item.answer },
+          })),
+        }
+      : null;
+    const structuredData = faqPage
+      ? [breadcrumb, resource, faqPage]
+      : [breadcrumb, resource];
     return {
       meta: [
         { title },

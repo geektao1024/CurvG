@@ -32,7 +32,7 @@ export function CreatorWorkspace({
     title: m['creator.title'](),
     subtitle: m['creator.subtitle'](),
     newAnimation: m['creator.new_animation'](),
-    gallery: m['landing.nav.library'](),
+    curves: m['landing.nav.curves'](),
     workflow: m['landing.nav.workflow'](),
     history: m['creator.history'](),
     historyEmpty: m['creator.history_empty'](),
@@ -245,6 +245,9 @@ export function CreatorWorkspace({
     queueElapsed: (minutes: number) => m['creator.queue_elapsed']({ minutes }),
     creditShortfall: (cost: number, balance: number) =>
       m['creator.credit_shortfall']({ cost, balance }),
+    firstRenderFree: m['creator.first_render_free'](),
+    upgradeCta: m['creator.upgrade_cta'](),
+    dailyLimit: m['creator.daily_limit'](),
     toastCompleted: (title: string) => m['creator.toast_completed']({ title }),
     toastFailed: (title: string) => m['creator.toast_failed']({ title }),
     subjects: [

@@ -10,6 +10,7 @@ import {
 } from '@/lib/seo';
 import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
+import { SitePage } from '@/blocks/site-page';
 import { LabSuiteCard } from '@/components/lab-card';
 import { LabSearch } from '@/components/lab-search';
 import { PageHero } from '@/components/page-hero';
@@ -21,9 +22,7 @@ import {
   subjectPath,
   suitesForSubject,
 } from '@/content/labs';
-import { libraryText } from '@/content/library';
-
-import { libraryLocale, LibraryShell } from '../library/-library-page';
+import { contentLocale, localeText } from '@/content/text';
 
 /**
  * /labs hub: subjects (math now, physics reserved), then one card per
@@ -31,11 +30,11 @@ import { libraryLocale, LibraryShell } from '../library/-library-page';
  */
 function LabsIndexPage() {
   const { locale } = Route.useLoaderData();
-  const lang = libraryLocale(locale);
+  const lang = contentLocale(locale);
   const subjects = publicSubjects();
 
   return (
-    <LibraryShell>
+    <SitePage>
       <PageHero
         crumbs={[
           { href: '/', label: m['common.nav.home']() },
@@ -71,11 +70,11 @@ function LabsIndexPage() {
               href={subjectPath(subject.id)}
               className="hover:text-primary transition-colors"
             >
-              {libraryText(subject.name, lang)}
+              {localeText(subject.name, lang)}
             </Link>
           </h2>
           <p className="text-muted-foreground mt-2 max-w-2xl text-sm leading-relaxed">
-            {libraryText(subject.description, lang)}
+            {localeText(subject.description, lang)}
           </p>
           <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {suitesForSubject(subject.id).map((suite) => (
@@ -88,14 +87,14 @@ function LabsIndexPage() {
                 })}
                 startLabel={m['labs.index.start']()}
                 boardAria={m['labs.board.aria']({
-                  title: libraryText(suite.name, lang),
+                  title: localeText(suite.name, lang),
                 })}
               />
             ))}
           </div>
         </section>
       ))}
-    </LibraryShell>
+    </SitePage>
   );
 }
 
@@ -104,7 +103,7 @@ export const Route = createFileRoute('/labs/')({
   head: ({ loaderData }) => {
     if (!loaderData) return {};
     const { locale } = loaderData;
-    const lang = libraryLocale(locale);
+    const lang = contentLocale(locale);
     const opts = { locale: locale as never };
     const title = m['labs.index.meta_title']({}, opts);
     const description = m['labs.index.meta_description']({}, opts);
@@ -113,7 +112,7 @@ export const Route = createFileRoute('/labs/')({
     const items = publicSubjects().flatMap((subject) =>
       suitesForSubject(subject.id).flatMap((suite) =>
         suite.chapters.map((chapter) => ({
-          name: `${libraryText(suite.name, lang)} · ${libraryText(chapter.chapterTitle, lang)}`,
+          name: `${localeText(suite.name, lang)} · ${localeText(chapter.chapterTitle, lang)}`,
           url: localizedUrl(chapterPath(suite, chapter), locale),
         }))
       )

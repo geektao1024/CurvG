@@ -36,23 +36,14 @@ import {
   type Lab,
   type LabSuite,
 } from '@/content/labs';
-import {
-  getCategory,
-  getPrimaryTrail,
-  indexableTopics,
-  libraryPath,
-  libraryText,
-  type LibraryLocale,
-} from '@/content/library';
+import { contentLocale, localeText, type ContentLocale } from '@/content/text';
 import { wonderPath, wondersForLab } from '@/content/wonders';
 
-import { libraryLocale } from '../library/-library-page';
-
-export function labCardLabels(lab: Lab, locale: LibraryLocale) {
+export function labCardLabels(lab: Lab, locale: ContentLocale) {
   return {
     levelLabels: levelLabels(),
     openLabel: m['labs.index.open'](),
-    boardAria: m['labs.board.aria']({ title: libraryText(lab.title, locale) }),
+    boardAria: m['labs.board.aria']({ title: localeText(lab.title, locale) }),
   };
 }
 
@@ -103,7 +94,6 @@ function workspaceLabels(boardTitle: string): WorkspaceLabels {
     relatedLabs: m['labs.related.labs'](),
     relatedWonders: m['labs.related.wonders'](),
     relatedCurves: m['labs.related.curves'](),
-    relatedLibrary: m['labs.related.library'](),
     video: m['labs.ws.video'](),
     captions: m['labs.ws.captions'](),
     makeVideo: m['labs.ws.make_video'](),
@@ -130,9 +120,9 @@ export function resolveWorkspace(
 
 /**
  * Where a lab leads next, in the order a reader would want it: other labs,
- * the curve encyclopedia, then the library topic it is filed under.
+ * the wonders that cite it, then the curve encyclopedia.
  */
-function relatedLinks(lab: Lab, lang: LibraryLocale): WorkspaceLink[] {
+function relatedLinks(lab: Lab, lang: ContentLocale): WorkspaceLink[] {
   const links: WorkspaceLink[] = [];
   for (const slug of lab.related ?? []) {
     const other = getLab(slug);
@@ -141,8 +131,8 @@ function relatedLinks(lab: Lab, lang: LibraryLocale): WorkspaceLink[] {
     links.push({
       kind: 'lab',
       href: labPath(other),
-      label: libraryText(other.chapterTitle, lang),
-      note: libraryText(other.title, lang),
+      label: localeText(other.chapterTitle, lang),
+      note: localeText(other.title, lang),
     });
   }
   // Wonders that send readers here get a link back (docs/NAVIGATION.md §6).
@@ -150,8 +140,8 @@ function relatedLinks(lab: Lab, lang: LibraryLocale): WorkspaceLink[] {
     links.push({
       kind: 'wonder',
       href: wonderPath(wonder),
-      label: libraryText(wonder.name, lang),
-      note: libraryText(wonder.question, lang),
+      label: localeText(wonder.name, lang),
+      note: localeText(wonder.question, lang),
     });
   }
   for (const slug of lab.curveSlugs ?? []) {
@@ -161,21 +151,6 @@ function relatedLinks(lab: Lab, lang: LibraryLocale): WorkspaceLink[] {
         kind: 'curve',
         href: `/curves/${curve.slug}`,
         label: lang === 'zh' ? curve.name.zh : curve.name.en,
-      });
-    }
-  }
-  // Topic pages without curves or scenes are noindex; link their hub instead.
-  const category = getCategory(lab.primaryCategoryId);
-  if (category) {
-    const indexable = indexableTopics().some(
-      (topic) => topic.id === category.id
-    );
-    const target = indexable ? category : getPrimaryTrail(category.id)[0];
-    if (target) {
-      links.push({
-        kind: 'library',
-        href: libraryPath(target),
-        label: libraryText(target.title, lang),
       });
     }
   }
@@ -209,12 +184,12 @@ export function WorkspacePage({
   target: WorkspaceTarget;
   locale: string;
 }) {
-  const lang = libraryLocale(locale);
+  const lang = contentLocale(locale);
   const { suite, lab } = target;
   const chapters = suite.chapters.map((chapter) => ({
     slug: chapter.slug,
     href: chapterPath(suite, chapter),
-    title: libraryText(chapter.chapterTitle, lang),
+    title: localeText(chapter.chapterTitle, lang),
     // Chinese pages carry the English name in italics, as a print textbook would.
     subtitle: lang === 'zh' ? chapter.chapterTitle.en : undefined,
   }));
@@ -229,11 +204,11 @@ export function WorkspacePage({
       crumbs={[
         { label: m['labs.breadcrumb'](), href: '/labs' },
         {
-          label: libraryText(subjectOf(suite).name, lang),
+          label: localeText(subjectOf(suite).name, lang),
           href: `/labs/${suite.subject}`,
         },
         {
-          label: libraryText(suite.name, lang),
+          label: localeText(suite.name, lang),
           href: chapterPath(suite, suite.chapters[0]),
         },
       ]}
@@ -242,10 +217,10 @@ export function WorkspacePage({
       lab={lab}
       board={labBoard(lab, lang)}
       locale={lang}
-      labels={workspaceLabels(libraryText(lab.chapterTitle, lang))}
+      labels={workspaceLabels(localeText(lab.chapterTitle, lang))}
       tags={[
         ...lab.levels.map((level) => levels[level]),
-        ...lab.keyPoints.map((point) => libraryText(point, lang)),
+        ...lab.keyPoints.map((point) => localeText(point, lang)),
       ]}
       related={relatedLinks(lab, lang)}
       videoHref={labVideoHref(lab, lang)}
@@ -272,12 +247,12 @@ function plain(source: string): string {
 }
 
 export function workspaceHead(target: WorkspaceTarget, locale: string) {
-  const lang = libraryLocale(locale);
+  const lang = contentLocale(locale);
   const { suite, lab } = target;
   const opts = { locale: locale as never };
-  const chapterName = libraryText(lab.chapterTitle, lang);
-  const suiteName = libraryText(suite.name, lang);
-  const labTitle = libraryText(lab.title, lang);
+  const chapterName = localeText(lab.chapterTitle, lang);
+  const suiteName = localeText(suite.name, lang);
+  const labTitle = localeText(lab.title, lang);
   // Chinese lab titles often open with the chapter name ("向量加法与数量积：
   // …"); drop it after "{chapter}交互实验 —" so the title does not repeat.
   const titleRest = labTitle.startsWith(chapterName)
@@ -291,7 +266,7 @@ export function workspaceHead(target: WorkspaceTarget, locale: string) {
     `${labTitle} | ${envConfigs.app_name}`,
     m['labs.ws.meta_title_short']({ chapter: chapterName }, opts),
   ]);
-  const description = libraryText(lab.summary, lang);
+  const description = localeText(lab.summary, lang);
   const path = chapterPath(suite, lab);
   const suitePath = chapterPath(suite, suite.chapters[0]);
   const seoLinks = localizedLinks({ path, locale });
@@ -305,7 +280,7 @@ export function workspaceHead(target: WorkspaceTarget, locale: string) {
     '@type': 'LearningResource',
     name: labTitle,
     alternateName: chapterName,
-    headline: libraryText(lab.question, lang),
+    headline: localeText(lab.question, lang),
     description,
     url: seoLinks.canonical,
     image: absoluteUrl(image),
@@ -315,7 +290,7 @@ export function workspaceHead(target: WorkspaceTarget, locale: string) {
     interactivityType: 'active',
     isAccessibleForFree: true,
     educationalLevel: lab.levels.map((level) => levels[level]),
-    teaches: lab.keyPoints.map((point) => libraryText(point, lang)),
+    teaches: lab.keyPoints.map((point) => localeText(point, lang)),
     provider: {
       '@type': 'Organization',
       name: envConfigs.app_name,
@@ -327,7 +302,7 @@ export function workspaceHead(target: WorkspaceTarget, locale: string) {
       url: localizedUrl(suitePath, locale),
       hasPart: suite.chapters.map((chapter) => ({
         '@type': 'LearningResource',
-        name: libraryText(chapter.title, lang),
+        name: localeText(chapter.title, lang),
         url: localizedUrl(chapterPath(suite, chapter), locale),
       })),
     },
@@ -345,20 +320,20 @@ export function workspaceHead(target: WorkspaceTarget, locale: string) {
       '@type': 'Question',
       eduQuestionType: 'Multiple choice',
       learningResourceType: 'Practice problem',
-      text: plain(libraryText(item.question, lang)),
+      text: plain(localeText(item.question, lang)),
       encodingFormat: 'text/markdown',
       suggestedAnswer: item.choices
         .filter((_, i) => i !== item.answer)
         .map((choice) => ({
           '@type': 'Answer',
-          text: plain(libraryText(choice, lang)),
+          text: plain(localeText(choice, lang)),
         })),
       acceptedAnswer: {
         '@type': 'Answer',
-        text: plain(libraryText(item.choices[item.answer], lang)),
+        text: plain(localeText(item.choices[item.answer], lang)),
         answerExplanation: {
           '@type': 'Comment',
-          text: plain(libraryText(item.explanation, lang)),
+          text: plain(localeText(item.explanation, lang)),
         },
       },
     })),
@@ -369,7 +344,7 @@ export function workspaceHead(target: WorkspaceTarget, locale: string) {
       { name: m['common.nav.home']({}, opts), path: '/' },
       { name: m['labs.breadcrumb']({}, opts), path: '/labs' },
       {
-        name: libraryText(subjectOf(suite).name, lang),
+        name: localeText(subjectOf(suite).name, lang),
         path: `/labs/${suite.subject}`,
       },
       // The opening chapter shares the suite URL, so the trail stops there.

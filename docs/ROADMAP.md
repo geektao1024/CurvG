@@ -106,8 +106,9 @@ Phase 2 与 Phase 3 已实现并部署，生产跑出 46 条 completed 阶段与
    `docs/SEO_CONTENT_STRATEGY.md` §0），待部署 + GSC/Bing 提交 sitemap。
    画廊页面仍未实施：只有 API 路由，生产 0 条已发布。
 6. **P2：SymPy 数学验证 + 参数化模板库**——建立 "verified math" 差异化。
-7. **编辑场景库 `/library`。** 规划见 `docs/LIBRARY_PLAN.md`。
-   P0（2026-09-22）已落地：内容图、Hub/Topic 路由、30 条曲线挂进几何子类、
-   导航与 sitemap。P1 场景种子未开工，`/library/scenes/{slug}` 仍是 404。
+7. **曲线百科改版（2026-10-15 完成）**：60 条、7 类，公式卡 + FAQ、作画动画、预设与实时数值、免费导出、列表页筛选。
+   细节与后续（Desmos / GeoGebra 表达式、GSC 复查）见 `docs/CURVE_ENCYCLOPEDIA.md` 第 8 节。
+8. ~~编辑场景库 `/library`~~ **2026-10-15 下线**：知识点由实验室承担、现象由奇观承担，旧地址 301（见 `POSITIONING.md` 第 8 节）。
+   接替它的是曲线百科改版（`docs/CURVE_ENCYCLOPEDIA.md` 第 8 节）。
 
-详细的信息架构见 `docs/SITE_ARCHITECTURE_PLAN.md`。2026-09-22 起，其中「双层：百科 + 画廊」被 `docs/LIBRARY_PLAN.md` 的三层结构取代（对象 `/curves`、编辑场景 `/library`、用户作品 `/gallery`）。该文档文首有修订说明。
+详细的信息架构见 `docs/SITE_ARCHITECTURE_PLAN.md`；与 `docs/POSITIONING.md` 冲突时以后者为准。
