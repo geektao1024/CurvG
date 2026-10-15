@@ -413,6 +413,62 @@ test('Stripe expires an abandoned checkout as canceled so another plan can start
   assert.equal(session.metadata?.orderNo, 'ORD_OLD');
 });
 
+test('Stripe cancellation keeps access until the paid period ends', async () => {
+  const provider = new StripeProvider({
+    secretKey: 'sk_test_fake',
+    publishableKey: 'pk_test_fake',
+  });
+  const periodEnd = 1_800_000_000;
+  let update: any;
+  let immediateCancel = false;
+  (provider as any).client = {
+    subscriptions: {
+      cancel: async () => {
+        immediateCancel = true;
+      },
+      update: async (id: string, params: any) => {
+        update = { id, params };
+        return {
+          id,
+          status: 'active',
+          cancel_at: periodEnd,
+          canceled_at: periodEnd - 86_400,
+          metadata: {},
+          items: {
+            data: [
+              {
+                price: {
+                  id: 'price_1',
+                  product: 'prod_1',
+                  unit_amount: 990,
+                  currency: 'usd',
+                },
+                plan: { interval: 'month', interval_count: 1 },
+                current_period_start: periodEnd - 30 * 86_400,
+                current_period_end: periodEnd,
+              },
+            ],
+          },
+        };
+      },
+    },
+  };
+
+  const session = await provider.cancelSubscription({
+    subscriptionId: 'sub_1',
+  });
+  assert.equal(immediateCancel, false);
+  assert.deepEqual(update, {
+    id: 'sub_1',
+    params: { cancel_at_period_end: true },
+  });
+  assert.equal(session.subscriptionInfo?.status, 'pending_cancel');
+  assert.equal(
+    session.subscriptionInfo?.canceledEndAt?.getTime(),
+    periodEnd * 1000
+  );
+});
+
 test('PayPal subscription APPROVED stays pending at the provider status layer', () => {
   const provider = new PayPalProvider({
     clientId: 'client',

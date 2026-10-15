@@ -1034,7 +1034,14 @@ async function claimCheckoutOrder(
   existingOrder: typeof order.$inferSelect,
   provider: string
 ): Promise<string | null> {
-  const initialStatuses = [OrderStatus.CREATED, OrderStatus.PENDING];
+  // FAILED is claimable too: callers only claim on a provider-verified
+  // success, and a real payment must be fulfilled even if a local step
+  // already gave up on the order (e.g. a lost create-session response).
+  const initialStatuses = [
+    OrderStatus.CREATED,
+    OrderStatus.PENDING,
+    OrderStatus.FAILED,
+  ];
   const staleClaim = isStaleCheckoutClaim(
     existingOrder.status,
     existingOrder.updatedAt
