@@ -28,6 +28,7 @@ import {
 } from '../src/modules/animations/planning';
 import {
   ANIMATION_STAGE_TIMEOUT_MS,
+  animationFailure,
   animationStageDeadlineAt,
   composeAnimationCode,
   composeOrchestratedAnimationCode,
@@ -1568,4 +1569,37 @@ test('completed renderer callback fails closed without valid visual QA', () => {
     }),
     undefined
   );
+});
+
+test('a provider error wrapped by a planning stage keeps its retryable code', () => {
+  const upstream = new ChatProviderError(
+    'Internal error, please try again later',
+    {
+      code: 'upstream_saturated',
+      retryable: true,
+      provider: 'kie',
+      model: 'claude-haiku-5-5',
+    }
+  );
+  const wrapped = new Error(
+    'Animation planning stage failed: intent: Internal error, please try again later',
+    { cause: upstream }
+  );
+  const failure = animationFailure(wrapped, 'spec');
+  assert.equal(failure.code, 'UPSTREAM_SATURATED');
+  assert.equal(failure.retryable, true);
+
+  const fatal = animationFailure(
+    new Error('Animation planning stage failed: intent: bad key', {
+      cause: new ChatProviderError('bad key', {
+        code: 'upstream_auth',
+        retryable: false,
+        provider: 'kie',
+        model: 'claude-haiku-5-5',
+      }),
+    }),
+    'spec'
+  );
+  assert.equal(fatal.code, 'UPSTREAM_AUTH');
+  assert.equal(fatal.retryable, false);
 });

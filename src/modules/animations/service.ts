@@ -1293,10 +1293,34 @@ const failureMessages: Record<AnimationFailure['code'], string> = {
   UNKNOWN: 'CurvG could not finish this step.',
 };
 
-function animationFailure(
-  error: unknown,
+/**
+ * Planning wraps provider errors (AnimationPlanningStageError), so the typed
+ * error that decides retryability sits on the `cause` chain. Classifying only
+ * the wrapper turned every retryable upstream blip into a terminal UNKNOWN
+ * from 2026-08-04 until this fix.
+ */
+function typedFailureCause(error: unknown): unknown {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current instanceof Error && !seen.has(current)) {
+    if (
+      current instanceof AnimationGenerationError ||
+      current instanceof AnimationMathAuditError ||
+      current instanceof ChatProviderError
+    ) {
+      return current;
+    }
+    seen.add(current);
+    current = current.cause;
+  }
+  return error;
+}
+
+export function animationFailure(
+  rawError: unknown,
   stage: AnimationFailureStage
 ): AnimationFailure {
+  const error = typedFailureCause(rawError);
   if (error instanceof AnimationGenerationError) return error.failure;
   if (error instanceof AnimationMathAuditError) {
     return {
@@ -1461,7 +1485,8 @@ async function setFailure(
     : 'generating_code'
 ) {
   const failure = animationFailure(error, stage);
-  const upstream = error instanceof ChatProviderError ? error : undefined;
+  const cause = typedFailureCause(error);
+  const upstream = cause instanceof ChatProviderError ? cause : undefined;
   const diagnostic = (error instanceof Error ? error.message : String(error))
     .replace(/[\r\n]+/g, ' ')
     .slice(0, 1_000);
