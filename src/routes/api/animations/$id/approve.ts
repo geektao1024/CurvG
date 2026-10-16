@@ -35,13 +35,18 @@ async function POST({
       extraKey: session.user.id,
     });
     if (limited) return limited;
-    await readJsonBodyCapped<Record<string, unknown>>(
+    const body = await readJsonBodyCapped<Record<string, unknown>>(
       request,
       REQUEST_BODY_LIMITS.animationApprove
     ).catch((error: unknown) => {
       if (isRequestBodyTooLargeError(error)) throw error;
       return {} as Record<string, unknown>;
     });
+    // "Export in HD" on a finished preview, or an explicit preview render.
+    const delivery =
+      body.delivery === 'hd' || body.delivery === 'preview'
+        ? body.delivery
+        : undefined;
     const configs = await getAllConfigs();
     const detail = await getAnimation(session.user.id, params.id);
     const modelSelection = detail.parts.modelSelection || { choice: 'auto' };
@@ -62,6 +67,8 @@ async function POST({
         animation: detail,
         provider: chatResolution?.provider,
         model: chatResolution?.model,
+        delivery,
+        userApproved: true,
         signal: request.signal,
       })
     );

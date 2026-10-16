@@ -14,6 +14,7 @@ import {
   socialMeta,
   titleWidth,
 } from '@/lib/seo';
+import { templateCreatorHref } from '@/lib/video-templates/href';
 import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
 import { curveCategoryLabel } from '@/blocks/curve-categories';
@@ -32,6 +33,7 @@ import {
   getRelatedCurves,
   type CurveDef,
 } from '@/content/curves';
+import { curveVideoTemplate } from '@/content/curves/video';
 import { labsForCurve } from '@/content/labs';
 import { localeText } from '@/content/text';
 import { wonderPath, wondersForCurve } from '@/content/wonders';
@@ -50,7 +52,12 @@ function CurveDetailPage() {
 function CurveDetail({ curve, locale }: { curve: CurveDef; locale: string }) {
   const [values, setValues] = useState(() => defaultValues(curve));
   const lang = locale === 'zh' ? 'zh' : 'en';
-  const creatorHref = `/creator?prompt=${encodeURIComponent(curve.prompt[lang])}`;
+  // A curve a template can draw opens it with the sliders' current values;
+  // the rest keep the free-text brief.
+  const videoTemplate = curveVideoTemplate(curve.slug, values);
+  const creatorHref = videoTemplate
+    ? templateCreatorHref(videoTemplate.templateId, videoTemplate.params)
+    : `/creator?prompt=${encodeURIComponent(curve.prompt[lang])}`;
   const related = getRelatedCurves(curve);
   const labs = labsForCurve(curve.slug);
   const wonders = wondersForCurve(curve.slug);

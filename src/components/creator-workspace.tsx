@@ -73,7 +73,6 @@ import {
   type AnimationSummary,
 } from '@/lib/animation';
 import type { AnimationProductionMode } from '@/lib/animation-simulation';
-import type { AnimationTemplateSummary } from '@/lib/animation-template';
 import {
   apiDelete,
   ApiError,
@@ -85,6 +84,16 @@ import {
 } from '@/lib/api-client';
 import { detectMathObjectType } from '@/lib/math-preview';
 import { cn } from '@/lib/utils';
+import type { PublicVideoTemplate } from '@/lib/video-templates/public';
+import type { TemplateParamValues } from '@/lib/video-templates/types';
+import {
+  MathWarningsPanel,
+  TemplateStudio,
+  TemplateVideoPanel,
+  type TemplateMatchView,
+  type TemplateRenderInput,
+  type TemplateStudioCopy,
+} from '@/components/creator-templates';
 import { PixelRevealLink } from '@/components/pixel-reveal-link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -348,7 +357,10 @@ export interface CreatorWorkspaceCopy {
   /** Composer warning when the balance cannot cover a render. */
   creditShortfall: (cost: number, balance: number) => string;
   /** Composer note while the account's first render is still free. */
-  firstRenderFree: string;
+  /** Free previews left, shown when the balance cannot pay for HD. */
+  freePreviewsLeft: (left: number) => string;
+  /** The template-first creator. */
+  templates: TemplateStudioCopy;
   /** Link to the plans wherever a render is short of credits. */
   upgradeCta: string;
   /** Toast when a free account has started its videos for the day. */
@@ -540,8 +552,6 @@ interface GuestCreatorDraft {
   formula: string;
   formulaIntent: string;
   mathObjectType: AnimationMathObjectType;
-  selectedTemplateId?: string;
-  templateValues: Record<string, string>;
   subject: AnimationSubject;
 }
 
@@ -571,10 +581,7 @@ function readGuestCreatorDraft(): GuestCreatorDraft | undefined {
         'biology',
         'chemistry',
         'economics',
-      ].includes(value.subject || '') ||
-      !value.templateValues ||
-      typeof value.templateValues !== 'object' ||
-      Array.isArray(value.templateValues)
+      ].includes(value.subject || '')
     ) {
       window.sessionStorage.removeItem(GUEST_DRAFT_STORAGE_KEY);
       return undefined;
@@ -1648,12 +1655,7 @@ function Welcome({
   onFormulaIntentChange,
   mathObjectType,
   onMathObjectTypeChange,
-  templates,
-  templatesLoading,
-  selectedTemplateId,
-  onSelectedTemplateIdChange,
-  templateValues,
-  onTemplateValuesChange,
+  templateStudio,
 }: {
   copy: CreatorWorkspaceCopy;
   locale: string;
@@ -1682,12 +1684,8 @@ function Welcome({
   onFormulaIntentChange: (value: string) => void;
   mathObjectType: AnimationMathObjectType;
   onMathObjectTypeChange: (value: AnimationMathObjectType) => void;
-  templates: AnimationTemplateSummary[];
-  templatesLoading: boolean;
-  selectedTemplateId?: string;
-  onSelectedTemplateIdChange: (value: string) => void;
-  templateValues: Record<string, string>;
-  onTemplateValuesChange: (value: Record<string, string>) => void;
+  /** The template-first creator (the paid path), shown on its tab. */
+  templateStudio: ReactNode;
 }) {
   const [activeGroup, setActiveGroup] = useState(
     copy.suggestionGroups[0]?.value || ''
@@ -1695,21 +1693,17 @@ function Welcome({
   const activeSuggestions =
     copy.suggestionGroups.find((group) => group.value === activeGroup) ||
     copy.suggestionGroups[0];
-  const selectedTemplate = templates.find(
-    (template) => template.id === selectedTemplateId
-  );
   const entryTabs: Array<{
     value: AnimationCreationMode;
     label: string;
     icon: typeof LayoutGrid;
   }> = [
+    { value: 'template', label: copy.entryTemplate, icon: LayoutGrid },
     {
       value: 'description',
       label: copy.entryDescription,
       icon: MessageSquareText,
     },
-    { value: 'template', label: copy.entryTemplate, icon: LayoutGrid },
-    { value: 'formula', label: copy.entryFormula, icon: SquareSigma },
   ];
   const symbols = [
     ['∫', '\\int_{0}^{1}'],
@@ -1770,113 +1764,7 @@ function Welcome({
           })}
         </div>
 
-        {creationMode === 'template' && (
-          <div className="mt-8 w-full">
-            <div className="mx-auto max-w-2xl text-center">
-              <p className="curvg-meta">{copy.templateEyebrow}</p>
-              <h2 className="curvg-heading mt-2 text-2xl sm:text-3xl">
-                {copy.templateTitle}
-              </h2>
-              <p className="text-muted-foreground mt-3 text-sm leading-6">
-                {copy.templateDescription}
-              </p>
-            </div>
-            {templatesLoading ? (
-              <div className="text-muted-foreground mt-10 flex items-center justify-center gap-2 text-sm">
-                <LoaderCircle className="size-4 animate-spin" /> {copy.loading}
-              </div>
-            ) : templates.length === 0 ? (
-              <p className="text-muted-foreground mt-10 text-center text-sm">
-                {copy.templateEmpty}
-              </p>
-            ) : (
-              <div className="mt-7 grid gap-3 md:grid-cols-3">
-                {templates.map((template, index) => (
-                  <button
-                    key={template.id}
-                    type="button"
-                    onClick={() => {
-                      onSelectedTemplateIdChange(template.id);
-                      onTemplateValuesChange(
-                        Object.fromEntries(
-                          template.parameters.map((parameter) => [
-                            parameter.key,
-                            parameter.defaultValue,
-                          ])
-                        )
-                      );
-                    }}
-                    className={cn(
-                      'bg-card focus-visible:ring-primary/45 group relative overflow-hidden rounded-2xl border p-5 text-left transition-[border-color,transform,box-shadow] focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none',
-                      selectedTemplateId === template.id
-                        ? 'border-primary/45 shadow-[0_20px_55px_-40px_color-mix(in_oklab,var(--primary)_75%,transparent)]'
-                        : 'hover:border-primary/25 hover:-translate-y-0.5'
-                    )}
-                  >
-                    <span className="text-primary font-mono text-[10px] tracking-[0.14em]">
-                      0{index + 1}
-                    </span>
-                    <div className="mt-10 font-mono text-lg tracking-tight">
-                      {template.previewFormula}
-                    </div>
-                    <h3 className="mt-5 font-semibold">{template.title}</h3>
-                    <p className="text-muted-foreground mt-2 text-sm leading-6">
-                      {template.description}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            )}
-            {selectedTemplate && (
-              <form
-                onSubmit={onSubmit}
-                className="bg-card/85 mt-4 grid gap-4 rounded-2xl border p-4 sm:grid-cols-[1fr_auto] sm:items-end sm:p-5"
-              >
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {selectedTemplate.parameters.map((parameter) => (
-                    <label
-                      key={parameter.key}
-                      className="grid gap-2 text-sm font-medium"
-                    >
-                      {locale.toLowerCase().startsWith('zh')
-                        ? parameter.labelZh
-                        : parameter.labelEn}
-                      <input
-                        type={parameter.type === 'color' ? 'color' : 'text'}
-                        value={
-                          templateValues[parameter.key] ||
-                          parameter.defaultValue
-                        }
-                        onChange={(event) =>
-                          onTemplateValuesChange({
-                            ...templateValues,
-                            [parameter.key]: event.target.value,
-                          })
-                        }
-                        className={cn(
-                          'border-input bg-background focus:ring-primary/35 h-11 rounded-xl border px-3 font-mono text-sm outline-none focus:ring-2',
-                          parameter.type === 'color' && 'w-full p-1.5'
-                        )}
-                      />
-                    </label>
-                  ))}
-                </div>
-                <Button
-                  type="submit"
-                  className="bg-foreground text-background hover:bg-primary h-11"
-                  disabled={processing}
-                >
-                  {processing ? (
-                    <LoaderCircle className="animate-spin" />
-                  ) : (
-                    <Play />
-                  )}
-                  {user ? copy.templateUse : copy.signInToCreate}
-                </Button>
-              </form>
-            )}
-          </div>
-        )}
+        {creationMode === 'template' && templateStudio}
 
         {creationMode === 'formula' && (
           <div className="mt-8 grid w-full gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)]">
@@ -4425,12 +4313,15 @@ export function CreatorWorkspace({
   locale,
   initialAnimationId,
   initialPrompt,
+  initialTemplate,
   guestShell,
 }: {
   copy: CreatorWorkspaceCopy;
   locale: string;
   initialAnimationId?: string;
   initialPrompt?: string;
+  /** From a lab, curve or wonder page: open this template, filled in. */
+  initialTemplate?: { templateId: string; params: TemplateParamValues };
   /**
    * Page shell for signed-out visitors (and while the session loads): the
    * site page with header and footer, so the page scrolls and frames like
@@ -4443,8 +4334,9 @@ export function CreatorWorkspace({
   const { data: session, isPending: sessionPending } = useSession();
   const user = session?.user;
   const [selectedId, setSelectedId] = useState(initialAnimationId);
+  // Templates are the paid path; free generation is the beta tab.
   const [creationMode, setCreationMode] =
-    useState<AnimationCreationMode>('description');
+    useState<AnimationCreationMode>('template');
   const [productionMode, setProductionMode] =
     useState<AnimationProductionMode>('explainer');
   const [prompt, setPrompt] = useState(initialPrompt ?? '');
@@ -4453,10 +4345,6 @@ export function CreatorWorkspace({
   const [mathObjectType, setMathObjectType] =
     useState<AnimationMathObjectType>('function');
   const [mathTypeOverridden, setMathTypeOverridden] = useState(false);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>();
-  const [templateValues, setTemplateValues] = useState<Record<string, string>>(
-    {}
-  );
   const [subject, setSubject] = useState<AnimationSubject>('general');
   const [modelValue, setModelValue] = useState(DEFAULT_CREATOR_MODEL_VALUE);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -4483,9 +4371,11 @@ export function CreatorWorkspace({
   const detailQueryKey = ['animation', user?.id, selectedId] as const;
 
   const templatesQuery = useQuery({
-    queryKey: ['animation-templates', locale],
+    queryKey: ['video-templates', locale],
     queryFn: () =>
-      apiGet<AnimationTemplateSummary[]>('/api/animation-templates'),
+      apiGet<PublicVideoTemplate[]>(
+        `/api/video-templates?locale=${encodeURIComponent(locale)}`
+      ),
     enabled: hydrated,
     staleTime: 10 * 60_000,
   });
@@ -4525,6 +4415,16 @@ export function CreatorWorkspace({
     refetchInterval: (query) => {
       const animation = query.state.data;
       if (isAnimationProgressing(animation?.status)) return 2500;
+      // A beta plan with no unresolved findings only passes through
+      // awaiting_approval on its way to rendering; one with findings waits
+      // for the user, so polling stops there.
+      if (
+        animation?.status === 'awaiting_approval' &&
+        animation.parts.creationMode !== 'template' &&
+        !animation.parts.mathWarnings?.length
+      ) {
+        return 4000;
+      }
       // Older Worker versions briefly persisted a retryable planning failure
       // between Workflow attempts. Keep polling that narrow recovery window so
       // an open tab can observe the durable retry returning to generating.
@@ -4607,9 +4507,17 @@ export function CreatorWorkspace({
   // planning — the render step discovering it after the wait was the worst
   // failure mode in production. Planning itself stays free and available.
   // A new account's first render is free, so say so instead of warning.
+  const balance = creditsQuery.data?.balance;
+  const canPayHd =
+    !!catalog &&
+    (catalog.renderCredits === 0 ||
+      (typeof balance === 'number' && balance >= catalog.renderCredits));
   const creditShortfallNotice: ReactNode =
-    user && catalog?.freeRender ? (
-      copy.firstRenderFree
+    user && catalog && !canPayHd && (catalog.freePreviews ?? 0) > 0 ? (
+      <>
+        {copy.freePreviewsLeft(catalog.freePreviews ?? 0)}{' '}
+        <UpgradeLink copy={copy} animationId={selectedId} />
+      </>
     ) : user &&
       catalog &&
       catalog.renderCredits > 0 &&
@@ -4702,8 +4610,9 @@ export function CreatorWorkspace({
           preset.models.includes(detail.model)
       )?.key
     : undefined;
-  const displayedDetailModel =
-    detail?.provider === 'curvg' && detail.model.startsWith('deterministic-')
+  const displayedDetailModel = detail?.parts.template
+    ? copy.templates.templateLabel
+    : detail?.provider === 'curvg' && detail.model.startsWith('deterministic-')
       ? copy.modelDeterministicFallback
       : detailModelPresetKey
         ? copy.curatedModels[detailModelPresetKey].label
@@ -4729,8 +4638,6 @@ export function CreatorWorkspace({
       setFormulaIntent(draft.formulaIntent);
       setMathObjectType(draft.mathObjectType);
       setMathTypeOverridden(true);
-      setSelectedTemplateId(draft.selectedTemplateId);
-      setTemplateValues(draft.templateValues);
       setSubject(draft.subject);
     }
     if (user) window.sessionStorage.removeItem(GUEST_DRAFT_STORAGE_KEY);
@@ -4742,8 +4649,7 @@ export function CreatorWorkspace({
     const hasMeaningfulDraft =
       (creationMode === 'description' && !!prompt.trim()) ||
       (creationMode === 'formula' &&
-        (!!formulaIntent.trim() || formula.trim() !== 'sin(x)')) ||
-      creationMode === 'template';
+        (!!formulaIntent.trim() || formula.trim() !== 'sin(x)'));
     if (!hasMeaningfulDraft) {
       window.sessionStorage.removeItem(GUEST_DRAFT_STORAGE_KEY);
       return;
@@ -4757,8 +4663,6 @@ export function CreatorWorkspace({
       formula,
       formulaIntent,
       mathObjectType,
-      selectedTemplateId,
-      templateValues,
       subject,
     };
     window.sessionStorage.setItem(
@@ -4773,25 +4677,9 @@ export function CreatorWorkspace({
     mathObjectType,
     prompt,
     productionMode,
-    selectedTemplateId,
     subject,
-    templateValues,
     user,
   ]);
-
-  useEffect(() => {
-    const first = templatesQuery.data?.[0];
-    if (!guestDraftReady || !first || selectedTemplateId) return;
-    setSelectedTemplateId(first.id);
-    setTemplateValues(
-      Object.fromEntries(
-        first.parameters.map((parameter) => [
-          parameter.key,
-          parameter.defaultValue,
-        ])
-      )
-    );
-  }, [guestDraftReady, selectedTemplateId, templatesQuery.data]);
 
   useEffect(() => {
     const stored = Number(window.localStorage.getItem(SPLIT_RATIO_STORAGE_KEY));
@@ -5148,14 +5036,6 @@ export function CreatorWorkspace({
 
   const createMutation = useMutation({
     mutationFn: (request: CreatorGenerationRequest) => {
-      if (request.mode === 'template') {
-        return apiPost<AnimationDetail>('/api/animations', {
-          mode: request.mode,
-          productionMode: request.productionMode,
-          templateId: request.templateId,
-          values: request.values,
-        });
-      }
       return streamGeneration('/api/animations', {
         ...request,
       });
@@ -5247,6 +5127,76 @@ export function CreatorWorkspace({
     },
   });
 
+  // Template path: match free text to a template, create and render a
+  // template video, change its parameters, export a preview in HD.
+  async function matchTemplate(text: string): Promise<TemplateMatchView> {
+    try {
+      return await apiPost<TemplateMatchView>('/api/video-templates/match', {
+        prompt: text,
+        locale,
+      });
+    } catch (error) {
+      toast.error(requestFailureMessage(copy, error));
+      throw error;
+    }
+  }
+
+  const createTemplateMutation = useMutation({
+    mutationFn: (input: TemplateRenderInput) =>
+      apiPost<AnimationDetail>('/api/animations', {
+        mode: 'template',
+        templateId: input.templateId,
+        params: input.params,
+        frame: input.frame,
+        theme: input.theme,
+        prompt: input.prompt,
+        locale,
+      }),
+    onSuccess: acceptDetail,
+    onError: (error: Error) => {
+      queryClient.invalidateQueries({ queryKey: animationsQueryKey });
+      queryClient.invalidateQueries({ queryKey: modelsQueryKey });
+      toast.error(requestFailureMessage(copy, error));
+    },
+  });
+
+  function createFromTemplate(input: TemplateRenderInput) {
+    if (sessionPending) return;
+    if (!user) {
+      router.push(
+        `/sign-in?callbackUrl=${encodeURIComponent(
+          `/creator?template=${encodeURIComponent(input.templateId)}&params=${encodeURIComponent(JSON.stringify(input.params))}`
+        )}`
+      );
+      return;
+    }
+    createTemplateMutation.mutate(input);
+  }
+
+  const updateTemplateMutation = useMutation({
+    mutationFn: (params: TemplateParamValues) =>
+      apiPost<AnimationDetail>(`/api/animations/${selectedId}/template`, {
+        params,
+      }),
+    onSuccess: acceptDetail,
+    onError: (error: Error) => toast.error(requestFailureMessage(copy, error)),
+  });
+
+  const renderMutation = useMutation({
+    mutationFn: (delivery?: 'hd') =>
+      apiPost<AnimationDetail>(`/api/animations/${selectedId}/approve`, {
+        ...(delivery ? { delivery } : {}),
+      }),
+    onSuccess: (next) => {
+      acceptDetail(next);
+      queryClient.invalidateQueries({ queryKey: modelsQueryKey });
+    },
+    onError: (error: Error) => {
+      queryClient.invalidateQueries({ queryKey: detailQueryKey });
+      toast.error(requestFailureMessage(copy, error));
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiDelete(`/api/animations/${id}`),
     onSuccess: (_, id) => {
@@ -5282,6 +5232,9 @@ export function CreatorWorkspace({
     createMutation.isPending ||
     reviseMutation.isPending ||
     retryProductionMutation.isPending ||
+    createTemplateMutation.isPending ||
+    updateTemplateMutation.isPending ||
+    renderMutation.isPending ||
     isAnimationBusy(detail?.status);
 
   function startNew() {
@@ -5290,7 +5243,7 @@ export function CreatorWorkspace({
     setPendingAnimation(undefined);
     setSelectedId(undefined);
     setPrompt('');
-    setCreationMode('description');
+    setCreationMode('template');
     setProductionMode('explainer');
     setFormulaIntent('');
     setMathObjectType(detectMathObjectType(formula));
@@ -5364,22 +5317,8 @@ export function CreatorWorkspace({
       : mode === 'description'
         ? productionMode
         : 'explainer';
-    if (mode === 'template') {
-      if (!selectedTemplateId) return;
-      createMutation.mutate({
-        mode,
-        productionMode: 'explainer',
-        templateId: selectedTemplateId,
-        values: templateValues,
-        prompt:
-          templatesQuery.data?.find(
-            (template) => template.id === selectedTemplateId
-          )?.title || copy.entryTemplate,
-        subject: 'math',
-        ...selectedModelRequest(),
-      });
-      return;
-    }
+    // Template videos are created by the template studio, not this form.
+    if (mode === 'template') return;
     const requestPrompt =
       mode === 'formula' ? formulaIntent.trim() : prompt.trim();
     if (!requestPrompt) return;
@@ -5427,7 +5366,9 @@ export function CreatorWorkspace({
       : copy.loadFailed;
   const legacyArchive =
     !!detail?.parts.spec && !isAnimationSpecRenderable(detail.parts.spec);
-  const templateArchive = detail?.parts.creationMode === 'template';
+  // Template rows from before the 2026-10 library have no parameters to edit.
+  const templateArchive =
+    detail?.parts.creationMode === 'template' && !detail.parts.template;
 
   if ((!hydrated || sessionPending) && selectedId) {
     return (
@@ -5437,6 +5378,31 @@ export function CreatorWorkspace({
       </div>
     );
   }
+
+  const templatePricing = {
+    freePreviews: catalog?.freePreviews,
+    renderCredits: catalog?.renderCredits ?? 20,
+    balance,
+  };
+  const templateStudio = (
+    <TemplateStudio
+      copy={copy.templates}
+      templates={templatesQuery.data ?? []}
+      loading={templatesQuery.isLoading}
+      signedIn={hasHydratedUser}
+      initialPrompt={initialPrompt}
+      initialTemplate={initialTemplate}
+      pricing={templatePricing}
+      upgradeHref={upgradeHref()}
+      creating={createTemplateMutation.isPending}
+      onMatch={matchTemplate}
+      onCreate={createFromTemplate}
+      onBeta={(text) => {
+        setPrompt(text);
+        setCreationMode('description');
+      }}
+    />
+  );
 
   if (!hydrated || sessionPending || !user) {
     const welcome = (
@@ -5478,12 +5444,7 @@ export function CreatorWorkspace({
           setMathObjectType(value);
           setMathTypeOverridden(true);
         }}
-        templates={templatesQuery.data ?? []}
-        templatesLoading={templatesQuery.isLoading}
-        selectedTemplateId={selectedTemplateId}
-        onSelectedTemplateIdChange={setSelectedTemplateId}
-        templateValues={templateValues}
-        onTemplateValuesChange={setTemplateValues}
+        templateStudio={templateStudio}
       />
     );
     if (guestShell) return guestShell(welcome);
@@ -5575,12 +5536,7 @@ export function CreatorWorkspace({
               setMathObjectType(value);
               setMathTypeOverridden(true);
             }}
-            templates={templatesQuery.data ?? []}
-            templatesLoading={templatesQuery.isLoading}
-            selectedTemplateId={selectedTemplateId}
-            onSelectedTemplateIdChange={setSelectedTemplateId}
-            templateValues={templateValues}
-            onTemplateValuesChange={setTemplateValues}
+            templateStudio={templateStudio}
           />
         </section>
       </div>
@@ -5765,12 +5721,28 @@ export function CreatorWorkspace({
                     retryingPlan={reviseMutation.isPending}
                     onRetryPlan={retryFailedPlan}
                   />
-                  <ArtifactNudge
-                    detail={detail}
-                    copy={copy}
-                    retrying={retryProductionMutation.isPending}
-                    onRetry={() => retryProductionMutation.mutate()}
-                  />
+                  {detail.status === 'awaiting_approval' &&
+                    !!detail.parts.mathWarnings?.length && (
+                      <MathWarningsPanel
+                        copy={copy.templates}
+                        warnings={detail.parts.mathWarnings}
+                        busy={processing}
+                        onApprove={() => renderMutation.mutate(undefined)}
+                        onUseTemplates={() => {
+                          const text = detail.parts.prompt;
+                          startNew();
+                          setPrompt(text);
+                        }}
+                      />
+                    )}
+                  {!detail.parts.template && (
+                    <ArtifactNudge
+                      detail={detail}
+                      copy={copy}
+                      retrying={retryProductionMutation.isPending}
+                      onRetry={() => retryProductionMutation.mutate()}
+                    />
+                  )}
                   <div className="xl:hidden">
                     <ArtifactInspector
                       detail={detail}
@@ -5791,7 +5763,20 @@ export function CreatorWorkspace({
             </div>
 
             <div className="bg-background/96 shrink-0 border-t px-3 py-3 sm:px-5">
-              {legacyArchive || templateArchive ? (
+              {detail?.parts.template ? (
+                <TemplateVideoPanel
+                  copy={copy.templates}
+                  detail={detail}
+                  template={templatesQuery.data?.find(
+                    (template) => template.id === detail.parts.template?.id
+                  )}
+                  pricing={templatePricing}
+                  upgradeHref={upgradeHref(detail.id)}
+                  busy={processing}
+                  onUpdate={(params) => updateTemplateMutation.mutate(params)}
+                  onRender={(delivery) => renderMutation.mutate(delivery)}
+                />
+              ) : legacyArchive || templateArchive ? (
                 <div className="bg-card flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold">

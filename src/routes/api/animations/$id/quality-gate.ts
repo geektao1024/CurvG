@@ -133,6 +133,43 @@ async function POST({
     let renderError: string | undefined;
     const approvedCode =
       typeof body.approvedCode === 'string' ? body.approvedCode : undefined;
+
+    // Template films are correct by construction (their numbers are computed
+    // and tested before rendering), so the model review and model repair
+    // never run. The pixel metrics are still recorded; a render error is a
+    // template bug and fails closed instead of inviting a model rewrite.
+    if (context.template) {
+      if (approvedCode !== undefined && approvedCode !== context.code) {
+        return respErr('Template approved code does not match its source', {
+          status: 409,
+        });
+      }
+      const templateQa =
+        kind === 'render_error'
+          ? undefined
+          : validateAnimationVisualQaReport(body.visualQa);
+      const templateAction = kind === 'render_error' ? 'reject' : 'approve';
+      if (kind === 'render_error') {
+        console.error('[animation-quality-gate] template render failed', {
+          animationId: context.id,
+          jobId,
+          error: String(body.error || '').slice(0, 2_000),
+        });
+      }
+      await recordAnimationQualityGate({
+        id: params.id,
+        jobId,
+        attempt: attemptNumber,
+        kind,
+        action: templateAction,
+        videoDigest,
+        visualQa: templateQa,
+        visualReview: templateQa
+          ? deterministicReviewFromQa({ qa: templateQa, jobId })
+          : undefined,
+      });
+      return respData({ action: templateAction, attempt: attemptNumber });
+    }
     const reviewsCandidateSource =
       kind === 'final_review' || kind === 'delivery_review';
     if (

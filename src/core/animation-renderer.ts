@@ -29,6 +29,11 @@ export interface AnimationRenderRequest {
   productionMode?: 'explainer' | 'simulation_short';
   /** Stable submission identity for timeout-safe renderer retries. */
   idempotencyKey: string;
+  /**
+   * preview: 720p with a CurvG watermark (free renders); hd: clean 1080p
+   * (paid). Defaults to hd.
+   */
+  delivery?: 'preview' | 'hd';
   simulationArtifacts?: AnimationSimulationRenderArtifacts;
   signal?: AbortSignal;
 }
@@ -151,8 +156,9 @@ export class HttpAnimationRenderer implements AnimationRenderer {
         ...(request.simulationArtifacts
           ? { simulationArtifacts: request.simulationArtifacts }
           : {}),
+        delivery: request.delivery || 'hd',
         format: 'mp4',
-        quality: '1080p30',
+        quality: request.delivery === 'preview' ? '720p30' : '1080p30',
       }),
       signal: request.signal
         ? AbortSignal.any([request.signal, AbortSignal.timeout(30_000)])

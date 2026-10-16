@@ -38,9 +38,14 @@ function loadRenderedVideoMetadataParser(): RenderedVideoMetadataParser {
   );
   assert.notEqual(firstHelper, -1);
   assert.notEqual(evidenceBuilder, -1);
-  const helperSource = rendererSource
+  const sizeStart = rendererSource.indexOf('export function deliverySize(');
+  const sizeEnd = rendererSource.indexOf('export function deliveryQuality(');
+  assert.notEqual(sizeStart, -1);
+  const helperSource = `${rendererSource
+    .slice(sizeStart, sizeEnd)
+    .replace('export function', 'function')}\n${rendererSource
     .slice(firstHelper, evidenceBuilder)
-    .replace(/throw new NonRetryableRenderError/g, 'throw new Error');
+    .replace(/throw new NonRetryableRenderError/g, 'throw new Error')}`;
   const javascript = ts.transpileModule(
     `${helperSource}\nreturn parseRenderedVideoMetadata;`,
     {
@@ -350,6 +355,20 @@ print(json.dumps({
   assert.deepEqual(output.retained_segment, [[0, 0.2]]);
 });
 
+test('renderer sizes preview deliveries at 720p with a burned-in watermark', () => {
+  assert.match(
+    rendererSource,
+    /body\.delivery === 'preview' \? 'preview' : 'hd'/
+  );
+  assert.match(rendererSource, /deliveryContract\?\.delivery === 'preview'/);
+  assert.match(
+    rendererSource,
+    /-vf "\$\{watermarkFilter\(deliveryContract\.frame\)\}"/
+  );
+  assert.match(rendererSource, /text='CurvG\.com/);
+  assert.match(rendererSource, /DejaVuSans-Bold\.ttf/);
+});
+
 test('renderer QA-repairs previews before an independently reviewed 1080p30 delivery', () => {
   assert.equal(rendererSource.match(/manim -ql --format=mp4/g)?.length, 1);
   assert.equal(
@@ -357,7 +376,11 @@ test('renderer QA-repairs previews before an independently reviewed 1080p30 deli
     1
   );
   assert.doesNotMatch(rendererSource, /\/workspace\/final-media/);
-  assert.match(rendererSource, /quality: '1080p30'/);
+  assert.match(rendererSource, /quality: deliveryQuality\(job\.delivery\)/);
+  assert.match(
+    rendererSource,
+    /delivery === 'preview' \? '720p30-watermarked' : '1080p30'/
+  );
   assert.doesNotMatch(rendererSource, /kind: 'visual_review'/);
   assert.equal(rendererSource.match(/kind: 'final_review'/g)?.length, 1);
   assert.equal(rendererSource.match(/kind: 'delivery_review'/g)?.length, 1);
@@ -417,7 +440,7 @@ test('renderer keeps previews silent and wires deterministic audio only into for
       "if (deliveryContract?.productionMode === 'simulation_short')"
     ),
     rendererSource.indexOf(
-      '} else {',
+      '} else ',
       rendererSource.indexOf(
         "if (deliveryContract?.productionMode === 'simulation_short')"
       )
@@ -467,11 +490,11 @@ test('renderer verifies a machine-readable MP4 delivery contract', () => {
   assert.match(rendererSource, /stream\.pix_fmt !== 'yuv420p'/);
   assert.match(
     rendererSource,
-    /expectedWidth = deliveryContract\.frame === '9:16' \? 1080 : 1920/
+    /width: expectedWidth, height: expectedHeight \} = deliverySize\(\s*deliveryContract\.frame,\s*deliveryContract\.delivery\s*\)/
   );
   assert.match(
     rendererSource,
-    /expectedHeight = deliveryContract\.frame === '9:16' \? 1920 : 1080/
+    /delivery === 'preview' \? \[1280, 720\] : \[1920, 1080\]/
   );
   assert.match(rendererSource, /TARGET_VIDEO_FRAME_RATE = 30/);
   assert.match(rendererSource, /VIDEO_FRAME_RATE_TOLERANCE = 0\.1/);

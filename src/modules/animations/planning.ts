@@ -92,7 +92,8 @@ function maxStageFormatRepairs(stage: AnimationPlanningStageName): number {
   return stage === 'scene' ? 3 : 2;
 }
 const MAX_INTEGRATION_REPAIRS = 2;
-const MAX_MATH_REVISIONS = 2;
+// One revision, then unresolved findings go to the user as warnings.
+const MAX_MATH_REVISIONS = 1;
 // Reserve an equal share of the stage window for each of the two lead
 // failover targets (2026-08-04). The scene stage produces the largest
 // artifact by far — production showed both vendors cut at a flat 150s cap
@@ -1615,12 +1616,15 @@ async function generatePersistentAnimationSpecStrict(
     mathReview = await planning.audit(spec);
   }
 
+  // Unresolved mathematical findings no longer fail the run (2026-10-16):
+  // the caller turns them into warnings and the user decides.
   if (mathReview && mathReviewBlocks(mathReview)) {
-    throw new Error(
-      `Strict mathematical audit was not approved: ${mathReview.summary}`
-    );
-  }
-  if (mathReview && !isAnimationMathReviewApproved(mathReview)) {
+    console.info('[animation-planning] awaiting user decision on math audit', {
+      chatId: planning.context.chatId,
+      runId: planning.context.runId,
+      findings: mathReview.issues.map((issue) => issue.problem.slice(0, 200)),
+    });
+  } else if (mathReview && !isAnimationMathReviewApproved(mathReview)) {
     console.info('[animation-planning] shipped with visual audit warnings', {
       chatId: planning.context.chatId,
       runId: planning.context.runId,

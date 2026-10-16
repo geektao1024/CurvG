@@ -26,6 +26,11 @@ interface RenderJob {
   productionMode: 'explainer' | 'simulation_short';
   idempotencyKey: string;
   protocolVersion: 'legacy' | 'curvg-renderer/v2';
+  /**
+   * preview: 720p30 with a CurvG watermark (free renders); hd: clean
+   * 1080p30 (paid). Absent on jobs queued before 2026-10-16: hd.
+   */
+  delivery?: RenderDelivery;
   simulationArtifacts?: {
     eventsJsonl: string;
     stateTrackJson: string;
@@ -54,6 +59,35 @@ interface Env {
   RENDER_QUEUE: Queue<QueuedRenderJob>;
   CALLBACK_ORIGIN: string;
   RENDERER_TOKEN: string;
+}
+
+type RenderDelivery = 'preview' | 'hd';
+
+/** Pixel size of the formal deliverable for a frame and delivery profile. */
+export function deliverySize(
+  frame: '16:9' | '9:16',
+  delivery: RenderDelivery = 'hd'
+): { width: number; height: number } {
+  const [long, short] = delivery === 'preview' ? [1280, 720] : [1920, 1080];
+  return frame === '9:16'
+    ? { width: short, height: long }
+    : { width: long, height: short };
+}
+
+export function deliveryQuality(delivery: RenderDelivery = 'hd'): string {
+  return delivery === 'preview' ? '720p30-watermarked' : '1080p30';
+}
+
+// The watermark is burned into preview deliveries after Manim renders them,
+// so the scene source (which the quality gate approved) stays untouched.
+const WATERMARK_FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+
+export function watermarkFilter(frame: '16:9' | '9:16'): string {
+  const size = frame === '9:16' ? 34 : 30;
+  return [
+    `drawtext=fontfile=${WATERMARK_FONT}:text='CurvG.com  ·  preview':fontcolor=white@0.85:fontsize=${size}:box=1:boxcolor=black@0.35:boxborderw=12:x=w-tw-36:y=h-th-36`,
+    `drawtext=fontfile=${WATERMARK_FONT}:text='CurvG.com':fontcolor=white@0.22:fontsize=${size * 3}:x=(w-tw)/2:y=(h-th)/2`,
+  ].join(',');
 }
 
 class NonRetryableRenderError extends Error {}
@@ -416,6 +450,8 @@ async function parseJob(
       ? MAX_VIDEO_DURATION_SECONDS
       : body.durationSeconds;
   const productionMode = body.productionMode ?? 'explainer';
+  const delivery: RenderDelivery =
+    body.delivery === 'preview' ? 'preview' : 'hd';
   const requestedIdempotencyKey =
     typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
   if (!animationIdPattern.test(animationId)) {
@@ -523,6 +559,7 @@ async function parseJob(
     durationSeconds,
     productionMode,
     protocolVersion,
+    delivery,
     ...(simulationArtifacts ? { simulationArtifacts } : {}),
   } satisfies RenderJob;
 }
@@ -1008,17 +1045,13 @@ function sourceWithRenderContract(params: {
   source: string;
   frame: '16:9' | '9:16';
   phase: 'preview' | 'delivery';
+  delivery?: RenderDelivery;
 }): string {
   const portrait = params.frame === '9:16';
   const delivery = params.phase === 'delivery';
-  const pixelWidth = portrait ? (delivery ? 1080 : 480) : delivery ? 1920 : 854;
-  const pixelHeight = portrait
-    ? delivery
-      ? 1920
-      : 854
-    : delivery
-      ? 1080
-      : 480;
+  const size = deliverySize(params.frame, params.delivery);
+  const pixelWidth = delivery ? size.width : portrait ? 480 : 854;
+  const pixelHeight = delivery ? size.height : portrait ? 854 : 480;
   const frameWidth = portrait ? 9 : 14.222;
   const frameHeight = portrait ? 16 : 8;
   const frameRate = delivery ? 30 : 15;
@@ -1065,6 +1098,7 @@ interface RenderedAudioMetadata {
 interface DeliveryVideoContractBase {
   frame: '16:9' | '9:16';
   durationSeconds: number;
+  delivery?: RenderDelivery;
 }
 
 type DeliveryVideoContract =
@@ -1178,8 +1212,10 @@ function parseRenderedVideoMetadata(
   }
   let audio: RenderedAudioMetadata | null = null;
   if (deliveryContract) {
-    const expectedWidth = deliveryContract.frame === '9:16' ? 1080 : 1920;
-    const expectedHeight = deliveryContract.frame === '9:16' ? 1920 : 1080;
+    const { width: expectedWidth, height: expectedHeight } = deliverySize(
+      deliveryContract.frame,
+      deliveryContract.delivery
+    );
     if (width !== expectedWidth || height !== expectedHeight) {
       throw new NonRetryableRenderError(
         `Formal video resolution must be ${expectedWidth}x${expectedHeight}`
@@ -1324,15 +1360,21 @@ function isReusableDeliveryReport(
   value: unknown,
   job: Pick<
     RenderJob,
-    'frame' | 'durationSeconds' | 'productionMode' | 'simulationArtifacts'
+    | 'frame'
+    | 'durationSeconds'
+    | 'productionMode'
+    | 'simulationArtifacts'
+    | 'delivery'
   >
 ): value is Record<string, unknown> {
   if (!isRecord(value) || value.analyzerVersion !== 1) return false;
   if (!Array.isArray(value.frames) || value.frames.length !== 12) return false;
   const media = value.media;
   if (!isRecord(media)) return false;
-  const expectedWidth = job.frame === '9:16' ? 1080 : 1920;
-  const expectedHeight = job.frame === '9:16' ? 1920 : 1080;
+  const { width: expectedWidth, height: expectedHeight } = deliverySize(
+    job.frame,
+    job.delivery
+  );
   const frameRate = finiteNumber(media.frameRate);
   const durationSeconds = finiteNumber(media.durationSeconds);
   const frameCount = positiveInteger(media.frameCount);
@@ -1415,6 +1457,11 @@ async function prepareRenderEvidence(
         commandError(optimize.stderr, 'Simulation audio mux failed')
       );
     }
+  } else if (deliveryContract?.delivery === 'preview') {
+    optimize = await sandbox.exec(
+      `ffmpeg -y -i ${videoPath} -map 0:v:0 -an -vf "${watermarkFilter(deliveryContract.frame)}" -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -r 30 -movflags +faststart ${playbackPath}`,
+      { timeout: 180_000 }
+    );
   } else {
     optimize = await sandbox.exec(
       `ffmpeg -y -i ${videoPath} -map 0:v:0 -an -c copy -movflags +faststart ${playbackPath}`,
@@ -1742,7 +1789,7 @@ async function processJob(job: RenderJob, env: Env) {
   });
   const reusableDelivery =
     job.protocolVersion === V2_RENDER_PROTOCOL &&
-    existingVideo?.customMetadata?.quality === '1080p30' &&
+    existingVideo?.customMetadata?.quality === deliveryQuality(job.delivery) &&
     existingVideo.customMetadata.deliveryReview === 'approved' &&
     /^[a-f0-9]{64}$/.test(existingVideo.customMetadata.videoDigest || '') &&
     existingVideo.customMetadata.deliveryReviewDigest ===
@@ -1951,11 +1998,12 @@ async function processJob(job: RenderJob, env: Env) {
           source: selectedCode,
           frame: job.frame,
           phase: 'delivery',
+          delivery: job.delivery,
         })
       );
       await notifyStage(job, env, 'compiling', 90);
       const formalRender = await sandbox.exec(
-        `manim -qh --fps 30 --resolution ${job.frame === '9:16' ? '1080,1920' : '1920,1080'} --format=mp4 --disable_caching scene.py CurvGScene --media_dir /workspace/media`,
+        `manim -qh --fps 30 --resolution ${deliverySize(job.frame, job.delivery).width},${deliverySize(job.frame, job.delivery).height} --format=mp4 --disable_caching scene.py CurvGScene --media_dir /workspace/media`,
         { timeout: 600_000, cwd: '/workspace' }
       );
       if (!formalRender.success) {
@@ -1980,6 +2028,7 @@ async function processJob(job: RenderJob, env: Env) {
                 frame: job.frame,
                 durationSeconds: job.durationSeconds,
                 productionMode: 'explainer',
+                delivery: job.delivery,
               };
       const deliveryEvidence = await prepareRenderEvidence(
         sandbox,
@@ -2041,7 +2090,7 @@ async function processJob(job: RenderJob, env: Env) {
           customMetadata: {
             animationId: job.animationId,
             jobId: job.jobId,
-            quality: '1080p30',
+            quality: deliveryQuality(job.delivery),
             ...(job.protocolVersion === V2_RENDER_PROTOCOL
               ? {
                   deliveryReview: 'approved',

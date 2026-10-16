@@ -1,5 +1,6 @@
 import { compileBoard, type CompiledBoard } from '@/lib/board/evaluate';
 import { parseBoardSpec } from '@/lib/board/spec';
+import { templateCreatorHref } from '@/lib/video-templates/href';
 
 import type { ContentLocale } from '../text';
 import { binomialDistribution } from './data/binomial-distribution';
@@ -34,6 +35,7 @@ import { waveInterference } from './data/wave-interference';
 import { wavePropagation } from './data/wave-propagation';
 import { zerosBisection } from './data/zeros-bisection';
 import type { Lab, LabSubject, LabSuite, LabVideo } from './types';
+import { LAB_VIDEO_TEMPLATES } from './video';
 import { PUBLISHED_LAB_FILMS } from './videos.generated';
 
 export type {
@@ -382,7 +384,13 @@ export function labVideo(lab: Lab, lang: ContentLocale): LabVideo | undefined {
   };
 }
 
-/** The creator, prefilled with this chapter's video prompt. */
+/**
+ * The creator for this chapter: its video template already filled in when
+ * a template films it exactly, otherwise the chapter's video brief.
+ */
 export function labVideoHref(lab: Lab, lang: ContentLocale): string {
-  return `/creator?prompt=${encodeURIComponent(lab.videoPrompt[lang])}`;
+  const template = LAB_VIDEO_TEMPLATES[lab.slug];
+  return template
+    ? templateCreatorHref(template.templateId, template.params)
+    : `/creator?prompt=${encodeURIComponent(lab.videoPrompt[lang])}`;
 }

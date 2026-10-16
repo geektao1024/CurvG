@@ -14,16 +14,48 @@ import { CreatorWorkspace } from '@/blocks/creator-workspace';
 
 function CreatorPage() {
   const { locale } = Route.useLoaderData();
-  const { animationId, prompt } = Route.useSearch();
+  const { animationId, prompt, template, params } = Route.useSearch();
+  const initialTemplate = template
+    ? { templateId: template, params: params ?? {} }
+    : undefined;
   return (
     <div className="bg-background text-foreground min-h-screen">
       <CreatorWorkspace
         locale={locale}
         initialAnimationId={animationId}
         initialPrompt={prompt}
+        initialTemplate={initialTemplate}
       />
     </div>
   );
+}
+
+/**
+ * `params` from a lab, curve or wonder link. The router parses JSON search
+ * values, so it arrives as an object (or, hand-typed, as a JSON string); the
+ * server validates every value again.
+ */
+function parseTemplateParams(
+  raw: unknown
+): Record<string, string | number> | undefined {
+  let value = raw;
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const entries = Object.entries(value).filter(
+    (entry): entry is [string, string | number] =>
+      /^[A-Za-z0-9_]{1,40}$/.test(entry[0]) &&
+      ((typeof entry[1] === 'string' && entry[1].length <= 400) ||
+        (typeof entry[1] === 'number' && Number.isFinite(entry[1])))
+  );
+  return entries.length <= 20 ? Object.fromEntries(entries) : undefined;
 }
 
 export const Route = createFileRoute('/creator')({
@@ -38,6 +70,12 @@ export const Route = createFileRoute('/creator')({
       search.prompt.length <= 600
         ? search.prompt
         : undefined,
+    template:
+      typeof search.template === 'string' &&
+      /^[a-z0-9-]{1,80}$/.test(search.template)
+        ? search.template
+        : undefined,
+    params: parseTemplateParams(search.params),
   }),
   loader: () => ({ locale: getLocale() }),
   head: ({ loaderData }) => {

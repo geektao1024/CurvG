@@ -34,7 +34,7 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
     path: '/free-math-video-creator',
     title: 'Free Math Video Creator',
     description:
-      'What the free tier includes: the first video rendered free, free scene planning, Manim code export, and refund rules.',
+      'What the free tier includes: 3 free preview videos (720p, watermarked), every video template, Manim code export, and refund rules.',
   },
   {
     path: '/manim-alternative',
@@ -67,7 +67,7 @@ const PRODUCT_FACTS = [
   'The Creator can generate a scene plan and Manim code that users can review, copy, and download.',
   'Direct code editing and compilation in the browser are not currently available.',
   'Hosted cloud rendering is available; paid plans include render credits, and failed or canceled renders are refunded.',
-  'Every verified account renders its first video free; plans are priced by the number of videos.',
+  'Videos are made from verified templates (an AI picks the template and fills in the parameters; free-form AI generation is a beta). Every verified account gets 3 free preview videos (720p, watermarked); clean 1080p videos are priced by the number of videos.',
 ];
 
 export const Route = createFileRoute('/llms-full.txt')({

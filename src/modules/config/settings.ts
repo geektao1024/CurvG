@@ -964,6 +964,16 @@ export function getSettings(): Setting[] {
       group: 'animation_renderer',
       tab: 'ai',
     },
+    {
+      name: 'animation_free_previews',
+      title: 'Free preview videos per account',
+      type: 'number',
+      placeholder: '3',
+      tip: 'Verified accounts render this many videos free at 720p with a watermark; 0 turns free previews off. HD (1080p, no watermark) always costs credits.',
+      defaultValue: '3',
+      group: 'animation_renderer',
+      tab: 'ai',
+    },
     // ─── AI / Animation backup route ─────────────────────────────────
     {
       name: 'animation_backup_base_url',

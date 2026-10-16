@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Check, Code2, Film, Gift, Tag } from 'lucide-react';
+import { Check, Code2, Film, Gift, Sparkles, Tag } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useSession } from '@/core/auth/client';
@@ -181,6 +181,7 @@ export function Pricing({
     const hasPaidPlan = viewerTier !== 'free';
     const estimate = renderEstimate(params.product);
     const cardFeatures = [
+      { icon: Sparkles, label: m['landing.pricing.feature_hd']() },
       {
         icon: Film,
         label: m['landing.pricing.feature_render_credits']({

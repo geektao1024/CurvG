@@ -32,11 +32,13 @@ import {
 } from '@/config/db/schema';
 import { AnimationConflictError } from '@/modules/animations/service';
 import type { ConfigMap } from '@/modules/config/service';
+import { getBalance } from '@/modules/credits/service';
 import { getAnimationAccessTier } from '@/modules/subscriptions/service';
 import type {
   AnimationModelCatalog,
   AnimationModelChoice,
   AnimationModelOption,
+  AnimationRenderDelivery,
   AnimationSubject,
 } from '@/lib/animation';
 import {
@@ -475,35 +477,85 @@ function resilientProvider(
   );
 }
 
+/** Configured credits for one HD render (admin `animation_render_credits`). */
+export function renderCreditCost(configs: ConfigMap): number {
+  const configured = Number.parseInt(
+    configs.animation_render_credits || '20',
+    10
+  );
+  return Number.isSafeInteger(configured)
+    ? Math.max(0, Math.min(configured, 1_000_000))
+    : 20;
+}
+
 /**
- * Every verified account's first rendered video is free, so a new user sees
- * what CurvG makes before being asked to pay. A failed or canceled render does
- * not use it up; a queued, running or finished one does. Admins can switch it
- * off with `animation_free_first_render = false`.
+ * Free previews left for this account (MONETIZATION.md §2, 2026-10-16):
+ * every verified account gets `animation_free_previews` (default 3) renders
+ * at 720p with a watermark. A free render is a render task that cost 0
+ * credits; failed and canceled ones do not count.
  */
-export async function freeFirstRenderAvailable(
+export async function freePreviewsRemaining(
   configs: ConfigMap,
   userId: string
-): Promise<boolean> {
-  if (configs.animation_free_first_render === 'false') return false;
+): Promise<number> {
+  const limit = Number.parseInt(configs.animation_free_previews ?? '3', 10);
+  if (!Number.isSafeInteger(limit) || limit <= 0) return 0;
   const [account] = await db()
     .select({ verified: user.emailVerified })
     .from(user)
     .where(eq(user.id, userId))
     .limit(1);
-  if (!account?.verified) return false;
-  const [used] = await db()
-    .select({ id: aiTask.id })
+  if (!account?.verified) return 0;
+  const [row] = await db()
+    .select({ used: count() })
     .from(aiTask)
     .where(
       and(
         eq(aiTask.userId, userId),
         eq(aiTask.mediaType, 'animation_render'),
+        eq(aiTask.costCredits, 0),
         inArray(aiTask.status, ['pending', 'processing', 'success'])
       )
-    )
-    .limit(1);
-  return !used;
+    );
+  // Negative when concurrent renders overshot the allowance (see production).
+  return limit - Number(row?.used || 0);
+}
+
+export interface RenderEntitlement {
+  delivery: AnimationRenderDelivery;
+  costCredits: number;
+}
+
+/**
+ * Which deliverable this render is, and what it costs. With enough credits a
+ * render is HD (the user paid; a watermark would punish them). Without, a
+ * free preview if any are left. Otherwise 402, which the creator turns into
+ * the upgrade prompt.
+ */
+export async function resolveRenderEntitlement(
+  configs: ConfigMap,
+  userId: string,
+  requested?: AnimationRenderDelivery
+): Promise<RenderEntitlement> {
+  const cost = renderCreditCost(configs);
+  const balance = cost > 0 ? await getBalance(userId) : 0;
+  const canPay = cost === 0 || balance >= cost;
+  if (requested !== 'preview' && canPay) {
+    return { delivery: 'hd', costCredits: cost };
+  }
+  if (
+    requested !== 'hd' &&
+    (await freePreviewsRemaining(configs, userId)) > 0
+  ) {
+    return { delivery: 'preview', costCredits: 0 };
+  }
+  throw new AnimationApiError(
+    requested === 'hd'
+      ? 'Insufficient credits for an HD render'
+      : 'No free previews left; add credits to render',
+    'INSUFFICIENT_CREDITS',
+    402
+  );
 }
 
 /**
@@ -579,7 +631,7 @@ export async function listAnimationModels(
     renderCredits: Number.isSafeInteger(configuredRenderCredits)
       ? Math.max(0, Math.min(configuredRenderCredits, 1_000_000))
       : 20,
-    freeRender: await freeFirstRenderAvailable(configs, userId),
+    freePreviews: Math.max(0, await freePreviewsRemaining(configs, userId)),
   };
 }
 

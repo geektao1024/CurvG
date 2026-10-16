@@ -10,14 +10,15 @@ import {
   markAnimationProductionFailure,
 } from '@/modules/animations/service';
 import type { ConfigMap } from '@/modules/config/service';
-import type { AnimationDetail } from '@/lib/animation';
+import type { AnimationDetail, AnimationRenderDelivery } from '@/lib/animation';
 
 import {
   AnimationApiError,
   callbackUrl,
-  freeFirstRenderAvailable,
+  freePreviewsRemaining,
   qualityGateUrl,
   resolveAnimationOrchestrator,
+  resolveRenderEntitlement,
   resolveRenderer,
   withAnimationGenerationCapacity,
 } from './-shared';
@@ -31,8 +32,20 @@ export async function startSilentAnimationProduction(params: {
   model?: string;
   orchestrationPlan?: AnimationOrchestrationPlan | null;
   capacityOwnerToken?: string;
+  /** Force a deliverable (the HD export button); otherwise decided by credits. */
+  delivery?: AnimationRenderDelivery;
+  /** The user pressed render (approve route), so warnings were seen. */
+  userApproved?: boolean;
   signal?: AbortSignal;
 }): Promise<AnimationDetail> {
+  // A beta plan with unresolved mathematical findings waits for the user.
+  if (
+    !params.userApproved &&
+    params.animation.status === 'awaiting_approval' &&
+    params.animation.parts.mathWarnings?.length
+  ) {
+    return params.animation;
+  }
   let renderer: ReturnType<typeof resolveRenderer>;
   let orchestrator: ReturnType<typeof resolveAnimationOrchestrator>;
   let orchestrationPlan = params.orchestrationPlan;
@@ -56,31 +69,45 @@ export async function startSilentAnimationProduction(params: {
     });
   }
   let creditTaskId: string | undefined;
+  let delivery: AnimationRenderDelivery = params.delivery || 'hd';
   if (renderer) {
-    const configuredCost = Number.parseInt(
-      params.configs.animation_render_credits || '20',
-      10
-    );
-    const freeRender = await freeFirstRenderAvailable(
-      params.configs,
-      params.userId
-    );
-    const costCredits = freeRender
-      ? 0
-      : Number.isSafeInteger(configuredCost)
-        ? Math.max(0, Math.min(configuredCost, 1_000_000))
-        : 20;
     try {
+      const entitlement = await resolveRenderEntitlement(
+        params.configs,
+        params.userId,
+        params.delivery
+      );
+      delivery = entitlement.delivery;
       const task = await createTask({
         userId: params.userId,
         mediaType: 'animation_render',
         provider: renderer.name,
-        model: 'deterministic-manim-v3',
+        model: params.animation.parts.template
+          ? `template:${params.animation.parts.template.id}`
+          : 'deterministic-manim-v3',
         prompt: `animation:${params.animation.id}`,
-        costCredits,
-        options: { animationId: params.animation.id, freeRender },
+        costCredits: entitlement.costCredits,
+        options: {
+          animationId: params.animation.id,
+          delivery,
+          freeRender: entitlement.costCredits === 0,
+        },
       });
       creditTaskId = task.id;
+      // Two renders started at once could both have seen the last free
+      // preview. Count again now that this task exists; the loser fails.
+      if (
+        entitlement.costCredits === 0 &&
+        (await freePreviewsRemaining(params.configs, params.userId)) < 0
+      ) {
+        await updateTask({ taskId: task.id, status: AITaskStatus.FAILED });
+        creditTaskId = undefined;
+        throw new AnimationApiError(
+          'No free previews left; add credits to render',
+          'INSUFFICIENT_CREDITS',
+          402
+        );
+      }
     } catch (error) {
       let failure = error;
       if (
@@ -94,11 +121,14 @@ export async function startSilentAnimationProduction(params: {
           402
         );
       }
-      await markAnimationProductionFailure({
-        userId: params.userId,
-        id: params.animation.id,
-        error: failure,
-      }).catch(() => undefined);
+      // An HD export of a finished preview leaves the preview as it was.
+      if (params.animation.status !== 'completed') {
+        await markAnimationProductionFailure({
+          userId: params.userId,
+          id: params.animation.id,
+          error: failure,
+        }).catch(() => undefined);
+      }
       throw failure;
     }
   }
@@ -123,6 +153,7 @@ export async function startSilentAnimationProduction(params: {
         params.animation.id
       ),
       creditTaskId,
+      delivery,
       signal: params.signal,
     });
 

@@ -25,6 +25,7 @@ import {
   type AnimationFailure,
   type AnimationFailureStage,
   type AnimationMathObjectType,
+  type AnimationMathWarning,
   type AnimationMessage,
   type AnimationModelSelection,
   type AnimationOrchestrationState,
@@ -36,10 +37,12 @@ import {
   type AnimationQualityGateAction,
   type AnimationQualityGateKind,
   type AnimationQueueState,
+  type AnimationRenderDelivery,
   type AnimationSpec,
   type AnimationStatus,
   type AnimationSubject,
   type AnimationSummary,
+  type AnimationTemplateState,
   type AnimationVersion,
   type AnimationVisualQaReport,
   type AnimationVisualReview,
@@ -68,6 +71,12 @@ import { compileAnimationSpec } from '@/lib/manim-compiler';
 import { ringEscapePresentationSpec } from '@/lib/simulation-presentation';
 import { buildVerifiedRingEscapeProduction } from '@/lib/simulation-production';
 import { toStrictJsonSchema } from '@/lib/strict-json-schema';
+import {
+  buildVideoTemplate,
+  type BuiltVideoTemplate,
+  type TemplateContext,
+} from '@/lib/video-templates';
+import { templateDescriptorSpec } from '@/lib/video-templates/spec';
 
 import {
   generatePersistentAnimationSpec,
@@ -558,11 +567,12 @@ export async function generateAnimationSpec(params: {
           deadlineAt: params.deadlineAt,
         }),
     });
-    if (planned.mathReview && mathReviewBlocks(planned.mathReview)) {
-      throw new AnimationMathAuditError(planned.mathReview);
-    }
     params.onPhase?.('finalizing');
-    return { result: planned.result, spec: planned.spec };
+    return {
+      result: planned.result,
+      spec: planned.spec,
+      mathWarnings: unresolvedMathWarnings(planned.mathReview),
+    };
   }
   params.onPhase?.('understanding');
   const input = {
@@ -660,9 +670,6 @@ export async function generateAnimationSpec(params: {
       deadlineAt: params.deadlineAt,
     });
   }
-  if (mathReviewBlocks(mathReview)) {
-    throw new AnimationMathAuditError(mathReview);
-  }
   params.onPhase?.('finalizing');
   if (params.onSummaryDelta) {
     const remaining = spec.summary.startsWith(streamedSummary)
@@ -672,7 +679,25 @@ export async function generateAnimationSpec(params: {
         : spec.summary;
     if (remaining) params.onSummaryDelta(remaining);
   }
-  return { result, spec };
+  return { result, spec, mathWarnings: unresolvedMathWarnings(mathReview) };
+}
+
+/**
+ * Beta generator rule (2026-10-16): mathematical findings the revisions could
+ * not resolve no longer fail the run. They travel with the plan, the run
+ * waits in awaiting_approval, and the user decides whether to render.
+ */
+function unresolvedMathWarnings(
+  review: AnimationMathReview | undefined
+): AnimationMathWarning[] | undefined {
+  if (!review || !mathReviewBlocks(review)) return undefined;
+  return review.issues
+    .filter((issue) => issue.scope !== 'visual')
+    .map((issue) => ({
+      claim: issue.claim,
+      problem: issue.problem,
+      correction: issue.correction,
+    }));
 }
 
 function codeCompositionPrompt(params: {
@@ -1839,7 +1864,7 @@ export async function planAnimation(params: {
     ) {
       history.pop();
     }
-    const { result, spec } = await generateAnimationSpec({
+    const { result, spec, mathWarnings } = await generateAnimationSpec({
       provider: params.provider,
       model: params.model,
       prompt: parts.prompt,
@@ -1868,6 +1893,7 @@ export async function planAnimation(params: {
         parts: JSON.stringify({
           ...completedParts,
           spec,
+          mathWarnings,
           error: undefined,
           failure: undefined,
         }),
@@ -1880,7 +1906,10 @@ export async function planAnimation(params: {
       content: spec.summary,
       model: result.model,
       provider: result.provider,
-      metadata: { kind: 'spec_ready' },
+      metadata: {
+        kind: 'spec_ready',
+        ...(mathWarnings?.length ? { mathWarnings: mathWarnings.length } : {}),
+      },
     });
     return getAnimation(params.userId, row.id);
   } catch (error) {
@@ -2179,25 +2208,51 @@ export async function createSimulationAnimation(params: {
   }
 }
 
-export async function createAnimationFromTemplate(params: {
+function templateState(
+  built: BuiltVideoTemplate,
+  matchedFrom?: string
+): AnimationTemplateState {
+  return {
+    id: built.templateId,
+    version: built.templateVersion,
+    params: built.params,
+    locale: built.context.locale,
+    frame: built.context.frame,
+    theme: built.context.theme,
+    title: built.title,
+    durationSeconds: built.durationSeconds,
+    facts: built.facts,
+    beats: built.beats,
+    ...(matchedFrom ? { matchedFrom: matchedFrom.slice(0, 1000) } : {}),
+  };
+}
+
+const TEMPLATE_MODEL = 'video-template';
+const TEMPLATE_PROVIDER = 'curvg-template';
+
+/**
+ * A video from a template: validated parameters in, a finished Manim scene
+ * out, no model involved. Ready to render immediately.
+ */
+export async function createTemplateAnimation(params: {
   userId: string;
-  templateId: string;
-  title: string;
+  built: BuiltVideoTemplate;
+  /** What the conversation shows as the request. */
   prompt: string;
-  mathObjectType: AnimationMathObjectType;
-  spec: AnimationSpec;
+  /** The free-text request the matcher answered, if any. */
+  matchedFrom?: string;
 }): Promise<AnimationDetail> {
-  const spec = validateAnimationSpec(params.spec);
+  const { built } = params;
   const id = getUuid();
-  const code = compileAnimationSpec(spec);
+  const spec = validateAnimationSpec(templateDescriptorSpec(built));
   const parts: StoredAnimationParts = {
     ...initialParts(params.prompt, 'math', undefined, {
       creationMode: 'template',
-      mathObjectType: params.mathObjectType,
-      templateId: params.templateId,
+      templateId: built.templateId,
     }),
+    template: templateState(built, params.matchedFrom),
     spec,
-    code,
+    code: built.code,
   };
   await db()
     .insert(chat)
@@ -2205,9 +2260,9 @@ export async function createAnimationFromTemplate(params: {
       id,
       userId: params.userId,
       status: 'code_ready',
-      model: 'deterministic-template',
-      provider: 'curvg-compiler',
-      title: params.title,
+      model: TEMPLATE_MODEL,
+      provider: TEMPLATE_PROVIDER,
+      title: built.title.slice(0, 160),
       parts: JSON.stringify(parts),
       metadata: ANIMATION_METADATA,
       content: params.prompt,
@@ -2217,20 +2272,86 @@ export async function createAnimationFromTemplate(params: {
     chatId: id,
     role: 'user',
     content: params.prompt,
-    model: 'deterministic-template',
-    provider: 'curvg-compiler',
-    metadata: { kind: 'template', templateId: params.templateId },
+    model: TEMPLATE_MODEL,
+    provider: TEMPLATE_PROVIDER,
+    metadata: { kind: 'template', templateId: built.templateId },
   });
   await insertMessage({
     userId: params.userId,
     chatId: id,
     role: 'assistant',
-    content: spec.summary,
-    model: 'deterministic-template',
-    provider: 'curvg-compiler',
-    metadata: { kind: 'code_ready' },
+    content: built.summary,
+    model: TEMPLATE_MODEL,
+    provider: TEMPLATE_PROVIDER,
+    metadata: { kind: 'template_ready', templateId: built.templateId },
   });
   return getAnimation(params.userId, id);
+}
+
+/**
+ * New parameters (or frame/theme) for a template video. The previous film
+ * is kept as a version; the new one waits for the user to render it.
+ */
+export async function updateTemplateAnimation(params: {
+  userId: string;
+  id: string;
+  values: Record<string, unknown>;
+  context?: Partial<TemplateContext>;
+}): Promise<AnimationDetail> {
+  const row = await ownedRow(params.userId, params.id);
+  if (isRecoverableStaleStatus(row.status) || row.status === 'queued') {
+    throw new AnimationConflictError();
+  }
+  const parts = animationParts(row);
+  if (!parts.template)
+    throw new Error('This video was not made from a template');
+  const built = buildVideoTemplate({
+    id: parts.template.id,
+    params: params.values,
+    context: {
+      locale: params.context?.locale || parts.template.locale,
+      frame: params.context?.frame || parts.template.frame,
+      theme: params.context?.theme || parts.template.theme,
+    },
+  });
+  const previous = snapshot(parts);
+  const nextParts: StoredAnimationParts = {
+    ...parts,
+    template: templateState(built, parts.template.matchedFrom),
+    spec: validateAnimationSpec(templateDescriptorSpec(built)),
+    code: built.code,
+    versions: appendVersion(parts, previous),
+    videoUrl: undefined,
+    thumbnailUrl: undefined,
+    contactSheetUrl: undefined,
+    qaReportUrl: undefined,
+    visualQa: undefined,
+    visualReview: undefined,
+    publishedAt: undefined,
+    render: undefined,
+    error: undefined,
+    failure: undefined,
+    renderRepair: undefined,
+    qualityControl: undefined,
+  };
+  await db()
+    .update(chat)
+    .set({
+      title: built.title.slice(0, 160),
+      status: 'code_ready',
+      parts: JSON.stringify(nextParts),
+    })
+    .where(and(eq(chat.id, row.id), eq(chat.status, row.status)));
+  await insertMessage({
+    userId: row.userId,
+    chatId: row.id,
+    role: 'assistant',
+    content: built.summary,
+    model: TEMPLATE_MODEL,
+    provider: TEMPLATE_PROVIDER,
+    metadata: { kind: 'template_updated', templateId: built.templateId },
+  });
+  return getAnimation(params.userId, params.id);
 }
 
 export async function reviseAnimationDraft(params: {
@@ -2413,15 +2534,26 @@ export async function approveAnimation(params: {
   callbackUrl: string;
   qualityGateUrl: string;
   creditTaskId?: string;
+  /** preview (720p, watermark, free) or hd (1080p, credits). Default hd. */
+  delivery?: AnimationRenderDelivery;
   signal?: AbortSignal;
 }): Promise<AnimationDetail> {
   const row = await ownedRow(params.userId, params.id);
   const parts = animationParts(row);
+  const delivery: AnimationRenderDelivery = params.delivery || 'hd';
   if (!parts.spec) throw new Error('Animation specification is missing');
   if (!isAnimationSpecRenderable(parts.spec)) {
     throw new Error('Legacy animations are read-only archives');
   }
-  if (!['awaiting_approval', 'code_ready', 'failed'].includes(row.status)) {
+  // A finished preview can be exported again in HD without redoing anything.
+  const hdUpgrade =
+    row.status === 'completed' &&
+    delivery === 'hd' &&
+    parts.render?.delivery === 'preview';
+  if (
+    !['awaiting_approval', 'code_ready', 'failed'].includes(row.status) &&
+    !hdUpgrade
+  ) {
     throw new Error('Animation is not ready for approval');
   }
   if (
@@ -2448,6 +2580,8 @@ export async function approveAnimation(params: {
     | Awaited<ReturnType<typeof buildVerifiedRingEscapeProduction>>
     | undefined;
   let failureStage: AnimationFailureStage = 'code';
+  let renderFrame: '16:9' | '9:16' = parts.spec.direction?.frame || '16:9';
+  let renderDuration = parts.spec.durationSeconds;
   try {
     const isSimulation = parts.productionMode === 'simulation_short';
     const repairEvidence = parts.renderRepair?.regenerateCode
@@ -2479,6 +2613,21 @@ export async function approveAnimation(params: {
         throw new Error('Simulation solver lineage changed after approval');
       }
       code = simulationProduction.code;
+    } else if (parts.template) {
+      // Template films are rebuilt from their parameters at every render;
+      // no model touches the source.
+      const built = buildVideoTemplate({
+        id: parts.template.id,
+        params: parts.template.params,
+        context: {
+          locale: parts.template.locale,
+          frame: parts.template.frame,
+          theme: parts.template.theme,
+        },
+      });
+      code = built.code;
+      renderFrame = parts.template.frame;
+      renderDuration = built.durationSeconds;
     } else if (shouldCompose) {
       const composed = await composeOrchestratedAnimationCode({
         animationId: row.id,
@@ -2543,16 +2692,19 @@ export async function approveAnimation(params: {
       code,
       callbackUrl: params.callbackUrl,
       qualityGateUrl: params.qualityGateUrl,
-      frame: parts.spec.direction?.frame || '16:9',
-      durationSeconds: parts.spec.durationSeconds,
+      frame: renderFrame,
+      durationSeconds: renderDuration,
       productionMode: isSimulation ? 'simulation_short' : 'explainer',
+      delivery,
       idempotencyKey: await digestUtf8Text(
         stableCanonicalJson({
           animationId: row.id,
           code,
-          frame: parts.spec.direction?.frame || '16:9',
-          durationSeconds: parts.spec.durationSeconds,
+          frame: renderFrame,
+          durationSeconds: renderDuration,
           productionMode: isSimulation ? 'simulation_short' : 'explainer',
+          // Older keys carried no delivery; keep them stable for hd.
+          ...(delivery === 'preview' ? { delivery } : {}),
         })
       ),
       ...(simulationProduction
@@ -2592,14 +2744,15 @@ export async function approveAnimation(params: {
             progress: 8,
             startedAt: new Date().toISOString(),
             creditTaskId: params.creditTaskId,
+            delivery,
           },
           qualityControl: {
             status: 'pending',
             attempt: 0,
             // A model-authored code repair could detach the rendered motion
-            // from the immutable solver log. Simulation defects fail closed
-            // and require a new trusted plan/compiler release instead.
-            maxRepairs: isSimulation ? 0 : 2,
+            // from the immutable solver log (simulations) or from verified
+            // template mathematics. Both fail closed instead.
+            maxRepairs: isSimulation || parts.template ? 0 : 2,
             attempts: [],
           },
         }),
@@ -2907,6 +3060,8 @@ export interface AnimationQualityContext {
   model: string;
   modelSelection?: AnimationModelSelection;
   qualityControl: AnimationQualityControlState;
+  /** Template films are verified by construction: no review, no repair. */
+  template: boolean;
 }
 
 export async function getAnimationQualityContext(
@@ -2945,6 +3100,7 @@ export async function getAnimationQualityContext(
       maxRepairs: 2,
       attempts: [],
     },
+    template: !!parts.template,
   };
 }
 

@@ -41,10 +41,10 @@ export interface AnimationModelCatalog {
    */
   renderCredits: number;
   /**
-   * The viewer's next render is free: every verified account's first video
-   * costs nothing, so a new user sees the output before being asked to pay.
+   * Free previews (720p, watermarked) this verified account has left; a new
+   * user sees their own video before being asked to pay.
    */
-  freeRender?: boolean;
+  freePreviews?: number;
 }
 
 export function animationModelValue(
@@ -624,6 +624,8 @@ export interface AnimationRenderState {
   cancelRequested?: boolean;
   canceledAt?: string;
   creditTaskId?: string;
+  /** Absent on renders before 2026-10-16: hd. */
+  delivery?: AnimationRenderDelivery;
 }
 
 export type AnimationFailureStage = 'spec' | 'code' | 'render';
@@ -723,6 +725,30 @@ export interface AnimationOrchestrationState {
   reason?: string;
 }
 
+export interface AnimationTemplateState {
+  id: string;
+  version: number;
+  params: Record<string, string | number>;
+  locale: 'en' | 'zh';
+  frame: '16:9' | '9:16';
+  theme: 'paper' | 'studio';
+  title: string;
+  durationSeconds: number;
+  facts: Array<{ label: string; value: string }>;
+  beats: string[];
+  /** The free-text request the matcher answered, when it came from one. */
+  matchedFrom?: string;
+}
+
+export interface AnimationMathWarning {
+  claim: string;
+  problem: string;
+  correction: string;
+}
+
+/** preview: 720p with a watermark (free); hd: clean 1080p (credits). */
+export type AnimationRenderDelivery = 'preview' | 'hd';
+
 export interface AnimationParts {
   subject: AnimationSubject;
   prompt: string;
@@ -737,6 +763,18 @@ export interface AnimationParts {
   /** Exact structured formula for the current request; absent after an unstructured revision. */
   sourceFormula?: string;
   templateId?: string;
+  /**
+   * Present on videos made from a video template (the paid path): the
+   * template, its validated parameters and what the film states. The code
+   * is rebuilt from these at every render; `spec` is only a descriptor.
+   */
+  template?: AnimationTemplateState;
+  /**
+   * Beta generator only: mathematical findings the audit could not resolve.
+   * The run waits in awaiting_approval and the user decides whether to
+   * render anyway (product rule 2026-10-16: warn, do not block).
+   */
+  mathWarnings?: AnimationMathWarning[];
   publishedAt?: string;
   /** The user's choice, kept separately from the model that actually replied. */
   modelSelection?: AnimationModelSelection;

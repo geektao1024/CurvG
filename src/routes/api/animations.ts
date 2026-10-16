@@ -2,12 +2,11 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { getAuth } from '@/core/auth';
 import { failStaleTasks } from '@/modules/ai-tasks/service';
-import { instantiateAnimationTemplate } from '@/modules/animation-templates/service';
 import {
   createAnimation,
   createAnimationDraft,
-  createAnimationFromTemplate,
   createSimulationAnimation,
+  createTemplateAnimation,
   failStaleAnimationRuns,
   listAnimations,
   planAnimation,
@@ -30,6 +29,12 @@ import {
   REQUEST_BODY_LIMITS,
 } from '@/lib/request-body';
 import { respData, respErr } from '@/lib/resp';
+import {
+  buildVideoTemplate,
+  getVideoTemplate,
+  resolveTemplateContext,
+  TemplateParamError,
+} from '@/lib/video-templates';
 import { getLocale } from '@/paraglide/runtime.js';
 
 import { startSilentAnimationProduction } from './animations/-production';
@@ -41,6 +46,7 @@ import {
   parseModelChoice,
   parseSubject,
   resolveChatProvider,
+  resolveRenderEntitlement,
   withAnimationGenerationCapacity,
 } from './animations/-shared';
 import { animationEventStream } from './animations/-stream';
@@ -103,31 +109,50 @@ async function POST({ request }: { request: Request }) {
         : 'description';
     const production = parseAnimationProductionRequest(body);
     if (mode === 'template') {
+      // The paid path: a verified template with validated parameters. No
+      // model runs here; the film's code is built and rendered right away.
       const templateId =
         typeof body.templateId === 'string' ? body.templateId.trim() : '';
-      if (!/^[A-Za-z0-9-]{1,80}$/.test(templateId)) {
-        return respErr('Template is required', { status: 400 });
+      if (!getVideoTemplate(templateId)) {
+        return respErr('Template not found', { status: 400 });
       }
       const values =
-        body.values &&
-        typeof body.values === 'object' &&
-        !Array.isArray(body.values)
-          ? (body.values as Record<string, unknown>)
+        body.params &&
+        typeof body.params === 'object' &&
+        !Array.isArray(body.params)
+          ? (body.params as Record<string, unknown>)
           : undefined;
-      const instantiated = await instantiateAnimationTemplate({
-        id: templateId,
-        locale: getLocale(),
-        values,
-      });
-      const animation = await createAnimationFromTemplate({
-        userId: session.user.id,
-        templateId,
-        title: instantiated.template.title,
-        prompt: `Template: ${instantiated.template.title}`,
-        mathObjectType: instantiated.template.mathObjectType,
-        spec: instantiated.spec,
-      });
+      let built;
+      try {
+        built = buildVideoTemplate({
+          id: templateId,
+          params: values,
+          context: resolveTemplateContext({
+            // The film's captions follow the creator's language.
+            locale: typeof body.locale === 'string' ? body.locale : getLocale(),
+            frame: body.frame,
+            theme: body.theme,
+          }),
+        });
+      } catch (error) {
+        if (error instanceof TemplateParamError) {
+          return respErr(error.message, { status: 400 });
+        }
+        throw error;
+      }
+      const matchedFrom =
+        typeof body.prompt === 'string' && body.prompt.trim()
+          ? body.prompt.trim().slice(0, 1000)
+          : undefined;
       const configs = await getAllConfigs();
+      // Fail before creating anything when this user cannot render at all.
+      await resolveRenderEntitlement(configs, session.user.id);
+      const animation = await createTemplateAnimation({
+        userId: session.user.id,
+        built,
+        prompt: matchedFrom || built.title,
+        matchedFrom,
+      });
       return respData(
         await startSilentAnimationProduction({
           request,

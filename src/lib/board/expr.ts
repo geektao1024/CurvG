@@ -25,6 +25,8 @@ export class ExprError extends Error {
   }
 }
 
+export type ExprNode = Node;
+
 type Node =
   | { kind: 'num'; value: number }
   | { kind: 'var'; name: string }
@@ -429,4 +431,20 @@ export function compileExpr(input: string | number): CompiledExpr {
     calls,
     evaluate: (scope) => evaluateNode(ast, scope, source),
   };
+}
+
+/**
+ * Parse without compiling an evaluator: for printers that translate an
+ * expression into another language (NumPy for Manim, LaTeX for display).
+ * Same grammar, limits and arity checks as compileExpr.
+ */
+export function parseExpr(input: string): ExprNode {
+  const source = input.trim();
+  if (!source) throw new ExprError('Empty expression', source);
+  if (source.length > MAX_SOURCE_LENGTH) {
+    throw new ExprError('Expression too long', source.slice(0, 40));
+  }
+  const ast = new Parser(tokenize(source), source).parse();
+  checkArity(ast, source);
+  return ast;
 }
