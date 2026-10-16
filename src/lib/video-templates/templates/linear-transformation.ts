@@ -1,6 +1,10 @@
 import { latexNumber } from '../expr';
 import { ManimScript, num } from '../manim';
-import type { TemplateParamValues, VideoTemplate } from '../types';
+import type {
+  TemplateParamValues,
+  TemplatePreview,
+  VideoTemplate,
+} from '../types';
 
 const copy = {
   en: {
@@ -117,6 +121,38 @@ export const linearTransformation: VideoTemplate = {
     } catch (error) {
       return error instanceof Error ? error.message : String(error);
     }
+  },
+  preview(params) {
+    const { m } = analyse(params);
+    const [a, b, c, d] = m;
+    const apply = (x: number, y: number): [number, number] => [
+      a * x + b * y,
+      c * x + d * y,
+    ];
+    const shapes: TemplatePreview['shapes'] = [];
+    for (let i = -4; i <= 4; i += 1) {
+      shapes.push({
+        kind: 'line',
+        points: [apply(i, -4), apply(i, 4)],
+        tone: 'muted',
+      });
+      shapes.push({
+        kind: 'line',
+        points: [apply(-4, i), apply(4, i)],
+        tone: 'muted',
+      });
+    }
+    shapes.push(
+      {
+        kind: 'area',
+        points: [apply(0, 0), apply(1, 0), apply(1, 1), apply(0, 1)],
+        tone: 'amber',
+        opacity: 0.45,
+      },
+      { kind: 'arrow', from: [0, 0], to: apply(1, 0), tone: 'green' },
+      { kind: 'arrow', from: [0, 0], to: apply(0, 1), tone: 'red' }
+    );
+    return { x: [-4.5, 4.5], y: [-3, 3], equal: true, shapes };
   },
   build(params, context) {
     const t = copy[context.locale];

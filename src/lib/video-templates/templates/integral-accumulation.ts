@@ -2,6 +2,7 @@ import { expressionOf, functionParam, numberParam } from '../common';
 import { latexNumber, toNumpy } from '../expr';
 import { ManimScript, niceRange, num, plotSegments, yWindow } from '../manim';
 import { finiteOn, integrate, round, valuePlain } from '../numeric';
+import { curve } from '../preview';
 import type { TemplateParamValues, VideoTemplate } from '../types';
 
 const copy = {
@@ -94,6 +95,34 @@ export const integralAccumulation: VideoTemplate = {
     } catch (error) {
       return error instanceof Error ? error.message : String(error);
     }
+  },
+  preview(params) {
+    const { f, a, b } = analyse(params);
+    const A = (x: number) => integrate(f, a, x, 200);
+    const pad = (b - a) * 0.08;
+    const xr = niceRange(a - pad, b + pad);
+    const fw = yWindow(f, a, b);
+    const aw = yWindow(A, a, b);
+    const yr = niceRange(
+      Math.min(fw.min, aw.min, 0),
+      Math.max(fw.max, aw.max, 0)
+    );
+    const window = { min: yr.min, max: yr.max };
+    const area: Array<[number, number]> = [[a, 0]];
+    for (let i = 0; i <= 120; i += 1) {
+      const x = a + ((b - a) * i) / 120;
+      area.push([x, f(x)]);
+    }
+    area.push([b, 0]);
+    return {
+      x: [xr.min, xr.max],
+      y: [yr.min, yr.max],
+      shapes: [
+        { kind: 'area', points: area, tone: 'blue', opacity: 0.25 },
+        ...curve(f, xr.min, xr.max, window, 'amber', { width: 3 }),
+        ...curve(A, a, b, window, 'green', { width: 3, samples: 80 }),
+      ],
+    };
   },
   build(params, context) {
     const t = copy[context.locale];

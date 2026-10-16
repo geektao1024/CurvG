@@ -7,6 +7,7 @@ import {
   toPlain,
 } from '../expr';
 import { ManimScript, niceRange, num, plotSegments, yWindow } from '../manim';
+import { curve, lineThrough } from '../preview';
 import type { TemplateParamValues, VideoTemplate } from '../types';
 
 const copy = {
@@ -152,6 +153,27 @@ export const derivativeTangent: VideoTemplate = {
     } catch (error) {
       return error instanceof Error ? error.message : String(error);
     }
+  },
+  preview(params) {
+    const { f, a, fa, slope, hRight } = analyse(params);
+    const xr = niceRange(a - 2.4, a + 2.4);
+    const yw = yWindow(f, xr.min, xr.max);
+    const yr = niceRange(Math.min(yw.min, fa - 1), Math.max(yw.max, fa + 1));
+    const x: [number, number] = [xr.min, xr.max];
+    const qx = a + hRight;
+    return {
+      x,
+      y: [yr.min, yr.max],
+      shapes: [
+        ...curve(f, xr.min, xr.max, { min: yr.min, max: yr.max }, 'amber', {
+          width: 3,
+        }),
+        lineThrough(a, fa, (f(qx) - fa) / hRight, x, 'blue', { dashed: true }),
+        lineThrough(a, fa, slope, x, 'amber', { width: 3 }),
+        { kind: 'dot', at: [qx, f(qx)], tone: 'blue' },
+        { kind: 'dot', at: [a, fa], tone: 'ink', label: 'P' },
+      ],
+    };
   },
   build(params, context) {
     const t = copy[context.locale];

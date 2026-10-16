@@ -97,4 +97,44 @@ export interface VideoTemplate {
     params: TemplateParamValues,
     context: TemplateContext
   ) => TemplateBuild;
+  /** The key frame as an instant sketch; throws on invalid parameters. */
+  preview: (params: TemplateParamValues) => TemplatePreview;
+}
+
+/**
+ * An instant SVG sketch of the film's key frame, drawn in the browser while
+ * the user edits parameters (no render, no model). Coordinates are the
+ * template's own axes; `equal` keeps circles round.
+ */
+export type PreviewTone = 'amber' | 'blue' | 'green' | 'red' | 'muted' | 'ink';
+
+export type PreviewShape =
+  | {
+      kind: 'line';
+      points: Array<[number, number]>;
+      tone: PreviewTone;
+      width?: number;
+      dashed?: boolean;
+    }
+  | {
+      kind: 'area';
+      points: Array<[number, number]>;
+      tone: PreviewTone;
+      opacity?: number;
+    }
+  | { kind: 'dot'; at: [number, number]; tone: PreviewTone; label?: string }
+  | {
+      kind: 'arrow';
+      from: [number, number];
+      to: [number, number];
+      tone: PreviewTone;
+    };
+
+export interface TemplatePreview {
+  x: [number, number];
+  y: [number, number];
+  equal?: boolean;
+  /** Draw x and y axes through the origin (default true). */
+  axes?: boolean;
+  shapes: PreviewShape[];
 }

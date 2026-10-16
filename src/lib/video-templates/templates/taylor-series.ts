@@ -1,5 +1,6 @@
 import { latexNumber } from '../expr';
 import { ManimScript, niceRange, num, plotSegments } from '../manim';
+import { curve } from '../preview';
 import type { VideoTemplate } from '../types';
 
 interface Series {
@@ -199,6 +200,27 @@ export const taylorSeries: VideoTemplate = {
       label: { en: 'Highest degree', zh: '最高次数' },
     },
   ],
+  preview(params) {
+    const series = SERIES[String(params.fn)] ?? SERIES.sin;
+    const degree = Number(params.degree);
+    const xr = niceRange(series.x[0], series.x[1]);
+    const yr = niceRange(series.y[0], series.y[1]);
+    const window = { min: yr.min, max: yr.max };
+    const poly = (x: number) => {
+      let total = 0;
+      for (let n = 0; n <= degree; n += 1)
+        total += series.coefficient(n) * x ** n;
+      return total;
+    };
+    return {
+      x: [xr.min, xr.max],
+      y: [yr.min, yr.max],
+      shapes: [
+        ...curve(series.fn, xr.min, xr.max, window, 'amber', { width: 4 }),
+        ...curve(poly, xr.min, xr.max, window, 'blue', { width: 2 }),
+      ],
+    };
+  },
   build(params, context) {
     const t = copy[context.locale];
     const series = SERIES[String(params.fn)] ?? SERIES.sin;

@@ -1,5 +1,6 @@
 import { checkExpression, fn1, toLatex, toNumpy, toPlain } from '../expr';
 import { ManimScript, niceRange, num } from '../manim';
+import { path } from '../preview';
 import type { TemplateParamValues, VideoTemplate } from '../types';
 
 const copy = {
@@ -106,6 +107,40 @@ export const polarCurve: VideoTemplate = {
     } catch (error) {
       return error instanceof Error ? error.message : String(error);
     }
+  },
+  preview(params) {
+    const { source, t0, t1, reach } = analyse(params);
+    const r = fn1(source, 'theta');
+    const range = niceRange(-reach * 1.12, reach * 1.12);
+    const mid = (t0 + t1) / 3;
+    return {
+      x: [range.min, range.max],
+      y: [range.min, range.max],
+      equal: true,
+      shapes: [
+        ...path(
+          (t) => r(t) * Math.cos(t),
+          (t) => r(t) * Math.sin(t),
+          t0,
+          t1,
+          'amber',
+          900
+        ),
+        {
+          kind: 'line',
+          points: [
+            [0, 0],
+            [r(mid) * Math.cos(mid), r(mid) * Math.sin(mid)],
+          ],
+          tone: 'blue',
+        },
+        {
+          kind: 'dot',
+          at: [r(mid) * Math.cos(mid), r(mid) * Math.sin(mid)],
+          tone: 'blue',
+        },
+      ],
+    };
   },
   build(params, context) {
     const text = copy[context.locale];

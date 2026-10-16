@@ -13,6 +13,7 @@ import {
   round,
   valuePlain,
 } from '../numeric';
+import { curve, functionWindow } from '../preview';
 import type { TemplateParamValues, VideoTemplate } from '../types';
 
 const RULES = {
@@ -160,6 +161,36 @@ export const riemannSum: VideoTemplate = {
     } catch (error) {
       return error instanceof Error ? error.message : String(error);
     }
+  },
+  preview(params) {
+    const { f, a, b, rule, n } = analyse(params);
+    const pad = (b - a) * 0.18;
+    const view = functionWindow(f, a - pad, b + pad, { include: [0] });
+    const dx = (b - a) / n;
+    const offset = RULES[rule].offset;
+    const rects = Array.from({ length: n }, (_, i) => {
+      const x0 = a + i * dx;
+      const height = f(x0 + dx * offset);
+      return {
+        kind: 'area' as const,
+        points: [
+          [x0, 0],
+          [x0, height],
+          [x0 + dx, height],
+          [x0 + dx, 0],
+        ] as Array<[number, number]>,
+        tone: (height < 0 ? 'red' : 'blue') as 'red' | 'blue',
+        opacity: 0.45,
+      };
+    });
+    return {
+      x: view.x,
+      y: view.y,
+      shapes: [
+        ...rects,
+        ...curve(f, view.x[0], view.x[1], view.window, 'amber', { width: 3 }),
+      ],
+    };
   },
   build(params, context) {
     const t = copy[context.locale];

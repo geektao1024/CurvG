@@ -1,5 +1,6 @@
 import { checkExpression, fn1, toLatex, toNumpy, toPlain } from '../expr';
 import { ManimScript, niceRange, num } from '../manim';
+import { path } from '../preview';
 import type { TemplateParamValues, VideoTemplate } from '../types';
 
 const copy = {
@@ -141,6 +142,28 @@ export const parametricCurve: VideoTemplate = {
     } catch (error) {
       return error instanceof Error ? error.message : String(error);
     }
+  },
+  preview(params) {
+    const { X, Y, t0, t1, bounds } = analyse(params);
+    const padX = (bounds.xmax - bounds.xmin || 1) * 0.12;
+    const padY = (bounds.ymax - bounds.ymin || 1) * 0.12;
+    const xr = niceRange(
+      Math.min(bounds.xmin - padX, 0),
+      Math.max(bounds.xmax + padX, 0)
+    );
+    const yr = niceRange(
+      Math.min(bounds.ymin - padY, 0),
+      Math.max(bounds.ymax + padY, 0)
+    );
+    return {
+      x: [xr.min, xr.max],
+      y: [yr.min, yr.max],
+      equal: true,
+      shapes: [
+        ...path(X, Y, t0, t1, 'amber'),
+        { kind: 'dot', at: [X(t0), Y(t0)], tone: 'blue' },
+      ],
+    };
   },
   build(params, context) {
     const text = copy[context.locale];

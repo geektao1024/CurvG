@@ -7,6 +7,7 @@ import {
 import { latexNumber } from '../expr';
 import { ManimScript, num } from '../manim';
 import { extrema, roots, round } from '../numeric';
+import { curve, functionWindow } from '../preview';
 import type { TemplateParamValues, VideoTemplate } from '../types';
 
 const copy = {
@@ -120,6 +121,43 @@ export const functionGraph: VideoTemplate = {
     } catch (error) {
       return error instanceof Error ? error.message : String(error);
     }
+  },
+  preview(params) {
+    const { f, xmin, xmax, zeroList, turnList, intercept } = analyse(params);
+    const extra = [
+      ...turnList.map((p) => p.y),
+      ...(intercept !== undefined ? [intercept] : []),
+    ];
+    const view = functionWindow(f, xmin, xmax, {
+      include: extra,
+      focus: turnList.length || zeroList.length ? extra : undefined,
+    });
+    return {
+      x: view.x,
+      y: view.y,
+      shapes: [
+        ...curve(f, view.x[0], view.x[1], view.window, 'amber', { width: 3 }),
+        ...zeroList.map((x) => ({
+          kind: 'dot' as const,
+          at: [x, 0] as [number, number],
+          tone: 'green' as const,
+        })),
+        ...turnList.map((p) => ({
+          kind: 'dot' as const,
+          at: [p.x, p.y] as [number, number],
+          tone: 'red' as const,
+        })),
+        ...(intercept !== undefined
+          ? [
+              {
+                kind: 'dot' as const,
+                at: [0, intercept] as [number, number],
+                tone: 'blue' as const,
+              },
+            ]
+          : []),
+      ],
+    };
   },
   build(params, context) {
     const t = copy[context.locale];

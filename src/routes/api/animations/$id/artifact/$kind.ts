@@ -30,11 +30,16 @@ async function GET({
     if (detail.parts.render?.jobId !== jobId) {
       return respErr('Artifact version is not current', { status: 404 });
     }
+    const download = new URL(request.url).searchParams.get('download') === '1';
     return readAnimationArtifact({
       request,
       animationId: params.id,
       jobId,
       kind,
+      downloadName:
+        download && kind === 'video'
+          ? `curvg-${detail.parts.template?.id || 'video'}-${params.id.slice(0, 8)}.mp4`
+          : undefined,
     });
   } catch (error) {
     console.error('[animation-artifact] failed', {

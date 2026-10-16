@@ -92,6 +92,8 @@ export async function readAnimationArtifact(params: {
   jobId: string;
   kind: AnimationArtifactKind;
   cacheControl?: string;
+  /** Serve as an attachment with this ASCII file name (the download button). */
+  downloadName?: string;
 }): Promise<Response> {
   const bucket = artifactBucket();
   if (!bucket) return proxyRendererArtifact(params);
@@ -107,7 +109,12 @@ export async function readAnimationArtifact(params: {
   object.writeHttpMetadata(headers);
   headers.set('etag', object.httpEtag);
   headers.set('accept-ranges', 'bytes');
-  headers.set('content-disposition', 'inline');
+  headers.set(
+    'content-disposition',
+    params.downloadName
+      ? `attachment; filename="${params.downloadName.replace(/[^A-Za-z0-9._-]/g, '-')}"`
+      : 'inline'
+  );
   headers.set('cache-control', params.cacheControl || 'private, max-age=86400');
   let status = 200;
   if (object.range && 'offset' in object.range) {

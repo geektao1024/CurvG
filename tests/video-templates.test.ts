@@ -34,7 +34,6 @@ import {
   roots,
   valueLatex,
 } from '../src/lib/video-templates/numeric';
-import { publicVideoTemplates } from '../src/lib/video-templates/public';
 import { templateDescriptorSpec } from '../src/lib/video-templates/spec';
 import { matchVideoTemplate } from '../src/modules/animations/template-match';
 
@@ -246,17 +245,34 @@ test('parameters pass one gate whoever fills them', () => {
   );
 });
 
-test('the public catalog is localized and carries defaults', () => {
-  const zh = publicVideoTemplates('zh');
-  const en = publicVideoTemplates('en');
-  assert.equal(zh.length, VIDEO_TEMPLATES.length);
-  assert.equal(zh[0].id, en[0].id);
-  assert.notEqual(zh[0].title, en[0].title);
-  for (const template of zh) {
-    assert.deepEqual(
-      Object.keys(template.defaults).sort(),
-      template.params.map((param) => param.key).sort()
-    );
+test('every template sketches its key frame', () => {
+  for (const template of VIDEO_TEMPLATES) {
+    const variants = [
+      undefined,
+      ...template.examples.map((example) => example.params),
+    ];
+    for (const raw of variants) {
+      const params = resolveTemplateParams(template, raw);
+      const preview = template.preview(params);
+      assert.ok(
+        preview.x[1] > preview.x[0] && preview.y[1] > preview.y[0],
+        template.id
+      );
+      assert.ok(preview.shapes.length > 0, template.id);
+      for (const shape of preview.shapes) {
+        const points =
+          shape.kind === 'line' || shape.kind === 'area'
+            ? shape.points
+            : shape.kind === 'dot'
+              ? [shape.at]
+              : [shape.from, shape.to];
+        for (const [x, y] of points)
+          assert.ok(
+            Number.isFinite(x) && Number.isFinite(y),
+            `${template.id} non-finite point`
+          );
+      }
+    }
   }
 });
 

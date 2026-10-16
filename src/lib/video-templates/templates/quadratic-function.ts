@@ -1,6 +1,7 @@
 import { latexNumber } from '../expr';
 import { ManimScript, niceRange, num, plotSegments } from '../manim';
 import { round, valueLatex, valuePlain } from '../numeric';
+import { curve } from '../preview';
 import type { TemplateParamValues, VideoTemplate } from '../types';
 
 const copy = {
@@ -131,6 +132,46 @@ export const quadraticFunction: VideoTemplate = {
     } catch (error) {
       return error instanceof Error ? error.message : String(error);
     }
+  },
+  preview(params) {
+    const { a, b, c, h, k, roots } = analyse(params);
+    const f = (x: number) => a * x * x + b * x + c;
+    const half = Math.max(3, ...roots.map((r) => Math.abs(r - h) * 1.35));
+    const xr = niceRange(h - half, h + half);
+    const ends = [f(xr.min), f(xr.max)];
+    const yLo = Math.min(0, k, c, ...(a > 0 ? [] : ends));
+    const yHi = Math.max(0, k, c, ...(a > 0 ? ends : []));
+    const span = yHi - yLo || 2;
+    const yr = niceRange(
+      a > 0 ? yLo - span * 0.15 : Math.max(yLo, k - span) - span * 0.1,
+      a > 0
+        ? Math.min(yHi, k + Math.max(span, 4)) + span * 0.1
+        : yHi + span * 0.15
+    );
+    return {
+      x: [xr.min, xr.max],
+      y: [yr.min, yr.max],
+      shapes: [
+        {
+          kind: 'line',
+          points: [
+            [h, yr.min],
+            [h, yr.max],
+          ],
+          tone: 'blue',
+          dashed: true,
+        },
+        ...curve(f, xr.min, xr.max, { min: yr.min, max: yr.max }, 'amber', {
+          width: 3,
+        }),
+        { kind: 'dot', at: [h, k], tone: 'blue' },
+        ...roots.map((r) => ({
+          kind: 'dot' as const,
+          at: [r, 0] as [number, number],
+          tone: 'green' as const,
+        })),
+      ],
+    };
   },
   build(params, context) {
     const t = copy[context.locale];

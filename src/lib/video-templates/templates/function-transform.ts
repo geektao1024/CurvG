@@ -1,6 +1,7 @@
 import { expressionOf, functionParam, numberParam } from '../common';
 import { latexNumber, toNumpy } from '../expr';
 import { ManimScript, niceRange, num, plotSegments, yWindow } from '../manim';
+import { curve } from '../preview';
 import type { TemplateParamValues, VideoTemplate } from '../types';
 
 const copy = {
@@ -141,6 +142,26 @@ export const functionTransform: VideoTemplate = {
     } catch (error) {
       return error instanceof Error ? error.message : String(error);
     }
+  },
+  preview(params) {
+    const { f, a, b, h, k } = analyse(params);
+    const g = (x: number) => a * f(b * (x - h)) + k;
+    const xr = niceRange(Math.min(-5, h - 4), Math.max(5, h + 4));
+    const wf = yWindow(f, xr.min, xr.max);
+    const wg = yWindow(g, xr.min, xr.max);
+    const yr = niceRange(
+      Math.max(Math.min(wf.min, wg.min), Math.min(-2, k - 12)),
+      Math.min(Math.max(wf.max, wg.max), Math.max(2, k + 12))
+    );
+    const window = { min: yr.min, max: yr.max };
+    return {
+      x: [xr.min, xr.max],
+      y: [yr.min, yr.max],
+      shapes: [
+        ...curve(f, xr.min, xr.max, window, 'muted', { dashed: true }),
+        ...curve(g, xr.min, xr.max, window, 'amber', { width: 3 }),
+      ],
+    };
   },
   build(params, context) {
     const t = copy[context.locale];

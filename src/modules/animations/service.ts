@@ -74,7 +74,6 @@ import { toStrictJsonSchema } from '@/lib/strict-json-schema';
 import {
   buildVideoTemplate,
   type BuiltVideoTemplate,
-  type TemplateContext,
 } from '@/lib/video-templates';
 import { templateDescriptorSpec } from '@/lib/video-templates/spec';
 
@@ -2288,72 +2287,6 @@ export async function createTemplateAnimation(params: {
   return getAnimation(params.userId, id);
 }
 
-/**
- * New parameters (or frame/theme) for a template video. The previous film
- * is kept as a version; the new one waits for the user to render it.
- */
-export async function updateTemplateAnimation(params: {
-  userId: string;
-  id: string;
-  values: Record<string, unknown>;
-  context?: Partial<TemplateContext>;
-}): Promise<AnimationDetail> {
-  const row = await ownedRow(params.userId, params.id);
-  if (isRecoverableStaleStatus(row.status) || row.status === 'queued') {
-    throw new AnimationConflictError();
-  }
-  const parts = animationParts(row);
-  if (!parts.template)
-    throw new Error('This video was not made from a template');
-  const built = buildVideoTemplate({
-    id: parts.template.id,
-    params: params.values,
-    context: {
-      locale: params.context?.locale || parts.template.locale,
-      frame: params.context?.frame || parts.template.frame,
-      theme: params.context?.theme || parts.template.theme,
-    },
-  });
-  const previous = snapshot(parts);
-  const nextParts: StoredAnimationParts = {
-    ...parts,
-    template: templateState(built, parts.template.matchedFrom),
-    spec: validateAnimationSpec(templateDescriptorSpec(built)),
-    code: built.code,
-    versions: appendVersion(parts, previous),
-    videoUrl: undefined,
-    thumbnailUrl: undefined,
-    contactSheetUrl: undefined,
-    qaReportUrl: undefined,
-    visualQa: undefined,
-    visualReview: undefined,
-    publishedAt: undefined,
-    render: undefined,
-    error: undefined,
-    failure: undefined,
-    renderRepair: undefined,
-    qualityControl: undefined,
-  };
-  await db()
-    .update(chat)
-    .set({
-      title: built.title.slice(0, 160),
-      status: 'code_ready',
-      parts: JSON.stringify(nextParts),
-    })
-    .where(and(eq(chat.id, row.id), eq(chat.status, row.status)));
-  await insertMessage({
-    userId: row.userId,
-    chatId: row.id,
-    role: 'assistant',
-    content: built.summary,
-    model: TEMPLATE_MODEL,
-    provider: TEMPLATE_PROVIDER,
-    metadata: { kind: 'template_updated', templateId: built.templateId },
-  });
-  return getAnimation(params.userId, params.id);
-}
-
 export async function reviseAnimationDraft(params: {
   userId: string;
   id: string;
@@ -2556,8 +2489,12 @@ export async function approveAnimation(params: {
   ) {
     throw new Error('Animation is not ready for approval');
   }
+  // A template film calls no model, so any failure (a renderer outage, a
+  // declined render for want of credits) may simply be rendered again; the
+  // entitlement is checked afresh before this point.
   if (
     row.status === 'failed' &&
+    !parts.template &&
     (parts.failure?.retryable !== true || parts.failure.stage === 'spec')
   ) {
     throw new Error('Animation failure is not retryable from approval');

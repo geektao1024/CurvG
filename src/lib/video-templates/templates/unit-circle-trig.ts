@@ -1,4 +1,5 @@
 import { ManimScript, num } from '../manim';
+import { path } from '../preview';
 import type { VideoTemplate } from '../types';
 
 const copy = {
@@ -85,6 +86,47 @@ export const unitCircleTrig: VideoTemplate = {
       label: { en: 'Turns', zh: '圈数' },
     },
   ],
+  preview(params) {
+    const fn = String(params.fn) === 'cos' ? Math.cos : Math.sin;
+    const turns = Number(params.turns) === 2 ? 2 : 1;
+    const end = 2 * Math.PI * turns;
+    // Circle on the left, the wave to its right on the same vertical unit.
+    const cx = -2.4;
+    const scale = 5.6 / end;
+    const theta = Math.PI / 3;
+    const p: [number, number] = [cx + Math.cos(theta), Math.sin(theta)];
+    const g: [number, number] = [theta * scale, fn(theta)];
+    return {
+      x: [-3.7, 6],
+      y: [-1.6, 1.6],
+      equal: true,
+      axes: false,
+      shapes: [
+        {
+          kind: 'line',
+          points: [
+            [cx - 1.3, 0],
+            [cx + 1.3, 0],
+          ],
+          tone: 'muted',
+        },
+        {
+          kind: 'line',
+          points: [
+            [0, 0],
+            [5.8, 0],
+          ],
+          tone: 'muted',
+        },
+        ...path((t) => cx + Math.cos(t), Math.sin, 0, 2 * Math.PI, 'ink', 120),
+        ...path((t) => t * scale, fn, 0, end, 'blue', 200),
+        { kind: 'line', points: [[cx, 0], p], tone: 'ink' },
+        { kind: 'line', points: [p, g], tone: 'muted', dashed: true },
+        { kind: 'dot', at: p, tone: 'amber' },
+        { kind: 'dot', at: g, tone: 'blue' },
+      ],
+    };
+  },
   build(params, context) {
     const t = copy[context.locale];
     const fn = String(params.fn) === 'cos' ? 'cos' : 'sin';
@@ -104,7 +146,7 @@ export const unitCircleTrig: VideoTemplate = {
     const graphBox = portrait
       ? { x: 0, y: -2.6, width: graphWidth, height: unit * 2.8 }
       : { x: 2.75, y: -0.2, width: graphWidth, height: unit * 2.8 };
-    const circle = s.axes({
+    s.axes({
       name: 'cax',
       x: { min: -1.4, max: 1.4, step: 1 },
       y: { min: -1.4, max: 1.4, step: 1 },
@@ -114,7 +156,7 @@ export const unitCircleTrig: VideoTemplate = {
       xLabel: 'x',
       yLabel: 'y',
     });
-    const graph = s.axes({
+    s.axes({
       name: 'gax',
       x: { min: 0, max: end, step: Math.PI / 2 },
       y: { min: -1.4, max: 1.4, step: 1 },

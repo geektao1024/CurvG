@@ -21,7 +21,6 @@ import {
   Download,
   Ellipsis,
   Film,
-  FunctionSquare,
   History,
   LayoutGrid,
   Lightbulb,
@@ -36,7 +35,6 @@ import {
   Play,
   Plus,
   Sparkles,
-  SquareSigma,
   Trash2,
   X,
 } from 'lucide-react';
@@ -84,15 +82,9 @@ import {
 } from '@/lib/api-client';
 import { detectMathObjectType } from '@/lib/math-preview';
 import { cn } from '@/lib/utils';
-import type { PublicVideoTemplate } from '@/lib/video-templates/public';
-import type { TemplateParamValues } from '@/lib/video-templates/types';
 import {
   MathWarningsPanel,
-  TemplateStudio,
-  TemplateVideoPanel,
-  type TemplateMatchView,
-  type TemplateRenderInput,
-  type TemplateStudioCopy,
+  type BetaWarningsCopy,
 } from '@/components/creator-templates';
 import { PixelRevealLink } from '@/components/pixel-reveal-link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -359,8 +351,10 @@ export interface CreatorWorkspaceCopy {
   /** Composer note while the account's first render is still free. */
   /** Free previews left, shown when the balance cannot pay for HD. */
   freePreviewsLeft: (left: number) => string;
-  /** The template-first creator. */
-  templates: TemplateStudioCopy;
+  /** Beta: unresolved math findings, decided by the user. */
+  warnings: BetaWarningsCopy;
+  /** Link from the beta back to the template studio. */
+  backToTemplates: string;
   /** Link to the plans wherever a render is short of credits. */
   upgradeCta: string;
   /** Toast when a free account has started its videos for the day. */
@@ -1655,7 +1649,6 @@ function Welcome({
   onFormulaIntentChange,
   mathObjectType,
   onMathObjectTypeChange,
-  templateStudio,
 }: {
   copy: CreatorWorkspaceCopy;
   locale: string;
@@ -1684,8 +1677,6 @@ function Welcome({
   onFormulaIntentChange: (value: string) => void;
   mathObjectType: AnimationMathObjectType;
   onMathObjectTypeChange: (value: AnimationMathObjectType) => void;
-  /** The template-first creator (the paid path), shown on its tab. */
-  templateStudio: ReactNode;
 }) {
   const [activeGroup, setActiveGroup] = useState(
     copy.suggestionGroups[0]?.value || ''
@@ -1693,18 +1684,6 @@ function Welcome({
   const activeSuggestions =
     copy.suggestionGroups.find((group) => group.value === activeGroup) ||
     copy.suggestionGroups[0];
-  const entryTabs: Array<{
-    value: AnimationCreationMode;
-    label: string;
-    icon: typeof LayoutGrid;
-  }> = [
-    { value: 'template', label: copy.entryTemplate, icon: LayoutGrid },
-    {
-      value: 'description',
-      label: copy.entryDescription,
-      icon: MessageSquareText,
-    },
-  ];
   const symbols = [
     ['∫', '\\int_{0}^{1}'],
     ['Σ', '\\sum_{n=1}^{10}'],
@@ -1741,30 +1720,12 @@ function Welcome({
           </p>
         )}
 
-        <div className="bg-card/72 border-border/80 mt-9 flex w-full max-w-3xl gap-1 rounded-2xl border p-1.5 shadow-sm backdrop-blur-sm">
-          {entryTabs.map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.value}
-                type="button"
-                onClick={() => onCreationModeChange(tab.value)}
-                aria-pressed={creationMode === tab.value}
-                className={cn(
-                  'focus-visible:ring-primary/45 flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 text-xs font-semibold transition-colors focus-visible:ring-2 focus-visible:outline-none sm:text-sm',
-                  creationMode === tab.value
-                    ? 'bg-foreground text-background shadow-sm'
-                    : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground'
-                )}
-              >
-                <Icon className="size-4 shrink-0" />
-                <span className="truncate">{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {creationMode === 'template' && templateStudio}
+        <Link
+          href="/creator"
+          className="text-primary mt-6 inline-flex items-center gap-1.5 text-sm font-semibold hover:underline"
+        >
+          <LayoutGrid className="size-4" /> {copy.backToTemplates}
+        </Link>
 
         {creationMode === 'formula' && (
           <div className="mt-8 grid w-full gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)]">
@@ -4313,15 +4274,12 @@ export function CreatorWorkspace({
   locale,
   initialAnimationId,
   initialPrompt,
-  initialTemplate,
   guestShell,
 }: {
   copy: CreatorWorkspaceCopy;
   locale: string;
   initialAnimationId?: string;
   initialPrompt?: string;
-  /** From a lab, curve or wonder page: open this template, filled in. */
-  initialTemplate?: { templateId: string; params: TemplateParamValues };
   /**
    * Page shell for signed-out visitors (and while the session loads): the
    * site page with header and footer, so the page scrolls and frames like
@@ -4334,9 +4292,10 @@ export function CreatorWorkspace({
   const { data: session, isPending: sessionPending } = useSession();
   const user = session?.user;
   const [selectedId, setSelectedId] = useState(initialAnimationId);
-  // Templates are the paid path; free generation is the beta tab.
+  // This workspace is the beta free-form generator; templates live in the
+  // video studio (src/components/video-studio).
   const [creationMode, setCreationMode] =
-    useState<AnimationCreationMode>('template');
+    useState<AnimationCreationMode>('description');
   const [productionMode, setProductionMode] =
     useState<AnimationProductionMode>('explainer');
   const [prompt, setPrompt] = useState(initialPrompt ?? '');
@@ -4369,16 +4328,6 @@ export function CreatorWorkspace({
   const animationsQueryKey = ['animations', user?.id] as const;
   const modelsQueryKey = ['animation-models', user?.id] as const;
   const detailQueryKey = ['animation', user?.id, selectedId] as const;
-
-  const templatesQuery = useQuery({
-    queryKey: ['video-templates', locale],
-    queryFn: () =>
-      apiGet<PublicVideoTemplate[]>(
-        `/api/video-templates?locale=${encodeURIComponent(locale)}`
-      ),
-    enabled: hydrated,
-    staleTime: 10 * 60_000,
-  });
 
   const listQuery = useQuery({
     queryKey: animationsQueryKey,
@@ -4610,9 +4559,8 @@ export function CreatorWorkspace({
           preset.models.includes(detail.model)
       )?.key
     : undefined;
-  const displayedDetailModel = detail?.parts.template
-    ? copy.templates.templateLabel
-    : detail?.provider === 'curvg' && detail.model.startsWith('deterministic-')
+  const displayedDetailModel =
+    detail?.provider === 'curvg' && detail.model.startsWith('deterministic-')
       ? copy.modelDeterministicFallback
       : detailModelPresetKey
         ? copy.curatedModels[detailModelPresetKey].label
@@ -5127,61 +5075,6 @@ export function CreatorWorkspace({
     },
   });
 
-  // Template path: match free text to a template, create and render a
-  // template video, change its parameters, export a preview in HD.
-  async function matchTemplate(text: string): Promise<TemplateMatchView> {
-    try {
-      return await apiPost<TemplateMatchView>('/api/video-templates/match', {
-        prompt: text,
-        locale,
-      });
-    } catch (error) {
-      toast.error(requestFailureMessage(copy, error));
-      throw error;
-    }
-  }
-
-  const createTemplateMutation = useMutation({
-    mutationFn: (input: TemplateRenderInput) =>
-      apiPost<AnimationDetail>('/api/animations', {
-        mode: 'template',
-        templateId: input.templateId,
-        params: input.params,
-        frame: input.frame,
-        theme: input.theme,
-        prompt: input.prompt,
-        locale,
-      }),
-    onSuccess: acceptDetail,
-    onError: (error: Error) => {
-      queryClient.invalidateQueries({ queryKey: animationsQueryKey });
-      queryClient.invalidateQueries({ queryKey: modelsQueryKey });
-      toast.error(requestFailureMessage(copy, error));
-    },
-  });
-
-  function createFromTemplate(input: TemplateRenderInput) {
-    if (sessionPending) return;
-    if (!user) {
-      router.push(
-        `/sign-in?callbackUrl=${encodeURIComponent(
-          `/creator?template=${encodeURIComponent(input.templateId)}&params=${encodeURIComponent(JSON.stringify(input.params))}`
-        )}`
-      );
-      return;
-    }
-    createTemplateMutation.mutate(input);
-  }
-
-  const updateTemplateMutation = useMutation({
-    mutationFn: (params: TemplateParamValues) =>
-      apiPost<AnimationDetail>(`/api/animations/${selectedId}/template`, {
-        params,
-      }),
-    onSuccess: acceptDetail,
-    onError: (error: Error) => toast.error(requestFailureMessage(copy, error)),
-  });
-
   const renderMutation = useMutation({
     mutationFn: (delivery?: 'hd') =>
       apiPost<AnimationDetail>(`/api/animations/${selectedId}/approve`, {
@@ -5232,8 +5125,6 @@ export function CreatorWorkspace({
     createMutation.isPending ||
     reviseMutation.isPending ||
     retryProductionMutation.isPending ||
-    createTemplateMutation.isPending ||
-    updateTemplateMutation.isPending ||
     renderMutation.isPending ||
     isAnimationBusy(detail?.status);
 
@@ -5243,7 +5134,7 @@ export function CreatorWorkspace({
     setPendingAnimation(undefined);
     setSelectedId(undefined);
     setPrompt('');
-    setCreationMode('template');
+    setCreationMode('description');
     setProductionMode('explainer');
     setFormulaIntent('');
     setMathObjectType(detectMathObjectType(formula));
@@ -5379,31 +5270,6 @@ export function CreatorWorkspace({
     );
   }
 
-  const templatePricing = {
-    freePreviews: catalog?.freePreviews,
-    renderCredits: catalog?.renderCredits ?? 20,
-    balance,
-  };
-  const templateStudio = (
-    <TemplateStudio
-      copy={copy.templates}
-      templates={templatesQuery.data ?? []}
-      loading={templatesQuery.isLoading}
-      signedIn={hasHydratedUser}
-      initialPrompt={initialPrompt}
-      initialTemplate={initialTemplate}
-      pricing={templatePricing}
-      upgradeHref={upgradeHref()}
-      creating={createTemplateMutation.isPending}
-      onMatch={matchTemplate}
-      onCreate={createFromTemplate}
-      onBeta={(text) => {
-        setPrompt(text);
-        setCreationMode('description');
-      }}
-    />
-  );
-
   if (!hydrated || sessionPending || !user) {
     const welcome = (
       <Welcome
@@ -5444,7 +5310,6 @@ export function CreatorWorkspace({
           setMathObjectType(value);
           setMathTypeOverridden(true);
         }}
-        templateStudio={templateStudio}
       />
     );
     if (guestShell) return guestShell(welcome);
@@ -5536,7 +5401,6 @@ export function CreatorWorkspace({
               setMathObjectType(value);
               setMathTypeOverridden(true);
             }}
-            templateStudio={templateStudio}
           />
         </section>
       </div>
@@ -5724,15 +5588,15 @@ export function CreatorWorkspace({
                   {detail.status === 'awaiting_approval' &&
                     !!detail.parts.mathWarnings?.length && (
                       <MathWarningsPanel
-                        copy={copy.templates}
+                        copy={copy.warnings}
                         warnings={detail.parts.mathWarnings}
                         busy={processing}
                         onApprove={() => renderMutation.mutate(undefined)}
-                        onUseTemplates={() => {
-                          const text = detail.parts.prompt;
-                          startNew();
-                          setPrompt(text);
-                        }}
+                        onUseTemplates={() =>
+                          router.push(
+                            `/creator?prompt=${encodeURIComponent(detail.parts.prompt)}`
+                          )
+                        }
                       />
                     )}
                   {!detail.parts.template && (
@@ -5763,20 +5627,7 @@ export function CreatorWorkspace({
             </div>
 
             <div className="bg-background/96 shrink-0 border-t px-3 py-3 sm:px-5">
-              {detail?.parts.template ? (
-                <TemplateVideoPanel
-                  copy={copy.templates}
-                  detail={detail}
-                  template={templatesQuery.data?.find(
-                    (template) => template.id === detail.parts.template?.id
-                  )}
-                  pricing={templatePricing}
-                  upgradeHref={upgradeHref(detail.id)}
-                  busy={processing}
-                  onUpdate={(params) => updateTemplateMutation.mutate(params)}
-                  onRender={(delivery) => renderMutation.mutate(delivery)}
-                />
-              ) : legacyArchive || templateArchive ? (
+              {legacyArchive || templateArchive ? (
                 <div className="bg-card flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold">

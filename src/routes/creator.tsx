@@ -10,21 +10,21 @@ import {
 } from '@/lib/seo';
 import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
-import { CreatorWorkspace } from '@/blocks/creator-workspace';
+import { CreatorPage as CreatorPageBlock } from '@/blocks/video-studio';
 
 function CreatorPage() {
   const { locale } = Route.useLoaderData();
-  const { animationId, prompt, template, params } = Route.useSearch();
-  const initialTemplate = template
-    ? { templateId: template, params: params ?? {} }
-    : undefined;
+  const { animationId, prompt, template, params, mode } = Route.useSearch();
   return (
     <div className="bg-background text-foreground min-h-screen">
-      <CreatorWorkspace
+      <CreatorPageBlock
         locale={locale}
-        initialAnimationId={animationId}
-        initialPrompt={prompt}
-        initialTemplate={initialTemplate}
+        mode={mode}
+        animationId={animationId}
+        prompt={prompt}
+        template={
+          template ? { templateId: template, params: params ?? {} } : undefined
+        }
       />
     </div>
   );
@@ -76,6 +76,7 @@ export const Route = createFileRoute('/creator')({
         ? search.template
         : undefined,
     params: parseTemplateParams(search.params),
+    mode: search.mode === 'beta' ? ('beta' as const) : undefined,
   }),
   loader: () => ({ locale: getLocale() }),
   head: ({ loaderData }) => {

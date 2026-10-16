@@ -1,4 +1,5 @@
 import { ManimScript, num } from '../manim';
+import { curve } from '../preview';
 import type { VideoTemplate } from '../types';
 
 interface Wave {
@@ -113,6 +114,36 @@ export const fourierSeries: VideoTemplate = {
       label: { en: 'Harmonics at the end', zh: '最终谐波数' },
     },
   ],
+  preview(params) {
+    const wave = WAVES[String(params.wave)] ?? WAVES.square;
+    const terms = Number(params.terms);
+    const harmonics: number[] = [];
+    for (let k = 1; harmonics.length < terms && k < 200; k += 1)
+      if (wave.b(k) !== 0) harmonics.push(k);
+    const sum = (x: number) =>
+      harmonics.reduce((total, k) => total + wave.b(k) * Math.sin(k * x), 0);
+    const target =
+      String(params.wave) === 'sawtooth'
+        ? (x: number) =>
+            ((((x + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) -
+            Math.PI
+        : String(params.wave) === 'triangle'
+          ? (x: number) => (2 / Math.PI) * Math.asin(Math.sin(x))
+          : (x: number) => Math.sign(Math.sin(x));
+    const end = 3 * Math.PI;
+    const window = { min: wave.y[0], max: wave.y[1] };
+    return {
+      x: [-end, end],
+      y: [wave.y[0], wave.y[1]],
+      shapes: [
+        ...curve(target, -end, end, window, 'amber', {
+          width: 3,
+          samples: 600,
+        }),
+        ...curve(sum, -end, end, window, 'blue', { width: 2, samples: 600 }),
+      ],
+    };
+  },
   build(params, context) {
     const t = copy[context.locale];
     const wave = WAVES[String(params.wave)] ?? WAVES.square;

@@ -251,72 +251,14 @@ export function CreatorWorkspace({
     creditShortfall: (cost: number, balance: number) =>
       m['creator.credit_shortfall']({ cost, balance }),
     freePreviewsLeft: (count) => m['creator.free_previews_left']({ count }),
-    templates: {
-      eyebrow: m['creator.templates.eyebrow'](),
-      title: m['creator.templates.title'](),
-      description: m['creator.templates.description'](),
-      composerLabel: m['creator.templates.composer_label'](),
-      composerPlaceholder: m['creator.templates.composer_placeholder'](),
-      matchButton: m['creator.templates.match_button'](),
-      matching: m['creator.templates.matching'](),
-      matchedEyebrow: m['creator.templates.matched_eyebrow'](),
-      confidence: {
-        high: m['creator.templates.confidence_high'](),
-        medium: m['creator.templates.confidence_medium'](),
-        low: m['creator.templates.confidence_low'](),
-      },
-      noMatchTitle: m['creator.templates.no_match_title'](),
-      noMatchBody: m['creator.templates.no_match_body'](),
-      betaButton: m['creator.templates.beta_button'](),
-      betaHint: m['creator.templates.beta_hint'](),
-      alternativesLabel: m['creator.templates.alternatives'](),
-      examplesLabel: m['creator.templates.examples'](),
-      galleryTitle: m['creator.templates.gallery_title'](),
-      galleryDescription: m['creator.templates.gallery_description'](),
-      categories: {
-        functions: m['creator.templates.category_functions'](),
-        calculus: m['creator.templates.category_calculus'](),
-        trigonometry: m['creator.templates.category_trigonometry'](),
-        series: m['creator.templates.category_series'](),
-        curves: m['creator.templates.category_curves'](),
-        'linear-algebra': m['creator.templates.category_linear_algebra'](),
-      },
-      useTemplate: m['creator.templates.use'](),
-      back: m['creator.templates.back'](),
-      paramsTitle: m['creator.templates.params_title'](),
-      frameLabel: m['creator.templates.frame_label'](),
-      frames: {
-        '16:9': m['creator.templates.frame_landscape'](),
-        '9:16': m['creator.templates.frame_portrait'](),
-      },
-      themeLabel: m['creator.templates.theme_label'](),
-      themes: {
-        paper: m['creator.templates.theme_paper'](),
-        studio: m['creator.templates.theme_studio'](),
-      },
-      createButton: m['creator.templates.create'](),
-      creating: m['creator.templates.creating'](),
-      signInToCreate: m['creator.templates.sign_in_to_create'](),
-      costHd: (credits) => m['creator.templates.cost_hd']({ credits }),
-      costPreview: (count) => m['creator.templates.cost_preview']({ count }),
-      costNone: m['creator.templates.cost_none'](),
-      upgrade: m['creator.templates.upgrade'](),
-      templateLabel: m['creator.templates.template_label'](),
-      factsTitle: m['creator.templates.facts_title'](),
-      beatsTitle: m['creator.templates.beats_title'](),
-      editParams: m['creator.templates.edit_params'](),
-      applyParams: m['creator.templates.apply_params'](),
-      renderNow: m['creator.templates.render_now'](),
-      deliveryPreview: m['creator.templates.delivery_preview'](),
-      deliveryHd: m['creator.templates.delivery_hd'](),
-      exportHd: (credits) => m['creator.templates.export_hd']({ credits }),
-      exportHdHint: m['creator.templates.export_hd_hint'](),
+    warnings: {
       betaBadge: m['creator.templates.beta_badge'](),
       warningsTitle: m['creator.templates.warnings_title'](),
       warningsBody: m['creator.templates.warnings_body'](),
       warningsApprove: m['creator.templates.warnings_approve'](),
       warningsUseTemplate: m['creator.templates.warnings_use_template'](),
     },
+    backToTemplates: m['creator.back_to_templates'](),
     upgradeCta: m['creator.upgrade_cta'](),
     dailyLimit: m['creator.daily_limit'](),
     toastCompleted: (title: string) => m['creator.toast_completed']({ title }),
@@ -406,7 +348,6 @@ export function CreatorWorkspace({
       locale={locale}
       initialAnimationId={initialAnimationId}
       initialPrompt={initialPrompt}
-      initialTemplate={initialTemplate}
       guestShell={(content) => (
         // Signed out, the creator is a public page like any other: site
         // header and footer, document scroll, content in the stage frame.
