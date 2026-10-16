@@ -2633,6 +2633,7 @@ export async function approveAnimation(params: {
       durationSeconds: renderDuration,
       productionMode: isSimulation ? 'simulation_short' : 'explainer',
       delivery,
+      trusted: !!parts.template,
       idempotencyKey: await digestUtf8Text(
         stableCanonicalJson({
           animationId: row.id,

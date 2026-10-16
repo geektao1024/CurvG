@@ -34,6 +34,8 @@ export interface AnimationRenderRequest {
    * (paid). Defaults to hd.
    */
   delivery?: 'preview' | 'hd';
+  /** Built from a verified template: the renderer skips its repair pass. */
+  trusted?: boolean;
   simulationArtifacts?: AnimationSimulationRenderArtifacts;
   signal?: AbortSignal;
 }
@@ -157,6 +159,7 @@ export class HttpAnimationRenderer implements AnimationRenderer {
           ? { simulationArtifacts: request.simulationArtifacts }
           : {}),
         delivery: request.delivery || 'hd',
+        ...(request.trusted ? { trusted: true } : {}),
         format: 'mp4',
         quality: request.delivery === 'preview' ? '720p30' : '1080p30',
       }),

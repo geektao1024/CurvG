@@ -31,6 +31,12 @@ interface RenderJob {
    * 1080p30 (paid). Absent on jobs queued before 2026-10-16: hd.
    */
   delivery?: RenderDelivery;
+  /**
+   * Source built by the application from a verified template (never by a
+   * model): skips the low-quality repair pass. Set only by the
+   * authenticated application.
+   */
+  trusted?: boolean;
   simulationArtifacts?: {
     eventsJsonl: string;
     stateTrackJson: string;
@@ -85,7 +91,7 @@ const WATERMARK_FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
 export function watermarkFilter(frame: '16:9' | '9:16'): string {
   const size = frame === '9:16' ? 34 : 30;
   return [
-    `drawtext=fontfile=${WATERMARK_FONT}:text='CurvG.com  ·  preview':fontcolor=white@0.85:fontsize=${size}:box=1:boxcolor=black@0.35:boxborderw=12:x=w-tw-36:y=h-th-36`,
+    `drawtext=fontfile=${WATERMARK_FONT}:text='CurvG.com  ·  preview':fontcolor=white@0.85:fontsize=${size}:box=1:boxcolor=black@0.35:boxborderw=12:x=w-tw-36:y=36`,
     `drawtext=fontfile=${WATERMARK_FONT}:text='CurvG.com':fontcolor=white@0.22:fontsize=${size * 3}:x=(w-tw)/2:y=(h-th)/2`,
   ].join(',');
 }
@@ -560,6 +566,7 @@ async function parseJob(
     productionMode,
     protocolVersion,
     delivery,
+    trusted: body.trusted === true,
     ...(simulationArtifacts ? { simulationArtifacts } : {}),
   } satisfies RenderJob;
 }
@@ -1891,97 +1898,109 @@ async function processJob(job: RenderJob, env: Env) {
         continue;
       }
 
-      await sandbox.writeFile(
-        '/workspace/scene.py',
-        sourceWithRenderContract({
-          source: currentCode,
-          frame: job.frame,
+      // A trusted source (a verified template, built by the application, not
+      // a model) cannot be repaired, so the low-quality review pass would only
+      // cost minutes: it goes straight to the formal render, which is still
+      // probed, reviewed and digest-checked below.
+      let selectedCode = currentCode;
+      let selectedAttempt = attempt;
+      if (!job.trusted) {
+        await sandbox.writeFile(
+          '/workspace/scene.py',
+          sourceWithRenderContract({
+            source: currentCode,
+            frame: job.frame,
+            phase: 'preview',
+          })
+        );
+        await notifyStage(job, env, 'compiling', attemptProgress(attempt, 10));
+        const render = await sandbox.exec(
+          'manim -ql --format=mp4 --disable_caching scene.py CurvGScene --media_dir /workspace/media',
+          { timeout: 600_000, cwd: '/workspace' }
+        );
+        if (!render.success) {
+          const error = commandError(render.stderr, 'Manim render failed');
+          const gate = await requestQualityGate(job, env, {
+            kind: 'render_error',
+            attempt,
+            error,
+          });
+          if (gate.action !== 'repair') {
+            throw new NonRetryableRenderError(
+              `Autonomous render repair was exhausted: ${error}`
+            );
+          }
+          currentCode = applyRepairResult(job, gate);
+          continue;
+        }
+
+        await notifyStage(
+          job,
+          env,
+          'transcoding',
+          attemptProgress(attempt, 18)
+        );
+        await notifyStage(job, env, 'reviewing', attemptProgress(attempt, 24));
+        const previewEvidence = await prepareRenderEvidence(
+          sandbox,
+          '/workspace/media'
+        );
+        const currentRank = visualQaCandidateRank(previewEvidence);
+        if (!bestEvidence || currentRank > bestRank) {
+          bestEvidence = await preserveBestRenderEvidence(
+            sandbox,
+            previewEvidence
+          );
+          bestCode = currentCode;
+          bestAttempt = attempt;
+          bestRank = currentRank;
+        }
+        // On the last autonomous pass, review and deliver the strongest rendered
+        // candidate instead of allowing a regressive repair to overwrite it.
+        const reviewEvidence =
+          attempt === qualityRepairBudget && bestEvidence
+            ? bestEvidence
+            : previewEvidence;
+        selectedCode = attempt === qualityRepairBudget ? bestCode : currentCode;
+        selectedAttempt =
+          attempt === qualityRepairBudget ? bestAttempt : attempt;
+        await notifyStage(job, env, 'reviewing', attemptProgress(attempt, 28));
+        await uploadReviewEvidence({
+          sandbox,
+          env,
+          job,
+          contactSheetKey,
+          qaReportKey,
+          evidence: reviewEvidence,
+          attempt: selectedAttempt,
           phase: 'preview',
-        })
-      );
-      await notifyStage(job, env, 'compiling', attemptProgress(attempt, 10));
-      const render = await sandbox.exec(
-        'manim -ql --format=mp4 --disable_caching scene.py CurvGScene --media_dir /workspace/media',
-        { timeout: 600_000, cwd: '/workspace' }
-      );
-      if (!render.success) {
-        const error = commandError(render.stderr, 'Manim render failed');
-        const gate = await requestQualityGate(job, env, {
-          kind: 'render_error',
-          attempt,
-          error,
         });
-        if (gate.action !== 'repair') {
+        const finalGate = await requestQualityGate(job, env, {
+          kind: 'final_review',
+          attempt,
+          visualQa: reviewEvidence.visualQa,
+          // The legacy application caps this endpoint at 16 KiB. It already
+          // persists repaired code, so repeating the full source is unnecessary
+          // for compatibility jobs. Renderer/v2 keeps exact-source approval.
+          ...(job.protocolVersion === V2_RENDER_PROTOCOL
+            ? { approvedCode: selectedCode }
+            : {}),
+        });
+        if (finalGate.action === 'repair') {
+          currentCode = applyRepairResult(job, finalGate);
+          // This candidate was rejected semantically. It must not remain in the
+          // pixel-score fallback pool after the specification or source changes.
+          bestEvidence = undefined;
+          bestCode = currentCode;
+          bestAttempt = attempt + 1;
+          bestRank = -1_001;
+          continue;
+        }
+        if (finalGate.action !== 'approve') {
           throw new NonRetryableRenderError(
-            `Autonomous render repair was exhausted: ${error}`
+            'Final deliverable did not pass autonomous review'
           );
         }
-        currentCode = applyRepairResult(job, gate);
-        continue;
-      }
-
-      await notifyStage(job, env, 'transcoding', attemptProgress(attempt, 18));
-      await notifyStage(job, env, 'reviewing', attemptProgress(attempt, 24));
-      const previewEvidence = await prepareRenderEvidence(
-        sandbox,
-        '/workspace/media'
-      );
-      const currentRank = visualQaCandidateRank(previewEvidence);
-      if (!bestEvidence || currentRank > bestRank) {
-        bestEvidence = await preserveBestRenderEvidence(
-          sandbox,
-          previewEvidence
-        );
-        bestCode = currentCode;
-        bestAttempt = attempt;
-        bestRank = currentRank;
-      }
-      // On the last autonomous pass, review and deliver the strongest rendered
-      // candidate instead of allowing a regressive repair to overwrite it.
-      const reviewEvidence =
-        attempt === qualityRepairBudget && bestEvidence
-          ? bestEvidence
-          : previewEvidence;
-      const selectedCode =
-        attempt === qualityRepairBudget ? bestCode : currentCode;
-      const selectedAttempt =
-        attempt === qualityRepairBudget ? bestAttempt : attempt;
-      await notifyStage(job, env, 'reviewing', attemptProgress(attempt, 28));
-      await uploadReviewEvidence({
-        sandbox,
-        env,
-        job,
-        contactSheetKey,
-        qaReportKey,
-        evidence: reviewEvidence,
-        attempt: selectedAttempt,
-        phase: 'preview',
-      });
-      const finalGate = await requestQualityGate(job, env, {
-        kind: 'final_review',
-        attempt,
-        visualQa: reviewEvidence.visualQa,
-        // The legacy application caps this endpoint at 16 KiB. It already
-        // persists repaired code, so repeating the full source is unnecessary
-        // for compatibility jobs. Renderer/v2 keeps exact-source approval.
-        ...(job.protocolVersion === V2_RENDER_PROTOCOL
-          ? { approvedCode: selectedCode }
-          : {}),
-      });
-      if (finalGate.action === 'repair') {
-        currentCode = applyRepairResult(job, finalGate);
-        // This candidate was rejected semantically. It must not remain in the
-        // pixel-score fallback pool after the specification or source changes.
-        bestEvidence = undefined;
-        bestCode = currentCode;
-        bestAttempt = attempt + 1;
-        bestRank = -1_001;
-        continue;
-      }
-      if (finalGate.action !== 'approve') {
-        throw new NonRetryableRenderError(
-          'Final deliverable did not pass autonomous review'
-        );
       }
 
       // The autonomous repair loop uses a low-quality render for speed. Only
