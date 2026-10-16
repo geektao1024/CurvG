@@ -91,6 +91,9 @@ export const envConfigs: Record<string, string> = {
   animation_renderer_token: procEnv.ANIMATION_RENDERER_TOKEN ?? '',
   animation_render_credits: procEnv.ANIMATION_RENDER_CREDITS ?? '20',
 
+  // Analytics fallback; the admin setting of the same name wins.
+  microsoft_clarity_id: procEnv.MICROSOFT_CLARITY_ID ?? '',
+
   // Locale (public)
   locale: publicEnv('VITE_DEFAULT_LOCALE') ?? 'en',
 };

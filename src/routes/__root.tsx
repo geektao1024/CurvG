@@ -22,6 +22,7 @@ import { 'common.not_found.hint' as commonNotFoundHint } from '@/paraglide/messa
 import { 'common.not_found.message' as commonNotFoundMessage } from '@/paraglide/messages/common_not_found_message.js';
 import { getLocale } from '@/paraglide/runtime.js';
 import { GoogleAnalytics } from '@/components/analytics/google-analytics';
+import { MicrosoftClarity } from '@/components/analytics/microsoft-clarity';
 import { Plausible } from '@/components/analytics/plausible';
 import { CustomerService } from '@/components/customer-service';
 
@@ -56,6 +57,7 @@ const getAnalyticsConfigs = createServerFn().handler(async () => {
     gaId: configs.google_analytics_id?.trim() || '',
     plausibleDomain: configs.plausible_domain?.trim() || '',
     plausibleSrc: configs.plausible_src?.trim() || '',
+    clarityId: configs.microsoft_clarity_id?.trim() || '',
     crispWebsiteId:
       configs.crisp_enabled === 'true'
         ? configs.crisp_website_id?.trim() || ''
@@ -131,6 +133,9 @@ function RootComponent() {
             domain={analytics.plausibleDomain}
             src={analytics.plausibleSrc || undefined}
           />
+        ) : null}
+        {analytics?.clarityId ? (
+          <MicrosoftClarity projectId={analytics.clarityId} />
         ) : null}
         {!isCreatorWorkspace && !isWonderStage && (
           <CustomerService

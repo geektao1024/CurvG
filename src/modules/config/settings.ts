@@ -228,6 +228,12 @@ export function getSettingGroups(): SettingGroup[] {
       description: 'Inject plausible.js for self-hosted or cloud Plausible',
       tab: 'analytics',
     },
+    {
+      name: 'microsoft_clarity',
+      title: 'Microsoft Clarity',
+      description: 'Inject the Clarity tag (heatmaps and session recordings)',
+      tab: 'analytics',
+    },
 
     // Customer Service
     {
@@ -1049,6 +1055,17 @@ export function getSettings(): Setting[] {
       placeholder: 'https://plausible.io/js/script.js',
       tip: 'Use https://plausible.io/js/script.js for cloud, or your self-hosted URL',
       group: 'plausible',
+      tab: 'analytics',
+    },
+
+    // ─── Analytics / Microsoft Clarity ───────────────────────────────
+    {
+      name: 'microsoft_clarity_id',
+      title: 'Project ID',
+      type: 'text',
+      placeholder: 'abcdefghij',
+      tip: 'Clarity → Settings → Overview → Project ID',
+      group: 'microsoft_clarity',
       tab: 'analytics',
     },
 
