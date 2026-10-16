@@ -126,6 +126,10 @@ export function animationErrorResponse(error: unknown): AnimationErrorResponse {
   if (error instanceof AnimationConflictError) {
     return { message: error.message, status: error.status };
   }
+  // Another account's id reads as missing, never as a server fault.
+  if (error instanceof Error && error.message === 'Animation not found') {
+    return { message: 'Animation not found', status: 404 };
+  }
   if (error instanceof ChatProviderError) {
     const messages: Record<typeof error.code, string> = {
       upstream_saturated:

@@ -15,6 +15,18 @@ const render = process.argv.includes('--render');
 
 type Session = { cookie: string; email: string };
 
+/** fetch with retries on network errors (a flaky local link must not fail a check). */
+async function fetchRetry(url: string, init?: RequestInit): Promise<Response> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      if (attempt >= 4) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
+    }
+  }
+}
+
 async function signIn(email: string, password: string): Promise<Session> {
   const response = await fetch(`${BASE}/api/auth/sign-in/email`, {
     method: 'POST',
@@ -36,7 +48,7 @@ async function call(
   path: string,
   body?: unknown
 ) {
-  const response = await fetch(`${BASE}${path}`, {
+  const response = await fetchRetry(`${BASE}${path}`, {
     method,
     headers: {
       ...(body ? { 'Content-Type': 'application/json' } : {}),
@@ -152,16 +164,19 @@ for (const path of [
   '/media/video-templates/rm-rf-zh.mp4',
   '/media/video-templates/riemann-sum-zh.mp4.exe',
 ]) {
-  const response = await fetch(`${BASE}${path}`);
+  const response = await fetchRetry(`${BASE}${path}`);
   check(
     `media refuses ${path}`,
     response.status === 404,
     String(response.status)
   );
 }
-const sample = await fetch(`${BASE}/media/video-templates/riemann-sum-zh.mp4`, {
-  headers: { Range: 'bytes=0-99' },
-});
+const sample = await fetchRetry(
+  `${BASE}/media/video-templates/riemann-sum-zh.mp4`,
+  {
+    headers: { Range: 'bytes=0-99' },
+  }
+);
 check(
   'sample film served with ranges',
   sample.status === 206,
@@ -193,10 +208,10 @@ if (render) {
   await sleep(5200);
   const created = await call(A, 'POST', '/api/animations', {
     mode: 'template',
-    templateId: 'derivative-tangent',
-    params: { f: 'cos(x)', a: 1 },
-    frame: '16:9',
-    theme: 'paper',
+    templateId: process.env.T_ID || 'derivative-tangent',
+    params: JSON.parse(process.env.T_PARAMS || '{"f":"cos(x)","a":1}'),
+    frame: process.env.T_FRAME || '16:9',
+    theme: process.env.T_THEME || 'paper',
     locale: 'zh',
     prompt: 'adversarial smoke: cos x at 1',
   });
@@ -243,15 +258,18 @@ if (render) {
       String(detail?.parts?.render?.delivery)
     );
     if (detail?.parts?.videoUrl) {
-      const video = await fetch(`${BASE}${detail.parts.videoUrl}&download=1`, {
-        headers: { Cookie: A.cookie },
-      });
+      const video = await fetchRetry(
+        `${BASE}${detail.parts.videoUrl}&download=1`,
+        {
+          headers: { Cookie: A.cookie },
+        }
+      );
       check(
         'download is an attachment',
         /attachment/.test(video.headers.get('content-disposition') || ''),
         `${video.status} ${video.headers.get('content-disposition')}`
       );
-      const outsider = await fetch(`${BASE}${detail.parts.videoUrl}`, {
+      const outsider = await fetchRetry(`${BASE}${detail.parts.videoUrl}`, {
         headers: { Cookie: B.cookie },
       });
       check(

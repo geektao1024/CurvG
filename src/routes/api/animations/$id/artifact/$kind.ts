@@ -42,6 +42,10 @@ async function GET({
           : undefined,
     });
   } catch (error) {
+    // Another account's id reads as missing, never as a server fault.
+    if (error instanceof Error && error.message === 'Animation not found') {
+      return respErr('Artifact not found', { status: 404 });
+    }
     console.error('[animation-artifact] failed', {
       animationId: params.id,
       kind: params.kind,

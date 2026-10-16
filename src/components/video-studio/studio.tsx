@@ -877,6 +877,7 @@ export function VideoStudio({
                 poster={detail.parts.thumbnailUrl}
                 controls
                 autoPlay
+                muted
                 playsInline
                 className="size-full"
               />
