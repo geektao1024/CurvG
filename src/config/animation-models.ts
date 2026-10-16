@@ -91,10 +91,9 @@ export function getAnimationReasoningEffort(
   if (model === 'gpt-6-luna') return 'high';
   if (model === 'deepseek-v4-flash') return 'high';
   if (model === 'gpt-6-1-sol' || model === 'gpt-5-6-sol') return 'xhigh';
-  // Claude Haiku 5.5 thinks adaptively; at `high` a plan used 17-24k output
-  // tokens and scenes hit their cap (OpenCode, 2026-10-16). `medium` is the
-  // model's own default. (On KIE, `high` only switched thinking on.)
-  if (model === 'claude-haiku-5-5') return 'medium';
+  // Claude Haiku 5.5 (OpenCode): plans and audits at high, which its
+  // mathematics needs; the provider runs composition calls at low.
+  if (model === 'claude-haiku-5-5') return 'high';
   return model === 'gemini-3.6-flash' ? 'high' : undefined;
 }
 

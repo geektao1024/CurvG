@@ -11,6 +11,7 @@ import {
   validateAnimationSpec,
 } from '@/lib/animation-schema';
 import {
+  describeSchemaLimits,
   discriminateStrictObject,
   stripNullFields,
   toStrictJsonSchema,
@@ -228,7 +229,15 @@ export function sceneFieldContract(): string {
 ${describe(SCENE_OBJECT_KINDS, 'kind')}
 Per-op timeline fields (besides ${SCENE_TIMELINE_SHARED.join(', ')}):
 ${describe(SCENE_TIMELINE_OPS, 'op')}
-A line's start and end must differ.`;
+A line's start and end must differ. Angles (startAngle, sweepAngle) are radians.
+Limits (validation rejects anything outside them):
+${describeSchemaLimits(sceneArtifactSchema).join('\n')}`;
+}
+
+/** The plan's limits as prompt text (see sceneFieldContract). */
+export function planLimitsContract(): string {
+  return `Limits (validation rejects anything outside them):
+${describeSchemaLimits(planArtifactSchema).join('\n')}`;
 }
 
 export interface AnimationPlanningArtifacts {
@@ -284,12 +293,36 @@ const schemas: {
   scene: sceneArtifactSchema,
 };
 
+/**
+ * Readout precision is presentation only: clamp it into 0..4 before
+ * validation instead of rejecting a whole scene (models wrote 6).
+ */
+function clampDisplayPrecision(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return raw;
+  const scene = raw as { objects?: unknown };
+  if (!Array.isArray(scene.objects)) return raw;
+  return {
+    ...scene,
+    objects: scene.objects.map((object) => {
+      if (!object || typeof object !== 'object') return object;
+      const decimals = (object as { decimals?: unknown }).decimals;
+      return typeof decimals === 'number' && Number.isFinite(decimals)
+        ? {
+            ...object,
+            decimals: Math.max(0, Math.min(4, Math.round(decimals))),
+          }
+        : object;
+    }),
+  };
+}
+
 export function parseAnimationPlanningArtifact<
   Name extends AnimationPlanningStageName,
 >(name: Name, value: string): AnimationPlanningArtifacts[Name] {
   // Strict structured output encodes an omitted optional field as null.
+  const raw = stripNullFields(parseStructuredJsonObject(value));
   return schemas[name].parse(
-    stripNullFields(parseStructuredJsonObject(value))
+    name === 'scene' ? clampDisplayPrecision(raw) : raw
   ) as AnimationPlanningArtifacts[Name];
 }
 

@@ -35,6 +35,7 @@ import {
   parseAnimationPlanningArtifact,
   PLAN_STAGE_NAMES,
   planArtifactSchema,
+  planLimitsContract,
   planSceneTargetedRepair,
   sceneFieldContract,
   sceneResponseSchema,
@@ -67,7 +68,7 @@ const PIPELINE_VERSION = 2;
 // One call writes the whole plan, and reasoning shares the output budget on
 // the Responses route, so both calls get room well above their artifacts.
 const PLAN_MAX_OUTPUT_TOKENS = 40_000;
-const SCENE_MAX_OUTPUT_TOKENS = 32_000;
+const SCENE_MAX_OUTPUT_TOKENS = 48_000;
 const MAX_PLAN_REPAIRS = 2;
 const PLAN_TARGET_TIMEOUT_MS = 290_000;
 // Hedge points sit near twice the observed median (plan ~45s, scene 50-80s,
@@ -593,6 +594,7 @@ function planPrompt(params: {
 ${parts}
 
 ${PLAN_SHARED_RULES}
+${planLimitsContract()}
 ${params.previousPlan ? '- previousPlan is the last approved plan. Keep every part that mandatoryFeedback does not require you to change.\n' : ''}
 CONTEXT:
 ${JSON.stringify(context)}`;

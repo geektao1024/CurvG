@@ -123,6 +123,24 @@ function parseUsage(data: Record<string, unknown>): ChatUsage | undefined {
   };
 }
 
+/**
+ * Callers pick effort on the GPT scale (planning high, scene composition
+ * medium). Haiku 5.5 thinks far more per level: at medium a scene used
+ * 20-31k output tokens and hit its cap, while its mathematics needed high
+ * (2026-10-16 smoke runs). So medium-and-below run at low, high-and-above at
+ * high: careful plans and audits, lean scenes.
+ */
+const HAIKU_EFFORT: Record<
+  NonNullable<ChatCompletionInput['reasoningEffort']>,
+  'low' | 'high'
+> = {
+  low: 'low',
+  medium: 'low',
+  high: 'high',
+  xhigh: 'high',
+  max: 'high',
+};
+
 export class OpenCodeChatProvider implements ChatProvider {
   readonly name = 'opencode';
   private readonly baseUrl: string;
@@ -180,7 +198,7 @@ export class OpenCodeChatProvider implements ChatProvider {
       messages,
       ...(system ? { system } : {}),
       ...(input.reasoningEffort
-        ? { output_config: { effort: input.reasoningEffort } }
+        ? { output_config: { effort: HAIKU_EFFORT[input.reasoningEffort] } }
         : {}),
     };
 

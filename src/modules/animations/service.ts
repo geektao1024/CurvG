@@ -384,8 +384,9 @@ async function reviewAnimationMathematics(params: {
       },
     ],
     temperature: 0,
-    // Reasoning shares this budget on both routes.
-    maxTokens: 16_000,
+    // Reasoning shares this budget on both routes; Haiku audits at high
+    // effort ran past 16k (2026-10-16).
+    maxTokens: 32_000,
     reasoningEffort: getAnimationReasoningEffort(params.model),
     responseFormat: MATH_REVIEW_RESPONSE_FORMAT,
     // Typically ~40s; a twin after 90s cuts KIE's long tail.

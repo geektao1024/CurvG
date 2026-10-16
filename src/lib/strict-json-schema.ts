@@ -250,3 +250,55 @@ export function toAnthropicStructuredSchema(node: unknown): unknown {
   }
   return result;
 }
+
+/**
+ * The numeric, length and size limits of a zod schema as short prompt lines
+ * ("objects[].decimals: 0..4"), for routes whose output is not enforced by a
+ * schema (OpenCode). Generated from the same zod schema the validator uses,
+ * so the prompt and the contract cannot drift.
+ */
+export function describeSchemaLimits(schema: z.ZodType): string[] {
+  const lines = new Set<string>();
+  const walk = (node: unknown, path: string) => {
+    if (!node || typeof node !== 'object') return;
+    const current = node as JsonSchema;
+    for (const option of [
+      ...((current.anyOf as unknown[]) || []),
+      ...((current.oneOf as unknown[]) || []),
+    ]) {
+      walk(option, path);
+    }
+    const range = (min: unknown, max: unknown) =>
+      `${typeof min === 'number' ? min : ''}..${typeof max === 'number' ? max : ''}`;
+    if (current.type === 'number' || current.type === 'integer') {
+      if (current.minimum !== undefined || current.maximum !== undefined) {
+        lines.add(`${path}: ${range(current.minimum, current.maximum)}`);
+      }
+    }
+    if (current.type === 'string' && typeof current.maxLength === 'number') {
+      lines.add(`${path}: at most ${current.maxLength} characters`);
+    }
+    if (current.type === 'array') {
+      if (current.minItems !== undefined || current.maxItems !== undefined) {
+        lines.add(
+          `${path}: ${range(current.minItems, current.maxItems)} items`
+        );
+      }
+      if (Array.isArray(current.prefixItems)) {
+        (current.prefixItems as unknown[]).forEach((item) =>
+          walk(item, `${path}[]`)
+        );
+      }
+      walk(current.items, `${path}[]`);
+    }
+    if (current.properties && typeof current.properties === 'object') {
+      for (const [name, child] of Object.entries(
+        current.properties as Record<string, unknown>
+      )) {
+        walk(child, path ? `${path}.${name}` : name);
+      }
+    }
+  };
+  walk(z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }), '');
+  return [...lines];
+}

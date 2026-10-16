@@ -1246,7 +1246,8 @@ test('OpenCode sends Anthropic Messages without temperature and reads text block
       (body.output_config as Record<string, unknown>).format,
     undefined
   );
-  assert.deepEqual(body?.output_config, { effort: 'medium' });
+  // medium (scene composition) runs at low on Haiku.
+  assert.deepEqual(body?.output_config, { effort: 'low' });
   assert.equal(body?.max_tokens, 4_000);
   assert.equal(result.content, '{"ok":true}');
   assert.deepEqual(result.usage, { inputTokens: 12, outputTokens: 34 });

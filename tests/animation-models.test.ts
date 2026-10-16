@@ -32,8 +32,8 @@ test('the default model is KIE GPT-6 Luna', () => {
   assert.equal(canUseAnimationModel('free', policy), true);
   assert.equal(getAnimationReasoningEffort('gpt-6-luna'), 'high');
   assert.equal(getAnimationCompositionReasoningEffort('gpt-6-luna'), 'medium');
-  // Haiku 5.5 thinks adaptively; medium keeps plans inside their cap.
-  assert.equal(getAnimationReasoningEffort('claude-haiku-5-5'), 'medium');
+  // Haiku 5.5 plans and audits at high; OpenCode runs scenes at low.
+  assert.equal(getAnimationReasoningEffort('claude-haiku-5-5'), 'high');
   // GPT-6.1 Sol stays allowlisted (hidden) with its tuning for old rows.
   assert.equal(getAnimationReasoningEffort('gpt-6-1-sol'), 'xhigh');
 });
@@ -140,7 +140,7 @@ test('OpenCode Haiku 5.5 leads and KIE follows when both keys are set', () => {
       {
         provider: 'opencode',
         model: 'claude-haiku-5-5',
-        reasoningEffort: 'medium',
+        reasoningEffort: 'high',
       },
       { provider: 'kie', model: 'gpt-6-luna', reasoningEffort: 'high' },
     ]
