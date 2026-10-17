@@ -45,14 +45,17 @@ function graphPaths(curve: CurveDef, w: number, h: number, pad: number) {
       maxY = Math.max(maxY, y);
     }
   }
+  // Function graphs that are a thin strip draw y larger (CurveDef.yStretch).
+  const stretch = curve.yStretch ?? 1;
   const k = Math.min(
     (w - 2 * pad) / (maxX - minX || 1),
-    (h - 2 * pad) / (maxY - minY || 1)
+    (h - 2 * pad) / ((maxY - minY) * stretch || 1)
   );
+  const ky = k * stretch;
   const ox = (w - (maxX - minX) * k) / 2 - minX * k;
-  const oy = (h + (maxY - minY) * k) / 2 + minY * k;
+  const oy = (h + (maxY - minY) * ky) / 2 + minY * ky;
   const X = (x: number) => (ox + x * k).toFixed(1);
-  const Y = (y: number) => (oy - y * k).toFixed(1);
+  const Y = (y: number) => (oy - y * ky).toFixed(1);
   const paths = lines
     .filter((line) => line.length > 1)
     .map((line) => `M${line.map(([x, y]) => `${X(x)},${Y(y)}`).join('L')}`);

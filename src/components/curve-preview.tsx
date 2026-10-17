@@ -82,9 +82,9 @@ function fixedFrame(curve: CurveDef): Box {
   return box ?? { minX: -1, maxX: 1, minY: -1, maxY: 1 };
 }
 
-function fitTransform(box: Box) {
+function fitTransform(box: Box, yStretch = 1) {
   const spanX = Math.max(box.maxX - box.minX, 1e-9);
-  const spanY = Math.max(box.maxY - box.minY, 1e-9);
+  const spanY = Math.max(box.maxY - box.minY, 1e-9) * yStretch;
   const scale = Math.min(
     (VIEW_W * (1 - 2 * PAD)) / spanX,
     (VIEW_H * (1 - 2 * PAD)) / spanY
@@ -94,8 +94,29 @@ function fitTransform(box: Box) {
   return (x: number, y: number): [number, number] => [
     VIEW_W / 2 + (x - midX) * scale,
     // SVG y grows downward; curve space y grows upward.
-    VIEW_H / 2 - (y - midY) * scale,
+    VIEW_H / 2 - (y - midY) * scale * yStretch,
   ];
+}
+
+/** The transform's pixels per unit along each axis. */
+function axisScales(transform: Transform) {
+  const [ox, oy] = transform(0, 0);
+  return {
+    ox,
+    oy,
+    scaleX: transform(1, 0)[0] - ox,
+    scaleY: oy - transform(0, 1)[1],
+  };
+}
+
+/**
+ * Snap screen points to 1/100 of a view unit. Node and the browser can
+ * disagree on the last bit of Math.sin/cos/exp; on a symmetric curve that
+ * is enough to break a tie in `simplify` differently, and the hydrated
+ * path no longer matches the server's. Snapped inputs make it identical.
+ */
+function snap(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 /**
@@ -119,7 +140,7 @@ function simplify(
     const [bx, by] = points[last];
     const dx = bx - ax;
     const dy = by - ay;
-    const length = Math.hypot(dx, dy);
+    const length = Math.sqrt(dx * dx + dy * dy);
     let worst = 0;
     let worstIndex = -1;
     for (let index = first + 1; index < last; index += 1) {
@@ -127,7 +148,7 @@ function simplify(
       const distance =
         length > 0
           ? Math.abs(dy * px - dx * py + bx * ay - by * ax) / length
-          : Math.hypot(px - ax, py - ay);
+          : Math.sqrt((px - ax) ** 2 + (py - ay) ** 2);
       if (distance > worst) {
         worst = distance;
         worstIndex = index;
@@ -147,7 +168,10 @@ function toPaths(
   tolerance?: number
 ): string[] {
   return polylines.map((line) => {
-    const screen = line.map(([x, y]) => transform(x, y));
+    const screen = line.map(([x, y]) => {
+      const [sx, sy] = transform(x, y);
+      return [snap(sx), snap(sy)] as [number, number];
+    });
     const points = tolerance ? simplify(screen, tolerance) : screen;
     let d = '';
     for (const [x, y] of points) {
@@ -285,19 +309,19 @@ function tickLabel(value: number): string {
  * the nearest edge when an axis is off screen.
  */
 function AxisGrid({ transform }: { transform: Transform }) {
-  const [ox, oy] = transform(0, 0);
-  const scale = transform(1, 0)[0] - ox;
-  if (!Number.isFinite(scale) || scale <= 0) return null;
-  const step = niceStep(64 / scale);
+  const { ox, oy, scaleX, scaleY } = axisScales(transform);
+  if (!(scaleX > 0) || !(scaleY > 0)) return null;
+  const stepX = niceStep(64 / scaleX);
+  const stepY = niceStep(64 / scaleY);
   const xs: number[] = [];
   const ys: number[] = [];
-  for (let i = Math.ceil(-ox / scale / step); ; i += 1) {
-    const sx = ox + i * step * scale;
+  for (let i = Math.ceil(-ox / scaleX / stepX); ; i += 1) {
+    const sx = ox + i * stepX * scaleX;
     if (sx > VIEW_W || xs.length > 60) break;
     xs.push(i);
   }
-  for (let i = Math.ceil((oy - VIEW_H) / scale / step); ; i += 1) {
-    const sy = oy - i * step * scale;
+  for (let i = Math.ceil((oy - VIEW_H) / scaleY / stepY); ; i += 1) {
+    const sy = oy - i * stepY * scaleY;
     if (sy < 0 || ys.length > 60) break;
     ys.push(i);
   }
@@ -311,11 +335,11 @@ function AxisGrid({ transform }: { transform: Transform }) {
     <g aria-hidden>
       <g stroke="currentColor" strokeOpacity={0.07}>
         {xs.map((i) => {
-          const sx = (ox + i * step * scale).toFixed(1);
+          const sx = (ox + i * stepX * scaleX).toFixed(1);
           return <path key={`gx${i}`} d={`M${sx} 0V${VIEW_H}`} />;
         })}
         {ys.map((i) => {
-          const sy = (oy - i * step * scale).toFixed(1);
+          const sy = (oy - i * stepY * scaleY).toFixed(1);
           return <path key={`gy${i}`} d={`M0 ${sy}H${VIEW_W}`} />;
         })}
       </g>
@@ -336,20 +360,30 @@ function AxisGrid({ transform }: { transform: Transform }) {
         fontSize={11}
       >
         {xs.map((i) => {
-          const sx = ox + i * step * scale;
+          const sx = ox + i * stepX * scaleX;
           if (i === 0 || sx < 14 || sx > VIEW_W - 14) return null;
           return (
-            <text key={`tx${i}`} x={sx} y={labelY} textAnchor="middle">
-              {tickLabel(i * step)}
+            <text
+              key={`tx${i}`}
+              x={sx.toFixed(1)}
+              y={labelY.toFixed(1)}
+              textAnchor="middle"
+            >
+              {tickLabel(i * stepX)}
             </text>
           );
         })}
         {ys.map((i) => {
-          const sy = oy - i * step * scale;
+          const sy = oy - i * stepY * scaleY;
           if (i === 0 || sy < 12 || sy > VIEW_H - 10) return null;
           return (
-            <text key={`ty${i}`} x={labelX} y={sy + 4} textAnchor={anchorX}>
-              {tickLabel(i * step)}
+            <text
+              key={`ty${i}`}
+              x={labelX.toFixed(1)}
+              y={(sy + 4).toFixed(1)}
+              textAnchor={anchorX}
+            >
+              {tickLabel(i * stepY)}
             </text>
           );
         })}
@@ -370,7 +404,7 @@ export function CurveThumb({
 }) {
   const { paths, origin } = useMemo(() => {
     const polylines = curve.sample(defaultValues(curve));
-    const transform = fitTransform(boxOf(polylines));
+    const transform = fitTransform(boxOf(polylines), curve.yStretch);
     return {
       paths: toPaths(polylines, transform, 0.6),
       origin: transform(0, 0),
@@ -400,7 +434,7 @@ export function CurveDrawingLoop({
 }) {
   const paths = useMemo(() => {
     const polylines = curve.sample(defaultValues(curve));
-    const transform = fitTransform(boxOf(polylines));
+    const transform = fitTransform(boxOf(polylines), curve.yStretch);
     return toPaths(polylines, transform, 0.6);
   }, [curve]);
   return (
@@ -480,7 +514,8 @@ export function CurveExplorer({
   const { polylines, paths, origin, transform } = useMemo(() => {
     const polylines = curve.sample(values);
     const transform = fitTransform(
-      frame ?? boxOf([...polylines, traceExtent(curve.slug, values)])
+      frame ?? boxOf([...polylines, traceExtent(curve.slug, values)]),
+      curve.yStretch
     );
     return {
       polylines,
@@ -524,8 +559,8 @@ export function CurveExplorer({
           ) : start ? (
             // Where the pen will set off: the amber handle of the logo.
             <circle
-              cx={start[0]}
-              cy={start[1]}
+              cx={start[0].toFixed(1)}
+              cy={start[1].toFixed(1)}
               r={6}
               fill="var(--card)"
               stroke="var(--brand)"
@@ -684,9 +719,9 @@ function readoutValue(value: number, step: number): string {
  */
 function PointerReadout({ transform }: { transform: Transform }) {
   const [point, setPoint] = useState<[number, number] | null>(null);
-  const [ox, oy] = transform(0, 0);
-  const scale = transform(1, 0)[0] - ox;
-  const step = niceStep(64 / scale) / 10;
+  const { ox, oy, scaleX, scaleY } = axisScales(transform);
+  const stepX = niceStep(64 / scaleX) / 10;
+  const stepY = niceStep(64 / scaleY) / 10;
   return (
     <svg
       viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
@@ -718,7 +753,7 @@ function PointerReadout({ transform }: { transform: Transform }) {
             fontFamily="var(--font-code)"
             fontSize={12}
           >
-            {`x ${readoutValue((point[0] - ox) / scale, step)}   y ${readoutValue((oy - point[1]) / scale, step)}`}
+            {`x ${readoutValue((point[0] - ox) / scaleX, stepX)}   y ${readoutValue((oy - point[1]) / scaleY, stepY)}`}
           </text>
         </g>
       ) : null}

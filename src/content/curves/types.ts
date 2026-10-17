@@ -48,6 +48,13 @@ export type CurveDef = {
    */
   fitMode: 'fixed' | 'refit';
   /**
+   * Draw the y-axis this many times larger than the x-axis. Only for
+   * function graphs whose natural shape is a thin strip (the sigmoid is
+   * 14 wide, 1 tall); the numbered axes show the two scales. Never for
+   * curves built from circles or fixed lengths. Default 1.
+   */
+  yStretch?: number;
+  /**
    * How many leading polylines of `sample()` are construction, not the
    * curve: a fixed circle, a control polygon. They are drawn thin and faint.
    * Default 0 — every polyline is the curve (hyperbola branches, spiral arms).

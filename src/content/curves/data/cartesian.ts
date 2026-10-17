@@ -848,6 +848,7 @@ export const cartesianCurves: CurveDef[] = [
       },
     ],
     fitMode: 'fixed',
+    yStretch: 5,
     sample: ({ k }) => [
       sweep(-7, 7, 800, (x) => [x, 1 / (1 + Math.exp(-k * x))]),
     ],
