@@ -140,7 +140,11 @@ async function checkPage(path) {
   }
 
   if (path.endsWith('/creator') || path === '/creator') {
-    const hasEntryModes = /From template/.test(html) || /从模板/.test(html);
+    // The studio's two ways in (2026-10-16): describe a topic, or pick
+    // from the template library. Both must be in the server HTML.
+    const hasEntryModes =
+      (/Your topic/.test(html) && /Template library/.test(html)) ||
+      (/想讲什么/.test(html) && /模板库/.test(html));
     if (!hasEntryModes) {
       fail(path, 'Creator SSR source has no creation entry modes');
     }
