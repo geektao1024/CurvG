@@ -1109,8 +1109,7 @@
   "curves.detail.parameters": "Adjust parameters",
   "curves.detail.reset": "Reset",
   "curves.detail.preview_aria": "Interactive preview of the {name}",
-  "curves.detail.animate_cta": "Animate this curve",
-  "curves.detail.animate_hint": "Open the Creator with a ready-made animation brief for this curve — review the scene plan and Manim code before rendering.",
+  "curves.detail.animate_cta": "Start the video",
   "curves.detail.about": "What is the {name}?",
   "curves.detail.properties": "Key properties",
   "curves.detail.seen_in": "Where you'll see it",
@@ -1622,5 +1621,16 @@
   "studio.category_trigonometry": "Trigonometry",
   "studio.category_series": "Series",
   "studio.category_curves": "Curves",
-  "studio.category_linear_algebra": "Linear algebra"
+  "studio.category_linear_algebra": "Linear algebra",
+  "curves.detail.video_eyebrow": "Explainer video",
+  "curves.detail.video_title": "Make a video of the {name}",
+  "curves.detail.video_hint_template": "Opens a video template with the parameters on screen. Every number in the video is computed before it renders; choose landscape or vertical.",
+  "curves.detail.video_hint_brief": "Opens the Creator with a ready-made brief for this curve. Free-form generation is in beta.",
+  "curves.detail.eyebrow_about": "Definition",
+  "curves.detail.eyebrow_properties": "Properties",
+  "curves.detail.eyebrow_seen_in": "In the wild",
+  "curves.detail.eyebrow_faq": "Questions",
+  "curves.detail.eyebrow_labs": "Labs",
+  "curves.detail.eyebrow_wonders": "Wonders",
+  "curves.detail.eyebrow_related": "Keep exploring"
 }

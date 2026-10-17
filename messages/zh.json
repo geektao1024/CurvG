@@ -1109,8 +1109,7 @@
   "curves.detail.parameters": "调节参数",
   "curves.detail.reset": "重置",
   "curves.detail.preview_aria": "{name}交互预览",
-  "curves.detail.animate_cta": "生成这条曲线的动画",
-  "curves.detail.animate_hint": "打开创作工作台，自动填入这条曲线的动画需求——渲染前可检查场景方案和 Manim 代码。",
+  "curves.detail.animate_cta": "开始制作",
   "curves.detail.about": "什么是{name}？",
   "curves.detail.properties": "关键性质",
   "curves.detail.seen_in": "它出现在哪里",
@@ -1622,5 +1621,16 @@
   "studio.category_trigonometry": "三角函数",
   "studio.category_series": "级数",
   "studio.category_curves": "曲线",
-  "studio.category_linear_algebra": "线性代数"
+  "studio.category_linear_algebra": "线性代数",
+  "curves.detail.video_eyebrow": "讲解视频",
+  "curves.detail.video_title": "把{name}做成讲解视频",
+  "curves.detail.video_hint_template": "带着图中的参数打开视频模板。片中每个数都在渲染前算好，可选横屏或竖屏。",
+  "curves.detail.video_hint_brief": "打开创作台，自动填好这条曲线的动画需求。自由生成目前是测试版。",
+  "curves.detail.eyebrow_about": "定义",
+  "curves.detail.eyebrow_properties": "性质",
+  "curves.detail.eyebrow_seen_in": "应用",
+  "curves.detail.eyebrow_faq": "问答",
+  "curves.detail.eyebrow_labs": "实验",
+  "curves.detail.eyebrow_wonders": "奇观",
+  "curves.detail.eyebrow_related": "继续探索"
 }

@@ -9,6 +9,7 @@ export function SectionHeading({
   description,
   action,
   className,
+  id,
 }: {
   eyebrow: string;
   title: string;
@@ -16,6 +17,8 @@ export function SectionHeading({
   /** A link on the right, e.g. "Browse all". */
   action?: ReactNode;
   className?: string;
+  /** For a section's `aria-labelledby`. */
+  id?: string;
 }) {
   return (
     <div
@@ -28,7 +31,10 @@ export function SectionHeading({
         <p className="text-primary font-mono text-xs font-semibold tracking-[0.16em] uppercase">
           {eyebrow}
         </p>
-        <h2 className="curvg-heading mt-3 text-3xl text-balance sm:text-4xl">
+        <h2
+          id={id}
+          className="curvg-heading mt-3 text-3xl text-balance sm:text-4xl"
+        >
           {title}
         </h2>
         {description ? (

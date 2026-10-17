@@ -457,6 +457,25 @@
     }
   }
 
+  /* 曲线详情页：图像进入时把曲线画一遍（一次），之后保持静止。路径需设 pathLength="1"。 */
+  .curvg-draw-in {
+    stroke-dasharray: 1;
+    animation: curvg-draw-in 1.6s cubic-bezier(0.45, 0, 0.2, 1) both;
+  }
+  @keyframes curvg-draw-in {
+    from {
+      stroke-dashoffset: 1;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .curvg-draw-in {
+      animation: none;
+    }
+  }
+
   @keyframes curvg-corner-spin {
     to {
       transform: rotate(360deg);

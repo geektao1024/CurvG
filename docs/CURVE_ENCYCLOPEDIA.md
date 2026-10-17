@@ -233,3 +233,20 @@ cycloid equation / perimeter of astroid / heart curve" 这类。用户是查公�
    两页互链并在正文说明差别。
 
 红线不变:`properties` 只写可查证的标准结论;新增数值进测试(`tests/curves-seo.test.ts`)。
+
+## 9. 详情页视觉(2026-10-17)
+
+60 条共用 `src/routes/curves/$slug.tsx`,改版只动模板,不动数据。
+
+- **图像即坐标纸**:`CurveExplorer` 给 `CurveSvg` 传 `axes`,由 `AxisGrid` 画网格与刻度:间距取 1 / 2 / 5 × 10ⁿ,
+  约 64 视图单位一格,轴在画外时数字贴边;手机宽度隐藏数字(太小读不清)。缩略图(`CurveThumb`)仍用旧的装饰网格。
+- **读数**:`PointerReadout` 是叠在图上的独立 SVG,只接鼠标(触屏照常滚动),自己持有状态,移动鼠标不重绘曲线。
+- **进入动画**:路径设 `pathLength=1`,`.curvg-draw-in` 画一次 1.6 秒,`prefers-reduced-motion` 时直接显示;SSR 输出完整路径。
+  光晕默认开,分形关(细节会糊)。起笔圆环位置 = 最后一条折线的第一个点,即作画动画的起点。
+- **视频卡**:`<section class="dark">` 让卡片在明暗两种主题下都是暗场;`curveVideoTemplate` 命中时文案是模板,否则是测试版自由生成。
+  这张卡不写价格或免费额度,定价承诺仍只在 `MONETIZATION.md` 列出的页面。
+- **区块编号**:按实际渲染顺序编号(没有实验 / 奇观的曲线不会跳号)。
+- **`MathProse`**(`src/components/math-prose.tsx`):对 `plainMath` 结果把 `^(…)`、`^n` 排成上标,`^(`、`)` 以 `sr-only` 保留,
+  所以页面文本与 meta description、FAQPage 逐字一致。新增文案里的指数照旧写 TeX(`x^{2/3}`)即可。
+- 验证:120 个详情页 200、单 H1、有坐标刻度、正文无原始 TeX;浏览器实测悬停读数、作画与进度条、播完出现"做成讲解视频"、
+  明暗主题、390px 手机宽度。

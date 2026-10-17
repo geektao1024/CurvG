@@ -164,6 +164,9 @@ function CurveSvg({
   className,
   guideLines = 0,
   faded,
+  axes,
+  reveal,
+  halo = reveal,
   children,
 }: {
   paths: string[];
@@ -174,6 +177,12 @@ function CurveSvg({
   guideLines?: number;
   /** Dim the finished curve while an animation draws over it. */
   faded?: boolean;
+  /** Graph paper with numbered axes instead of the plain grid. */
+  axes?: Transform;
+  /** Draw the curve in once on mount. */
+  reveal?: boolean;
+  /** A soft amber glow under the curve; defaults to `reveal`. */
+  halo?: boolean;
   children?: ReactNode;
 }) {
   return (
@@ -183,51 +192,169 @@ function CurveSvg({
       role="img"
       aria-label={ariaLabel}
     >
-      <defs>
-        <pattern
-          id="curve-grid"
-          width="52"
-          height="52"
-          patternUnits="userSpaceOnUse"
-        >
-          <path
-            d="M52 0H0V52"
-            fill="none"
-            stroke="currentColor"
-            strokeOpacity="0.07"
-          />
-        </pattern>
-      </defs>
-      <rect width={VIEW_W} height={VIEW_H} fill="url(#curve-grid)" />
-      {origin && origin[0] > 0 && origin[0] < VIEW_W && (
-        <path
-          d={`M${origin[0].toFixed(1)} 0V${VIEW_H}`}
-          stroke="currentColor"
-          strokeOpacity="0.18"
-        />
+      {axes ? (
+        <AxisGrid transform={axes} />
+      ) : (
+        <>
+          <defs>
+            <pattern
+              id="curve-grid"
+              width="52"
+              height="52"
+              patternUnits="userSpaceOnUse"
+            >
+              <path
+                d="M52 0H0V52"
+                fill="none"
+                stroke="currentColor"
+                strokeOpacity="0.07"
+              />
+            </pattern>
+          </defs>
+          <rect width={VIEW_W} height={VIEW_H} fill="url(#curve-grid)" />
+          {origin && origin[0] > 0 && origin[0] < VIEW_W && (
+            <path
+              d={`M${origin[0].toFixed(1)} 0V${VIEW_H}`}
+              stroke="currentColor"
+              strokeOpacity="0.18"
+            />
+          )}
+          {origin && origin[1] > 0 && origin[1] < VIEW_H && (
+            <path
+              d={`M0 ${origin[1].toFixed(1)}H${VIEW_W}`}
+              stroke="currentColor"
+              strokeOpacity="0.18"
+            />
+          )}
+        </>
       )}
-      {origin && origin[1] > 0 && origin[1] < VIEW_H && (
-        <path
-          d={`M0 ${origin[1].toFixed(1)}H${VIEW_W}`}
-          stroke="currentColor"
-          strokeOpacity="0.18"
-        />
-      )}
+      {halo
+        ? paths.map((d, index) =>
+            index < guideLines ? null : (
+              <path
+                key={`halo-${index}`}
+                d={d}
+                pathLength={1}
+                fill="none"
+                stroke="var(--brand)"
+                strokeWidth={10}
+                strokeOpacity={faded ? 0 : 0.13}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="curvg-draw-in transition-[stroke-opacity] duration-300"
+              />
+            )
+          )
+        : null}
       {paths.map((d, index) => (
         <path
           key={index}
           d={d}
+          pathLength={reveal ? 1 : undefined}
           fill="none"
           stroke="var(--primary)"
           strokeWidth={index < guideLines ? 1.6 : 2.6}
           strokeOpacity={(index < guideLines ? 0.45 : 1) * (faded ? 0.2 : 1)}
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="transition-[stroke-opacity] duration-300"
+          className={cn(
+            'transition-[stroke-opacity] duration-300',
+            reveal && 'curvg-draw-in'
+          )}
         />
       ))}
       {children}
     </svg>
+  );
+}
+
+/** 1, 2 or 5 × 10ⁿ: the tick spacing nearest to `raw`. */
+function niceStep(raw: number): number {
+  const power = 10 ** Math.floor(Math.log10(raw));
+  const unit = raw / power;
+  return (unit < 1.5 ? 1 : unit < 3.5 ? 2 : unit < 7.5 ? 5 : 10) * power;
+}
+
+function tickLabel(value: number): string {
+  return String(Number(value.toPrecision(6))).replace('-', '−');
+}
+
+/**
+ * Graph paper whose lines fall on round numbers, with the axes numbered —
+ * so a reader can measure the curve, not just look at it. Labels stick to
+ * the nearest edge when an axis is off screen.
+ */
+function AxisGrid({ transform }: { transform: Transform }) {
+  const [ox, oy] = transform(0, 0);
+  const scale = transform(1, 0)[0] - ox;
+  if (!Number.isFinite(scale) || scale <= 0) return null;
+  const step = niceStep(64 / scale);
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (let i = Math.ceil(-ox / scale / step); ; i += 1) {
+    const sx = ox + i * step * scale;
+    if (sx > VIEW_W || xs.length > 60) break;
+    xs.push(i);
+  }
+  for (let i = Math.ceil((oy - VIEW_H) / scale / step); ; i += 1) {
+    const sy = oy - i * step * scale;
+    if (sy < 0 || ys.length > 60) break;
+    ys.push(i);
+  }
+  const axisX = Math.min(Math.max(ox, 6), VIEW_W - 6);
+  const axisY = Math.min(Math.max(oy, 6), VIEW_H - 6);
+  // Labels sit below the x-axis and right of the y-axis unless that edge is near.
+  const labelY = axisY > VIEW_H - 24 ? axisY - 8 : axisY + 16;
+  const labelX = axisX > VIEW_W - 48 ? axisX - 8 : axisX + 8;
+  const anchorX = axisX > VIEW_W - 48 ? 'end' : 'start';
+  return (
+    <g aria-hidden>
+      <g stroke="currentColor" strokeOpacity={0.07}>
+        {xs.map((i) => {
+          const sx = (ox + i * step * scale).toFixed(1);
+          return <path key={`gx${i}`} d={`M${sx} 0V${VIEW_H}`} />;
+        })}
+        {ys.map((i) => {
+          const sy = (oy - i * step * scale).toFixed(1);
+          return <path key={`gy${i}`} d={`M0 ${sy}H${VIEW_W}`} />;
+        })}
+      </g>
+      <g stroke="currentColor" strokeOpacity={0.28}>
+        {ox >= 0 && ox <= VIEW_W && (
+          <path d={`M${ox.toFixed(1)} 0V${VIEW_H}`} />
+        )}
+        {oy >= 0 && oy <= VIEW_H && (
+          <path d={`M0 ${oy.toFixed(1)}H${VIEW_W}`} />
+        )}
+      </g>
+      {/* Too small to read once the graph is phone-width. */}
+      <g
+        className="max-sm:hidden"
+        fill="currentColor"
+        fillOpacity={0.42}
+        fontFamily="var(--font-code)"
+        fontSize={11}
+      >
+        {xs.map((i) => {
+          const sx = ox + i * step * scale;
+          if (i === 0 || sx < 14 || sx > VIEW_W - 14) return null;
+          return (
+            <text key={`tx${i}`} x={sx} y={labelY} textAnchor="middle">
+              {tickLabel(i * step)}
+            </text>
+          );
+        })}
+        {ys.map((i) => {
+          const sy = oy - i * step * scale;
+          if (i === 0 || sy < 12 || sy > VIEW_H - 10) return null;
+          return (
+            <text key={`ty${i}`} x={labelX} y={sy + 4} textAnchor={anchorX}>
+              {tickLabel(i * step)}
+            </text>
+          );
+        })}
+      </g>
+    </g>
   );
 }
 
@@ -363,12 +490,17 @@ export function CurveExplorer({
     };
   }, [curve, values, frame]);
 
+  const start = useMemo(() => {
+    const first = polylines.at(-1)?.[0];
+    return first ? transform(first[0], first[1]) : null;
+  }, [polylines, transform]);
+
   const isDefault = curve.params.every(
     (param) => values[param.key] === defaults[param.key]
   );
 
   return (
-    <div className="bg-card overflow-hidden rounded-2xl border">
+    <div className="bg-card overflow-hidden rounded-2xl border shadow-[0_1px_0_0_var(--border),0_24px_48px_-32px_color-mix(in_oklab,var(--foreground)_28%,transparent)]">
       <div className="bg-muted/20 relative aspect-[4/3]">
         <CurveSvg
           paths={paths}
@@ -376,6 +508,10 @@ export function CurveExplorer({
           ariaLabel={ariaLabel}
           guideLines={curve.guideLines}
           faded={draw.progress !== null}
+          axes={transform}
+          reveal
+          // Dense fractal edges blur under a glow.
+          halo={curve.category !== 'fractal'}
         >
           {draw.progress !== null ? (
             <TraceOverlay
@@ -385,10 +521,22 @@ export function CurveExplorer({
               transform={transform}
               progress={draw.progress}
             />
+          ) : start ? (
+            // Where the pen will set off: the amber handle of the logo.
+            <circle
+              cx={start[0]}
+              cy={start[1]}
+              r={6}
+              fill="var(--card)"
+              stroke="var(--brand)"
+              strokeWidth={2.5}
+              aria-hidden
+            />
           ) : null}
         </CurveSvg>
+        <PointerReadout transform={transform} />
         {drawLabels ? (
-          <div className="absolute top-3 left-3 flex flex-wrap items-center gap-2">
+          <div className="absolute bottom-3 left-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() =>
@@ -396,15 +544,20 @@ export function CurveExplorer({
                   ? draw.stop()
                   : draw.play(drawDuration(polylines, transform))
               }
-              className="bg-card/90 hover:border-primary/50 hover:text-primary inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium shadow-xs backdrop-blur transition-colors"
-            >
-              {draw.progress !== null ? (
-                <Square className="size-3" aria-hidden />
-              ) : draw.played ? (
-                <RotateCcw className="size-3.5" aria-hidden />
-              ) : (
-                <Play className="size-3.5" aria-hidden />
+              className={cn(
+                'bg-card/95 hover:border-primary/60 hover:text-primary inline-flex items-center gap-2 rounded-full border py-1 pr-3.5 pl-1 text-sm font-medium shadow-sm backdrop-blur transition-colors',
+                !draw.played && draw.progress === null && 'curvg-play-nudge'
               )}
+            >
+              <span className="bg-primary text-primary-foreground grid size-7 place-items-center rounded-full">
+                {draw.progress !== null ? (
+                  <Square className="size-3 fill-current" aria-hidden />
+                ) : draw.played ? (
+                  <RotateCcw className="size-3.5" aria-hidden />
+                ) : (
+                  <Play className="ml-0.5 size-3.5 fill-current" aria-hidden />
+                )}
+              </span>
               {draw.progress !== null
                 ? drawLabels.stop
                 : draw.played
@@ -414,12 +567,23 @@ export function CurveExplorer({
             {drawNext && draw.played && draw.progress === null ? (
               <Link
                 href={drawNext.href}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold shadow-xs transition-colors"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 curvg-playground-in inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold shadow-sm transition-colors"
               >
                 {drawNext.label}
                 <ArrowRight className="size-3.5" aria-hidden />
               </Link>
             ) : null}
+          </div>
+        ) : null}
+        {draw.progress !== null ? (
+          <div
+            className="bg-border/60 absolute inset-x-0 bottom-0 h-0.5"
+            aria-hidden
+          >
+            <div
+              className="bg-brand h-full"
+              style={{ width: `${(draw.progress * 100).toFixed(2)}%` }}
+            />
           </div>
         ) : null}
       </div>
@@ -508,6 +672,59 @@ export function CurveExplorer({
 }
 
 type Transform = (x: number, y: number) => [number, number];
+
+function readoutValue(value: number, step: number): string {
+  const digits = Math.max(0, Math.min(4, 1 - Math.floor(Math.log10(step))));
+  return value.toFixed(digits).replace('-', '−');
+}
+
+/**
+ * Crosshair and (x, y) readout under the pointer, in curve coordinates.
+ * Its own state, so moving the mouse never re-renders the curve.
+ */
+function PointerReadout({ transform }: { transform: Transform }) {
+  const [point, setPoint] = useState<[number, number] | null>(null);
+  const [ox, oy] = transform(0, 0);
+  const scale = transform(1, 0)[0] - ox;
+  const step = niceStep(64 / scale) / 10;
+  return (
+    <svg
+      viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+      className="absolute inset-0 size-full cursor-crosshair"
+      aria-hidden
+      onPointerMove={(event) => {
+        if (event.pointerType !== 'mouse') return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        setPoint([
+          ((event.clientX - rect.left) / rect.width) * VIEW_W,
+          ((event.clientY - rect.top) / rect.height) * VIEW_H,
+        ]);
+      }}
+      onPointerLeave={() => setPoint(null)}
+    >
+      {point ? (
+        <g className="text-primary">
+          <path
+            d={`M${point[0].toFixed(1)} 0V${VIEW_H}M0 ${point[1].toFixed(1)}H${VIEW_W}`}
+            stroke="currentColor"
+            strokeOpacity={0.35}
+            strokeDasharray="3 4"
+          />
+          <text
+            x={VIEW_W - 12}
+            y={22}
+            textAnchor="end"
+            fill="currentColor"
+            fontFamily="var(--font-code)"
+            fontSize={12}
+          >
+            {`x ${readoutValue((point[0] - ox) / scale, step)}   y ${readoutValue((oy - point[1]) / scale, step)}`}
+          </text>
+        </g>
+      ) : null}
+    </svg>
+  );
+}
 
 /** Playback clock: progress 0 → 1 over one run, null when idle. */
 function useDrawing() {
