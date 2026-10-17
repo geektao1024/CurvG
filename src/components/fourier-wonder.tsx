@@ -9,6 +9,7 @@ import {
   MAX_WAVE_CIRCLES,
   type FourierShape,
 } from '@/lib/wonders/fourier-scene';
+import { shareNumber } from '@/lib/wonders/share';
 import {
   WonderChips,
   WonderReadouts,
@@ -118,6 +119,31 @@ export function FourierWonder({
       overlay={overlay}
       onTick={tick}
       notice={notice}
+      share={{
+        // A free-hand drawing is too big for a link; share the presets.
+        get: () =>
+          engine.target.shape === 'custom'
+            ? null
+            : {
+                f: engine.target.shape,
+                n: engine.target.count,
+                c: engine.target.showCircles,
+              },
+        apply: (state) => {
+          const f =
+            SHAPES.find((item) => item === state.f && item !== 'custom') ??
+            'pi';
+          const n = Math.round(
+            shareNumber(state.n, 1, maxCircles(f), isWaveShape(f) ? 8 : 30)
+          );
+          const c = state.c !== '0';
+          engine.drawing = false;
+          engine.target = { shape: f, count: n, showCircles: c };
+          setShape(f);
+          setCount(n);
+          setShowCircles(c);
+        },
+      }}
       canvasProps={{
         className: drawing ? 'is-drawing' : undefined,
         onPointerDown,

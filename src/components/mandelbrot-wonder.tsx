@@ -1,7 +1,13 @@
 import { useRef, useState, type PointerEvent, type ReactNode } from 'react';
 
-import { FULL, PRESETS, type MandelPreset } from '@/lib/wonders/mandelbrot';
+import {
+  FULL,
+  MIN_WIDTH,
+  PRESETS,
+  type MandelPreset,
+} from '@/lib/wonders/mandelbrot';
 import { MandelbrotEngine, type MandelText } from '@/lib/wonders/mandelbrot-gl';
+import { shareNumber } from '@/lib/wonders/share';
 import {
   WonderChips,
   WonderReadouts,
@@ -69,6 +75,31 @@ export function MandelbrotWonder({
           iter: engine.scene.maxIter,
         })
       }
+      share={{
+        // Full precision: a deep view is only as good as its last digits.
+        get: () => ({
+          x: engine.view.re.toPrecision(17),
+          y: engine.view.im.toPrecision(17),
+          w: engine.view.width.toPrecision(6),
+          d: engine.detail,
+        }),
+        apply: (state) => {
+          const width = shareNumber(state.w, MIN_WIDTH, FULL.width * 1.6, 0);
+          if (width > 0) {
+            engine.view = {
+              re: shareNumber(state.x, -2.5, 1.5, FULL.re),
+              im: shareNumber(state.y, -1.6, 1.6, FULL.im),
+              width,
+            };
+          }
+          engine.target = null;
+          engine.probe = null;
+          const d = Math.round(shareNumber(state.d, 0.5, 3, 1) * 4) / 4;
+          engine.detail = d;
+          setDetail(d);
+          setPreset(null);
+        },
+      }}
       canvasProps={{
         className: 'is-pannable',
         onPointerDown: (e) => {

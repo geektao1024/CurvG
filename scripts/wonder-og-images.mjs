@@ -30,6 +30,20 @@ const MOMENTS = {
   // The swarm has spread over the whole butterfly.
   'lorenz-attractor': { beat: 5, wait: 4500 },
   'sunflower-golden-angle': { beat: 3, wait: 3000 },
+  // The dense true wave and the slow alias the eye sees.
+  'pendulum-wave': { beat: 6, wait: 4200 },
+  // 710 rays, coloured by remainder.
+  'prime-spirals': { beat: 5, wait: 7500 },
+  // Deep in the border at −2^(−1/3), all three colours together.
+  'newton-fractal': { beat: 4, wait: 6800 },
+  // Balls still pouring through the pegs, the bell rising under them.
+  'galton-board': { beat: 3, wait: 7800 },
+  // Thousands of needles down, the estimate settling inside the funnel.
+  'buffon-needle': { beat: 3, wait: 5000 },
+  // The whole coral of 1 … 10 000.
+  'collatz-tree': { beat: 4, wait: 8500 },
+  // The first picture at three million points.
+  'strange-attractors': { beat: 3, wait: 3000 },
 };
 const BRAND = { en: 'CurvG · Math wonders', zh: 'CurvG · 数学奇观' };
 
@@ -54,7 +68,8 @@ for (const slug of slugs) {
   const moment = MOMENTS[slug] ?? { beat: 2, wait: 3000 };
   for (const lang of ['en', 'zh']) {
     await page.goto(`${BASE}${lang === 'zh' ? '/zh' : ''}/wonders/${slug}`, {
-      waitUntil: 'domcontentloaded',
+      // Ticks are server-rendered; clicking one before hydration does nothing.
+      waitUntil: 'networkidle',
     });
     await page.waitForSelector('.wonder-tick');
     await page.waitForTimeout(1200);

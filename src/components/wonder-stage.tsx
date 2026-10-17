@@ -6,15 +6,29 @@ import {
   type HTMLAttributes,
   type ReactNode,
 } from 'react';
-import { Pause, Play, RotateCcw, SkipForward } from 'lucide-react';
+import {
+  Maximize2,
+  Minimize2,
+  Pause,
+  Play,
+  RotateCcw,
+  SkipForward,
+} from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import type {
-  StageInsets,
-  WonderEngine,
-  WonderMode,
+import { Bloom } from '@/lib/wonders/bloom';
+import {
+  safeArea,
+  storyClock,
+  teaserCut,
+  teaserLength,
+  type StageInsets,
+  type WonderEngine,
+  type WonderMode,
 } from '@/lib/wonders/engine';
+import { decodeShare, SHARE_PARAM, type ShareState } from '@/lib/wonders/share';
 import { beatAt } from '@/lib/wonders/timeline';
+import { WonderExportTools } from '@/components/wonder-export';
 
 export type WonderStageLabels = {
   /** One caption per story beat. */
@@ -26,6 +40,16 @@ export type WonderStageLabels = {
   story: string;
   params: string;
   canvas: string;
+  fullscreen?: string;
+  exitFullscreen?: string;
+};
+
+/** A wonder's free-play settings, in and out of a share link. */
+export type StageShare = {
+  /** Settings worth a link, or null when there is nothing to restore. */
+  get: () => ShareState | null;
+  /** Apply settings from a link (already in free play). Values unchecked. */
+  apply: (state: Record<string, string>) => void;
 };
 
 /** What a wonder's own controls can ask of the stage. */
@@ -42,6 +66,10 @@ export type StageApi = {
  * captions and beat ticks, and a glass panel for the wonder's own controls.
  * The engine draws; the stage keeps time and keeps the picture clear of the
  * title, the panel and the captions (`insets`).
+ *
+ * While the story plays the stage is a cinema: the title shrinks after the
+ * first beat, the panel folds down to its readouts, and the picture takes
+ * the room they free (eased, never cut). Free play brings the controls back.
  */
 export function WonderStage({
   engine,
@@ -51,6 +79,7 @@ export function WonderStage({
   onTick,
   notice,
   canvasProps,
+  share,
   className,
 }: {
   engine: WonderEngine;
@@ -64,27 +93,52 @@ export function WonderStage({
   /** A hint shown where the caption goes (e.g. "draw a curve"). */
   notice?: string | null;
   canvasProps?: HTMLAttributes<HTMLCanvasElement>;
+  /** Share links: free-play settings out (`get`) and in (`apply`). */
+  share?: StageShare;
   className?: string;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const glRef = useRef<HTMLCanvasElement>(null);
   const uiRef = useRef<HTMLCanvasElement>(null);
   const [mode, setMode] = useState<WonderMode>('story');
   const [playing, setPlaying] = useState(true);
-  const [storyT, setStoryT] = useState(0);
-  const clock = useRef({ mode: 'story' as WonderMode, playing: true, t: 0 });
+  /** The story ran to its end on its own (not skipped): time to offer more. */
+  const [ended, setEnded] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [canFullscreen, setCanFullscreen] = useState(false);
+  // The clock starts before 0 when the wonder has a cold open (teaser).
+  const clock = useRef({
+    mode: 'story' as WonderMode,
+    playing: true,
+    t: -teaserLength(engine),
+  });
+  const [storyT, setStoryT] = useState(clock.current.t);
   const tickRef = useRef(onTick);
   tickRef.current = onTick;
+  const shareRef = useRef(share);
+  shareRef.current = share;
+  /** Where the picture sits right now, device px (for the share card). */
+  const focusRef = useRef<{ cx: number; cy: number; w: number; h: number }>(
+    null
+  );
 
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       clock.current.playing = false;
+      clock.current.t = 0;
       setPlaying(false);
+      setStoryT(0);
     }
+    setCanFullscreen(!!document.fullscreenEnabled);
+    const onChange = () =>
+      setFullscreen(document.fullscreenElement === rootRef.current);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
 
   const enterFree = useCallback(() => {
     const c = clock.current;
-    if (c.mode === 'story') engine.leaveStory?.(c.t);
+    if (c.mode === 'story') engine.leaveStory?.(storyClock(engine, c.t));
     c.mode = 'free';
     c.playing = true;
     setMode('free');
@@ -100,6 +154,7 @@ export function WonderStage({
     setMode('story');
     setPlaying(true);
     setStoryT(0);
+    setEnded(false);
   }, [engine]);
 
   const seek = (t: number) => {
@@ -108,6 +163,7 @@ export function WonderStage({
       engine.replay?.();
       c.mode = 'story';
       setMode('story');
+      setEnded(false);
     }
     c.t = Math.max(0, Math.min(engine.length - 0.01, t));
     setStoryT(c.t);
@@ -119,6 +175,21 @@ export function WonderStage({
     setPlaying(c.playing);
   };
 
+  // Opened from a share link: skip the story, restore the settings.
+  useEffect(() => {
+    const state = decodeShare(
+      new URLSearchParams(window.location.search).get(SHARE_PARAM)
+    );
+    if (!state || !shareRef.current) return;
+    enterFree();
+    shareRef.current.apply(state);
+  }, [enterFree]);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void rootRef.current?.requestFullscreen?.();
+  };
+
   // ── Frame loop ──────────────────────────────────────────────────────────
   useEffect(() => {
     const ui = uiRef.current;
@@ -127,6 +198,7 @@ export function WonderStage({
     if (!ctx) return;
     const gl = engine.gl ? glRef.current : null;
     engine.attach({ gl, ui });
+    const bloom = engine.glow ? new Bloom() : null;
 
     let raf = 0;
     let last = performance.now();
@@ -135,7 +207,9 @@ export function WonderStage({
     let height = 0;
     let dpr = 1;
     let visible = true;
-    let insets: StageInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+    /** Where the picture should be kept clear of, and where it is now. */
+    let target: StageInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+    let insets: StageInsets | null = null;
 
     // Keep the picture clear of the title, the panel and the caption/bar,
     // whatever the layout (the panel drops below the canvas on phones).
@@ -149,15 +223,20 @@ export function WonderStage({
         ?.getBoundingClientRect();
       const overlaps = (r?: DOMRect) =>
         !!r && r.width > 0 && r.top < rect.bottom && r.bottom > rect.top;
-      insets = {
-        top: overlaps(head) ? head!.bottom - rect.top + 12 : 56,
-        right:
-          overlaps(side) && side!.left > rect.left + rect.width / 2
-            ? rect.right - side!.left + 16
-            : 16,
+      const top = overlaps(head) ? head!.bottom - rect.top + 12 : 56;
+      // A panel folded to its readouts sits in the title band: only a tall
+      // panel takes a column off the picture.
+      const sideTall =
+        overlaps(side) &&
+        side!.left > rect.left + rect.width / 2 &&
+        side!.bottom - rect.top > top + 48;
+      target = {
+        top,
+        right: sideTall ? rect.right - side!.left + 16 : 16,
         bottom: overlaps(bar) ? rect.bottom - bar!.top + 96 : 24,
         left: 16,
       };
+      if (!insets) insets = { ...target };
     };
 
     const resize = () => {
@@ -172,6 +251,7 @@ export function WonderStage({
         gl.height = ui.height;
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      insets = null;
       measure();
       engine.resize?.(width, height, dpr);
     };
@@ -195,14 +275,48 @@ export function WonderStage({
         engine.leaveStory?.(c.t);
         c.mode = 'free';
         setMode('free');
+        setEnded(true);
       }
+      // Ease the framing towards the measured insets (title shrinking,
+      // panel folding) so the picture glides instead of jumping.
+      const e = 1 - Math.exp(-dt * 5);
+      const cur = insets ?? target;
+      insets = {
+        top: cur.top + (target.top - cur.top) * e,
+        right: cur.right + (target.right - cur.right) * e,
+        bottom: cur.bottom + (target.bottom - cur.bottom) * e,
+        left: cur.left + (target.left - cur.left) * e,
+      };
       ctx.clearRect(0, 0, width, height);
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
+      const story = c.mode === 'story';
       engine.frame(
-        { mode: c.mode, t: c.t, dt, playing: c.playing, width, height, insets },
+        {
+          mode: c.mode,
+          t: story ? storyClock(engine, c.t) : c.t,
+          dt,
+          playing: c.playing,
+          width,
+          height,
+          insets,
+        },
         ctx
       );
+      bloom?.apply(ctx, ui, engine.glow ?? 0);
+      const area = safeArea(width, height, insets);
+      focusRef.current = {
+        cx: area.cx * dpr,
+        cy: area.cy * dpr,
+        w: area.w * dpr,
+        h: area.h * dpr,
+      };
+      // Dip to black across the cut from the cold open into the story.
+      const cut = story && engine.teaser ? teaserCut(c.t) : 0;
+      if (cut > 0) {
+        ctx.fillStyle = `rgba(6,7,12,${cut})`;
+        ctx.fillRect(0, 0, width, height);
+      }
       if (now - lastTick > 120) {
         lastTick = now;
         measure();
@@ -219,12 +333,20 @@ export function WonderStage({
     };
   }, [engine]);
 
-  const beat = beatAt(engine.beats, storyT);
+  const teasing = mode === 'story' && storyT < 0;
+  const beat = beatAt(engine.beats, Math.max(0, storyT));
   const caption = labels.beats[beat] ?? '';
   const api: StageApi = { mode, playing, enterFree };
+  const compact = mode === 'free' || beat > 0;
+  const pad = (n: number) => String(n).padStart(2, '0');
 
   return (
-    <div className={cn('wonder-stage', className)}>
+    <div
+      ref={rootRef}
+      className={cn('wonder-stage', className)}
+      data-mode={mode}
+      data-compact={compact ? '' : undefined}
+    >
       <div className="wonder-viewport">
         {overlay}
         {engine.gl ? (
@@ -242,57 +364,99 @@ export function WonderStage({
           <p className="wonder-caption is-notice" aria-live="polite">
             {notice}
           </p>
-        ) : mode === 'story' ? (
+        ) : mode === 'story' && !teasing ? (
           <p key={beat} className="wonder-caption" aria-live="polite">
+            <span className="wonder-chapter">
+              {pad(beat + 1)} / {pad(engine.beats.length)}
+            </span>
             {caption}
           </p>
         ) : null}
 
-        <div className="wonder-bar">
-          <button
-            type="button"
-            className="wonder-icon-btn"
-            onClick={togglePlay}
-            aria-label={playing ? labels.pause : labels.play}
-            title={playing ? labels.pause : labels.play}
-          >
-            {playing ? <Pause /> : <Play />}
-          </button>
-          {mode === 'story' ? (
-            <>
-              <div className="wonder-track" aria-label={labels.story}>
-                <div
-                  className="wonder-track-fill"
-                  style={{ width: `${(storyT / engine.length) * 100}%` }}
-                />
-                {engine.beats.map((start, i) => (
-                  <button
-                    key={start}
-                    type="button"
-                    className={cn('wonder-tick', i <= beat && 'is-past')}
-                    style={{ left: `${(start / engine.length) * 100}%` }}
-                    onClick={() => seek(start + 0.01)}
-                    aria-label={`${i + 1}. ${labels.beats[i] ?? ''}`}
-                    title={labels.beats[i]}
-                  />
-                ))}
-              </div>
+        <WonderExportTools
+          engine={engine}
+          canvases={() => ({
+            gl: glRef.current,
+            ui: uiRef.current,
+            focus: focusRef.current,
+          })}
+          shareState={() =>
+            clock.current.mode === 'free'
+              ? (shareRef.current?.get() ?? null)
+              : null
+          }
+          mode={mode}
+          ended={ended}
+          onDismissEnd={() => setEnded(false)}
+        >
+          {(tools) => (
+            <div className="wonder-bar">
               <button
                 type="button"
-                className="wonder-text-btn"
-                onClick={enterFree}
+                className="wonder-icon-btn"
+                onClick={togglePlay}
+                aria-label={playing ? labels.pause : labels.play}
+                title={playing ? labels.pause : labels.play}
               >
-                <SkipForward />
-                {labels.skip}
+                {playing ? <Pause /> : <Play />}
               </button>
-            </>
-          ) : (
-            <button type="button" className="wonder-text-btn" onClick={replay}>
-              <RotateCcw />
-              {labels.replay}
-            </button>
+              {mode === 'story' ? (
+                <>
+                  <div className="wonder-track" aria-label={labels.story}>
+                    <div
+                      className="wonder-track-fill"
+                      style={{
+                        width: `${(Math.max(0, storyT) / engine.length) * 100}%`,
+                      }}
+                    />
+                    {engine.beats.map((start, i) => (
+                      <button
+                        key={start}
+                        type="button"
+                        className={cn('wonder-tick', i <= beat && 'is-past')}
+                        style={{ left: `${(start / engine.length) * 100}%` }}
+                        onClick={() => seek(start + 0.01)}
+                        aria-label={`${i + 1}. ${labels.beats[i] ?? ''}`}
+                        title={labels.beats[i]}
+                      />
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="wonder-text-btn"
+                    onClick={enterFree}
+                  >
+                    <SkipForward />
+                    <span className="wonder-hide-sm">{labels.skip}</span>
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="wonder-text-btn"
+                  onClick={replay}
+                >
+                  <RotateCcw />
+                  {labels.replay}
+                </button>
+              )}
+              {tools}
+              {canFullscreen ? (
+                <button
+                  type="button"
+                  className="wonder-ghost-btn wonder-hide-sm"
+                  onClick={toggleFullscreen}
+                  aria-label={
+                    fullscreen ? labels.exitFullscreen : labels.fullscreen
+                  }
+                  title={fullscreen ? labels.exitFullscreen : labels.fullscreen}
+                >
+                  {fullscreen ? <Minimize2 /> : <Maximize2 />}
+                </button>
+              ) : null}
+            </div>
           )}
-        </div>
+        </WonderExportTools>
       </div>
 
       <aside className="wonder-panel" aria-label={labels.params}>

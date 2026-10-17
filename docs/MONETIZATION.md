@@ -1,6 +1,6 @@
 # CurvG 收费与转化
 
-更新时间：2026-10-16。定价、套餐文案、付费墙和转化入口以本文为准；定位见 `POSITIONING.md`。
+更新时间：2026-10-17。定价、套餐文案、付费墙和转化入口以本文为准；定位见 `POSITIONING.md`。
 
 ## 1. 第一性原理
 
@@ -12,6 +12,8 @@
 | 曲线百科 `/curves`            | 查、看           | 几乎为零                  | 永远免费   |
 | 模板与 Manim 代码             | 半成品，要自己跑 | 几乎为零（模板不调模型）  | 免费       |
 | 720p 带水印预览视频           | 先看到成品       | 渲染算力                  | 免费 3 个  |
+| 奇观视频 720p 带水印          | 带走、分享       | 零（读者浏览器里生成）    | 免费不限次 |
+| 奇观视频 1080p60 无水印       | 成品，直接能用   | 零（读者浏览器里生成）    | **付费点** |
 | 1080p 无水印视频              | 成品，直接能用   | 渲染算力                  | **付费点** |
 
 所以：
@@ -83,6 +85,17 @@ Stripe 账户默认开启 Managed Payments：Stripe 作为记录商户（merchan
         → 回到原对话 → 重试渲染
 ```
 
+奇观页是第二条路径（2026-10-17）：
+
+```
+奇观故事播完 → "这段动画可以带走"卡片 / 底栏「导出视频」
+        → 选整段故事或"我的版本"、横屏或竖屏
+        → 720p 带水印（登录即可，不限次）  ← 分享出去的视频自带 CurvG 水印和网址
+        → 预览下方"去掉水印，导出 1080p 60 帧高清版"
+        → 积分够：下载时扣一个视频的积分；不够："获取积分" → /pricing?return=/wonders/<slug>?export=1
+        → 回到奇观页，导出窗口自动重新打开
+```
+
 实现位置：
 
 - 免费预览：`freePreviewsRemaining` / `resolveRenderEntitlement`（`src/routes/api/animations/-shared.ts`）。
@@ -91,7 +104,11 @@ Stripe 账户默认开启 Managed Payments：Stripe 作为记录商户（merchan
 - 免费每日上限：`enforceFreeDailyCreations`（同文件），滚动 24 小时内新建对话数（含已删除）达到
   `animation_free_daily_creations`（默认 3，`0` 关闭）即返回 429，创作台弹出带"查看套餐"的提示。付费套餐不限。
 - 余额提示与升级入口：创作台输入框上方的提示条、"积分不足"失败卡片（`UpgradeLink`，`src/components/creator-workspace.tsx`）。
-- 付款后回跳：定价页读取 `?return=`（只接受 `/creator` 开头的站内路径），未登录时登录后回到带同样参数的定价页。
+- 付款后回跳：定价页读取 `?return=`（只接受 `/creator` 开头的站内路径和 `/wonders/<slug>[?export=1]`），
+  未登录时登录后回到带同样参数的定价页。
+- 奇观导出：`GET/POST /api/wonders/export`（`src/routes/api/wonders/export.ts`）。视频在浏览器里用 WebCodecs 逐帧编码
+  （`src/lib/wonders/export.ts`），服务器不渲染；高清版在读者点"下载"时扣 `animation_render_credits`（与一个模板视频同价），
+  流水场景 `wonder_export`。高清文件在浏览器里生成，懂技术的人能绕过扣费；边际成本为零，接受这个风险，不为此上服务器渲染。
 
 ## 6. 页面承诺清单
 
@@ -101,6 +118,7 @@ Stripe 账户默认开启 Managed Payments：Stripe 作为记录商户（merchan
 - 首页价格条 `home.pricing.*`、首页 FAQ `landing.faq.free.*`
 - 关键词落地页 `/free-math-video-creator`（`pages.free.*`）、工具页 `pages.tool.band_lead`
 - `llms.txt` / `llms-full.txt` 的产品描述
+- 奇观导出窗口 `wonders.export.*`（免费档"带水印、不限次数"，高清档"1080p 60 帧、无水印"，价格读 `animation_render_credits`）
 
 ## 7. 监控
 
@@ -112,6 +130,10 @@ Stripe 账户默认开启 Managed Payments：Stripe 作为记录商户（merchan
 - 生成失败：`animation_planning_attempt` 中 `status='failed'` 的 `error_code` 分布。
 
 ## 8. 决策记录
+
+- **2026-10-17（奇观导出视频）**：奇观页没有任何付费入口，而它是最适合分享的内容。新增浏览器内导出：720p 带水印免费、
+  登录即可、不限次数（我们零成本，分享出去的每条视频都带 CurvG 水印和网址，是获客）；1080p60 无水印收一个视频的积分
+  （和模板出片同价，符合"档位只差在量和单价"）。不计入 3 个免费预览名额（那是服务器渲染的成本控制）。
 
 - **2026-10-16（付费主线改为模板出片）**：自由生成上线两个半月没有交付一个用户视频（见 `VIDEO_TEMPLATES.md` 第 1 节）。
   付费主线改为"模板导出 + AI 填参数"，自由生成降为测试版、数学问题改为警告由用户决定；免费从"第一个视频"改为

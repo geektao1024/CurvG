@@ -9,6 +9,7 @@ import {
   seeds,
   STORY_SEEDS,
 } from '@/lib/wonders/phyllotaxis';
+import { shareNumber } from '@/lib/wonders/share';
 import {
   WonderChips,
   WonderReadouts,
@@ -77,6 +78,24 @@ export function PhyllotaxisWonder({
       engine={engine}
       labels={stage}
       overlay={overlay}
+      share={{
+        get: () => ({
+          a: Number(engine.target.angle.toFixed(4)),
+          n: engine.target.count,
+          sp: engine.target.spirals,
+        }),
+        apply: (state) => {
+          const a = shareNumber(state.a, 90, 180, GOLDEN_ANGLE);
+          const n =
+            Math.round(shareNumber(state.n, 50, 2500, STORY_SEEDS) / 50) * 50;
+          const sp = state.sp === '1';
+          set({ angle: a, count: n, spirals: sp });
+          setAngle(a);
+          setCount(n);
+          setSpirals(sp);
+          setPreset(null);
+        },
+      }}
       onTick={() =>
         setReadout({
           angle: engine.scene.angle,

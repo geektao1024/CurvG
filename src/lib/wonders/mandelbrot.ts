@@ -309,28 +309,34 @@ export function easeView(
   };
 }
 
-/** Palette stops: night blue → violet → cyan → amber, cycled. */
+/**
+ * Palette stops, cycled: night → violet → cyan → pale gold → amber → ember.
+ * The CurvG stage colours, spread wide enough that every zoom has contrast.
+ */
 const STOPS: readonly [number, number, number][] = [
-  [0.05, 0.07, 0.2],
-  [0.42, 0.36, 0.84],
-  [0.43, 0.91, 1.0],
-  [1.0, 0.72, 0.3],
+  [0.02, 0.03, 0.1],
+  [0.3, 0.18, 0.64],
+  [0.22, 0.78, 0.96],
+  [0.96, 0.94, 0.82],
+  [1.0, 0.64, 0.2],
+  [0.5, 0.1, 0.12],
 ];
 
 const smooth = (x: number) => x * x * (3 - 2 * x);
 
 /**
  * Colour of a smooth escape value `mu` (iterations, fractional), shared by
- * the shader (as GLSL) and the CPU poster: the CurvG night palette, cycled
- * slowly, fading to the background far from the set. Returns 0–1 RGB.
+ * the shader (as GLSL) and the CPU poster: the palette cycled slowly in
+ * √mu, fading to the background far from the set. Returns 0–1 RGB.
  */
 export function mandelColor(mu: number): [number, number, number] {
-  const x = ((((Math.sqrt(Math.max(0, mu)) * 0.21) % 1) + 1) % 1) * 4;
+  const n = STOPS.length;
+  const x = ((((Math.sqrt(Math.max(0, mu)) * 0.19) % 1) + 1) % 1) * n;
   const i = Math.floor(x);
   const f = smooth(x - i);
   const a = STOPS[i];
-  const b = STOPS[(i + 1) % 4];
-  const glow = (1 - Math.exp(-mu * 0.03)) ** 2;
+  const b = STOPS[(i + 1) % n];
+  const glow = 1 - Math.exp(-mu * 0.06);
   return [0, 1, 2].map((k) => (a[k] + (b[k] - a[k]) * f) * glow) as [
     number,
     number,
@@ -338,22 +344,34 @@ export function mandelColor(mu: number): [number, number, number] {
   ];
 }
 
-/** GLSL twin of `mandelColor`. Keep the two in step. */
+/**
+ * Light along the boundary from the distance estimate: a point `px` screen
+ * pixels from the set glows, fading over about a pixel and a half. 0–1.
+ */
+export function edgeGlow(px: number): number {
+  return Math.exp(-Math.max(0, px) / 1.6);
+}
+
+/** GLSL twins of `mandelColor` and `edgeGlow`. Keep them in step. */
 export const MANDEL_COLOR_GLSL = /* glsl */ `
 vec3 mandelColor(float mu) {
-  vec3 s0 = vec3(0.05, 0.07, 0.2);
-  vec3 s1 = vec3(0.42, 0.36, 0.84);
-  vec3 s2 = vec3(0.43, 0.91, 1.0);
-  vec3 s3 = vec3(1.0, 0.72, 0.3);
-  float x = fract(sqrt(max(0.0, mu)) * 0.21) * 4.0;
+  vec3 s[6] = vec3[6](
+    vec3(0.02, 0.03, 0.1),
+    vec3(0.3, 0.18, 0.64),
+    vec3(0.22, 0.78, 0.96),
+    vec3(0.96, 0.94, 0.82),
+    vec3(1.0, 0.64, 0.2),
+    vec3(0.5, 0.1, 0.12)
+  );
+  float x = fract(sqrt(max(0.0, mu)) * 0.19) * 6.0;
+  int i = int(floor(x));
   float f = smoothstep(0.0, 1.0, fract(x));
-  vec3 c;
-  if (x < 1.0) c = mix(s0, s1, f);
-  else if (x < 2.0) c = mix(s1, s2, f);
-  else if (x < 3.0) c = mix(s2, s3, f);
-  else c = mix(s3, s0, f);
-  float glow = 1.0 - exp(-mu * 0.03);
-  return c * glow * glow;
+  vec3 c = mix(s[i], s[(i + 1) % 6], f);
+  float glow = 1.0 - exp(-mu * 0.06);
+  return c * glow;
+}
+float edgeGlow(float px) {
+  return exp(-max(0.0, px) / 1.6);
 }`;
 
 /** Smooth escape value for a point, or -1 inside (CPU, for posters). */

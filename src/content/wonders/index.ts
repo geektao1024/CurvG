@@ -1,6 +1,13 @@
+import { buffonNeedle } from './data/buffon-needle';
+import { collatzTree } from './data/collatz-tree';
 import { fourierEpicycles } from './data/fourier-epicycles';
+import { galtonBoard } from './data/galton-board';
 import { lorenzAttractor } from './data/lorenz-attractor';
 import { mandelbrotSet } from './data/mandelbrot-set';
+import { newtonFractal } from './data/newton-fractal';
+import { pendulumWave } from './data/pendulum-wave';
+import { primeSpirals } from './data/prime-spirals';
+import { strangeAttractors } from './data/strange-attractors';
 import { sunflowerGoldenAngle } from './data/sunflower-golden-angle';
 import type { Wonder } from './types';
 
@@ -12,6 +19,13 @@ export const WONDERS: readonly Wonder[] = [
   mandelbrotSet,
   lorenzAttractor,
   sunflowerGoldenAngle,
+  pendulumWave,
+  primeSpirals,
+  newtonFractal,
+  galtonBoard,
+  buffonNeedle,
+  collatzTree,
+  strangeAttractors,
 ];
 
 export function publicWonders(): Wonder[] {

@@ -16,12 +16,14 @@ import {
   MIN_WIDTH,
   NECK,
   orbit,
+  PRESETS,
   RABBIT,
   referenceOrbit,
   type Complex,
   type MandelScene,
   type MandelView,
 } from './mandelbrot';
+import { easeSine } from './timeline';
 
 const REF_ROW = 1024;
 
@@ -50,6 +52,8 @@ void main() {
   vec2 dc = vec2(css.x - u_origin.x, u_origin.y - css.y) * u_scale;
   vec2 d = vec2(0.0);
   vec2 z = vec2(0.0);
+  // dz/dc, for the distance estimate: z' <- 2 z z' + 1.
+  vec2 der = vec2(0.0);
   int m = 0;
   float r2 = 0.0;
   int n = 0;
@@ -57,6 +61,9 @@ void main() {
   for (int i = 0; i < 8000; i++) {
     if (i >= u_maxIter) break;
     vec2 Z = refAt(m);
+    vec2 zn = Z + d;
+    der = 2.0 * vec2(zn.x * der.x - zn.y * der.y, zn.x * der.y + zn.y * der.x)
+      + vec2(1.0, 0.0);
     vec2 a = 2.0 * Z + d;
     d = vec2(a.x * d.x - a.y * d.y, a.x * d.y + a.y * d.x) + dc;
     m++;
@@ -70,6 +77,13 @@ void main() {
   if (escaped) {
     float mu = float(n) + 2.0 - log2(0.5 * log(r2));
     col = mandelColor(mu);
+    // Distance to the set in CSS px: |z| log|z| / |z'|, over the pixel size.
+    float dl = length(der);
+    if (dl > 0.0 && !isinf(dl)) {
+      float de = 0.5 * sqrt(r2) * log(r2) / dl / u_scale;
+      float g = edgeGlow(de) * (1.0 - exp(-mu * 0.02));
+      col = mix(col, vec3(1.0, 0.93, 0.8), 0.75 * g);
+    }
   }
   o = vec4(col * u_alpha, u_alpha);
 }`;
@@ -95,6 +109,8 @@ export class MandelbrotEngine implements WonderEngine {
   readonly beats = MANDEL_BEATS;
   readonly length = MANDEL_STORY_LENGTH;
   readonly gl = true;
+  /** Cold open: the dive towards the small copy deep in seahorse valley. */
+  readonly teaser = [40.5, 44] as const;
 
   /** Free-play view and where it is easing to. */
   view: MandelView = FULL;
@@ -116,6 +132,11 @@ export class MandelbrotEngine implements WonderEngine {
   private easeT = 0;
   /** Last frame's geometry, for pointer → plane conversion. */
   private frameGeom = { cx: 0, cy: 0, scale: 1 };
+
+  /** Device px per CSS px cap; exports raise it so HD frames stay crisp. */
+  maxRatio = 1.25;
+  /** "My version": a zoom from the whole set down to the reader's view. */
+  private film: { to: MandelView; seconds: number; t: number } | null = null;
 
   /** Called when the reader takes over (wheel, drag, tap). */
   onInteract: () => void = () => {};
@@ -144,6 +165,8 @@ export class MandelbrotEngine implements WonderEngine {
     const ctx = gl.getContext('webgl2', {
       antialias: false,
       premultipliedAlpha: true,
+      // Snapshots and exports read the picture back after it is drawn.
+      preserveDrawingBuffer: true,
     });
     if (!ctx) {
       this.failed = true;
@@ -202,7 +225,7 @@ export class MandelbrotEngine implements WonderEngine {
     if (!this.canvas) return;
     // One device pixel per CSS pixel is plenty for a moving fractal and
     // keeps deep zooms smooth on retina screens.
-    this.ratio = Math.min(dpr, 1.25);
+    this.ratio = Math.min(dpr, this.maxRatio);
     this.canvas.width = Math.round(width * this.ratio);
     this.canvas.height = Math.round(height * this.ratio);
     this.lastKey = '';
@@ -217,6 +240,32 @@ export class MandelbrotEngine implements WonderEngine {
     this.probe = null;
     this.target = null;
     this.view = FULL;
+  }
+
+  clone(): MandelbrotEngine {
+    const e = new MandelbrotEngine(this.text);
+    e.view = { ...this.view };
+    e.detail = this.detail;
+    e.scene = { ...this.scene };
+    e.maxRatio = 2;
+    return e;
+  }
+
+  /**
+   * Film of the reader's place: fly in from the whole set, at a steady rate
+   * in log-width (each second magnifies by the same factor), ending exactly
+   * on their view. From the full view it dives to the seahorse valley.
+   */
+  freeFilm(): number {
+    const zoom = FULL.width / this.view.width;
+    const to = zoom < 4 ? PRESETS.seahorse : { ...this.view };
+    const depth = Math.log2(FULL.width / to.width);
+    const seconds = Math.min(30, Math.max(10, 4 + depth * 0.75));
+    this.film = { to, seconds, t: 0 };
+    this.view = FULL;
+    this.target = null;
+    this.probe = null;
+    return seconds + 2;
   }
 
   /** Ease to a place; the stage keeps drawing while it moves. */
@@ -271,7 +320,26 @@ export class MandelbrotEngine implements WonderEngine {
       this.scene = mandelStory(f.t);
       this.view = this.scene.view;
     } else {
-      if (this.target && this.easeFrom) {
+      if (this.film) {
+        const film = this.film;
+        film.t += f.dt;
+        const u = easeSine(Math.min(1, film.t / film.seconds));
+        const w0 = FULL.width;
+        const w1 = film.to.width;
+        const width = Math.exp(
+          Math.log(w0) + (Math.log(w1) - Math.log(w0)) * u
+        );
+        // Zoom about the target, which lands dead centre as u reaches 1.
+        const k = (width - w1) / (w0 - w1);
+        this.view =
+          u >= 1
+            ? { ...film.to }
+            : {
+                re: film.to.re + (FULL.re - film.to.re) * k,
+                im: film.to.im + (FULL.im - film.to.im) * k,
+                width,
+              };
+      } else if (this.target && this.easeFrom) {
         this.easeT = Math.min(1, this.easeT + f.dt / 2.2);
         this.view = easeView(this.easeFrom, this.target, this.easeT);
         if (this.easeT >= 1) this.target = null;

@@ -10,6 +10,7 @@ import {
   type LongRun,
   type LorenzText,
 } from '@/lib/wonders/lorenz';
+import { shareNumber } from '@/lib/wonders/share';
 import {
   WonderReadouts,
   WonderSlider,
@@ -53,6 +54,36 @@ export function LorenzWonder({
       labels={stage}
       overlay={overlay}
       onTick={() => setGap(engine.scene.twins > 0.5 ? engine.gap : null)}
+      share={{
+        get: () => {
+          const { yaw, tilt } = engine.camera();
+          return {
+            r: engine.rho,
+            n: engine.count,
+            yaw: Number(yaw.toFixed(3)),
+            tilt: Number(tilt.toFixed(3)),
+            p: engine.showPath,
+          };
+        },
+        apply: (state) => {
+          const r = Math.round(shareNumber(state.r, 0.5, 40, RHO) * 2) / 2;
+          const n =
+            Math.round(shareNumber(state.n, 500, 12000, SWARM_SIZE) / 500) *
+            500;
+          const p = state.p !== '0';
+          engine.rho = r;
+          engine.count = n;
+          engine.spread();
+          engine.setCamera(
+            shareNumber(state.yaw, -100, 100, engine.camera().yaw),
+            shareNumber(state.tilt, -1.2, 1.2, engine.camera().tilt)
+          );
+          engine.showPath = p;
+          setRho(r);
+          setCount(n);
+          setShowPath(p);
+        },
+      }}
       canvasProps={{
         className: 'is-pannable',
         onPointerDown: (e) => {
@@ -106,7 +137,7 @@ export function LorenzWonder({
             <WonderSlider
               label={labels.points}
               min={500}
-              max={6000}
+              max={12000}
               step={500}
               value={count}
               onChange={(value) => {

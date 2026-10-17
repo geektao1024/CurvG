@@ -190,22 +190,55 @@ export function phylloStory(t: number): PhylloScene {
 
 // ── Engine ────────────────────────────────────────────────────────────────
 
-const AMBER = [255, 184, 77] as const;
-const GOLD = [255, 214, 120] as const;
-const CYAN = [110, 231, 255] as const;
-const VIOLET = [178, 160, 255] as const;
+type RGB = readonly [number, number, number];
+
+const CYAN: RGB = [110, 231, 255];
+const VIOLET: RGB = [178, 160, 255];
+/** Seed colour from the centre out: white-gold heart, amber, ember rim. */
+const SEED_RAMP: readonly RGB[] = [
+  [255, 246, 214],
+  [255, 214, 120],
+  [255, 170, 64],
+  [240, 110, 60],
+];
 
 const rgba = (c: readonly number[], a: number) =>
-  `rgba(${c[0]},${c[1]},${c[2]},${Math.max(0, Math.min(1, a))})`;
+  `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${Math.max(0, Math.min(1, a))})`;
+
+function ramp(stops: readonly RGB[], x: number): RGB {
+  const f = Math.max(0, Math.min(1, x)) * (stops.length - 1);
+  const i = Math.min(stops.length - 2, Math.floor(f));
+  const k = f - i;
+  const a = stops[i];
+  const b = stops[i + 1];
+  return [
+    a[0] + (b[0] - a[0]) * k,
+    a[1] + (b[1] - a[1]) * k,
+    a[2] + (b[2] - a[2]) * k,
+  ];
+}
+
+/** Radius bands drawn as one path each (seeds share a colour per band). */
+const BANDS = 14;
+
+/** Length of the free-play film ("my version"), seconds. */
+export const PHYLLO_FREE_FILM = 14;
 
 export class PhyllotaxisEngine implements WonderEngine {
   readonly beats = PHYLLO_BEATS;
   readonly length = PHYLLO_STORY_LENGTH;
+  /** Cold open: the angle sweeping into the golden one, spirals forming. */
+  readonly teaser = [19.5, 23.5] as const;
+  readonly glow = 0.7;
   scene: PhylloScene = phylloStory(0);
   target = { angle: GOLDEN_ANGLE, count: STORY_SEEDS, spirals: false };
 
   private pairKey = '';
   private pairValue: [number, number] = [55, 89];
+  /** Free play: the head turns slowly (a picture, not part of the rule). */
+  private turn = 0;
+  /** Film: seeds per second while the head grows from nothing. */
+  private grow: number | null = null;
 
   attach() {}
 
@@ -229,98 +262,148 @@ export class PhyllotaxisEngine implements WonderEngine {
 
   replay() {
     this.target = { angle: GOLDEN_ANGLE, count: STORY_SEEDS, spirals: false };
+    this.turn = 0;
+  }
+
+  clone(): PhyllotaxisEngine {
+    const e = new PhyllotaxisEngine();
+    e.target = { ...this.target };
+    e.scene = { ...this.scene };
+    return e;
+  }
+
+  /** "My version": the head grows seed by seed at the reader's angle. */
+  freeFilm(): number {
+    this.scene = { ...this.scene, angle: this.target.angle, count: 0, zoom: 1 };
+    this.grow = this.target.count / (PHYLLO_FREE_FILM - 3.5);
+    this.turn = 0;
+    return PHYLLO_FREE_FILM;
   }
 
   frame(f: WonderFrame, ctx: CanvasRenderingContext2D) {
     if (f.mode === 'story') {
       this.scene = phylloStory(f.t);
+      this.turn = 0;
     } else {
       const s = this.scene;
       const e = 1 - Math.exp(-f.dt * 5);
+      const count =
+        this.grow !== null
+          ? Math.min(this.target.count, s.count + this.grow * f.dt)
+          : lerp(s.count, this.target.count, e);
       this.scene = {
         angle: lerp(s.angle, this.target.angle, e),
-        count: lerp(s.count, this.target.count, e),
+        count,
         spirals: lerp(s.spirals, this.target.spirals ? 1 : 0, e),
         zoom: lerp(s.zoom, 1, e),
       };
+      if (f.playing) this.turn += f.dt * 0.05;
     }
     const s = this.scene;
     const area = safeArea(f.width, f.height, f.insets);
     const whole = Math.ceil(s.count);
     // Frame the disc of the target count so growth reads as filling in.
-    const radius = Math.sqrt(
-      Math.max(f.mode === 'story' ? STORY_SEEDS : s.count, 60)
-    );
-    const k = ((Math.min(area.w, area.h) / 2) * 0.94 * s.zoom) / radius;
-    const dot = Math.max(1.2, k * 0.42);
+    const frameCount =
+      f.mode === 'story'
+        ? STORY_SEEDS
+        : this.grow !== null
+          ? this.target.count
+          : s.count;
+    const radius = Math.sqrt(Math.max(frameCount, 60));
+    const k = ((Math.min(area.w, area.h) / 2) * 0.96 * s.zoom) / radius;
+    const dot = Math.max(1.2, k * 0.44);
     const [fa, fb] = s.spirals > 0.01 ? this.pair(whole, s.angle) : [1, 2];
+    const cos = Math.cos(this.turn);
+    const sin = Math.sin(this.turn);
+    const at = (n: number): [number, number] => {
+      const p = seedAt(n, s.angle);
+      return [
+        area.cx + (p.x * cos - p.y * sin) * k,
+        area.cy - (p.x * sin + p.y * cos) * k,
+      ];
+    };
 
-    // Soft halo behind the head.
+    // Warm light behind the head.
+    const R = radius * k;
     const halo = ctx.createRadialGradient(
       area.cx,
       area.cy,
       0,
       area.cx,
       area.cy,
-      radius * k * 1.1
+      R * 1.25
     );
-    halo.addColorStop(0, 'rgba(255,184,77,0.10)');
-    halo.addColorStop(1, 'rgba(255,184,77,0)');
+    halo.addColorStop(0, 'rgba(255,190,90,0.16)');
+    halo.addColorStop(0.6, 'rgba(255,140,60,0.06)');
+    halo.addColorStop(1, 'rgba(255,120,60,0)');
     ctx.fillStyle = halo;
     ctx.beginPath();
-    ctx.arc(area.cx, area.cy, radius * k * 1.1, 0, Math.PI * 2);
+    ctx.arc(area.cx, area.cy, R * 1.25, 0, Math.PI * 2);
     ctx.fill();
 
+    // Seeds, banded by distance from the centre: one path per band.
+    const fade = 1 - 0.55 * s.spirals;
+    const bodies: Path2D[] = [];
+    const cores: Path2D[] = [];
+    for (let b = 0; b < BANDS; b++) {
+      bodies.push(new Path2D());
+      cores.push(new Path2D());
+    }
+    const span = Math.sqrt(Math.max(whole, 1));
+    let newest: { x: number; y: number; r: number } | null = null;
     for (let n = 0; n < whole; n++) {
-      const grow = Math.min(1, s.count - n);
-      const p = seedAt(n, s.angle);
-      const x = area.cx + p.x * k;
-      const y = area.cy - p.y * k;
-      // Young seeds near the centre are gold, older outer ones cooler.
-      const depth = Math.sqrt(n / Math.max(whole, 1));
-      const color = depth < 0.5 ? GOLD : AMBER;
-      let alpha = 0.55 + 0.4 * (1 - depth);
-      // While the spiral arms are drawn, the seeds step back.
-      alpha *= 1 - 0.55 * s.spirals;
-      ctx.fillStyle = rgba(color, alpha * grow);
-      ctx.beginPath();
-      ctx.arc(x, y, dot * (0.4 + 0.6 * grow), 0, Math.PI * 2);
-      ctx.fill();
+      const g = Math.min(1, s.count - n);
+      const [x, y] = at(n);
+      const r = dot * (0.35 + 0.65 * g) * (0.82 + (0.3 * Math.sqrt(n)) / span);
+      const band = Math.min(
+        BANDS - 1,
+        Math.floor((Math.sqrt(n) / span) * BANDS)
+      );
+      bodies[band].moveTo(x + r, y);
+      bodies[band].arc(x, y, r, 0, Math.PI * 2);
+      cores[band].moveTo(x + r * 0.42 - r * 0.18, y - r * 0.18);
+      cores[band].arc(x - r * 0.18, y - r * 0.18, r * 0.42, 0, Math.PI * 2);
+      if (n === whole - 1) newest = { x, y, r };
+    }
+    for (let b = 0; b < BANDS; b++) {
+      const c = ramp(SEED_RAMP, (b + 0.5) / BANDS);
+      ctx.fillStyle = rgba(c, (0.92 - 0.25 * (b / BANDS)) * fade);
+      ctx.fill(bodies[b]);
+      ctx.fillStyle = rgba([255, 252, 240], 0.32 * fade);
+      ctx.fill(cores[b]);
     }
 
     // The newest seed, with the turn it was placed by.
-    if (f.mode === 'story' && s.count < STORY_SEEDS - 0.5 && whole > 0) {
-      const p = seedAt(whole - 1, s.angle);
-      const x = area.cx + p.x * k;
-      const y = area.cy - p.y * k;
-      const g = ctx.createRadialGradient(x, y, 0, x, y, 14);
-      g.addColorStop(0, 'rgba(255,184,77,0.7)');
+    if (newest && s.count < frameCount - 0.5) {
+      const { x, y } = newest;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, 16);
+      g.addColorStop(0, 'rgba(255,236,190,0.85)');
       g.addColorStop(1, 'rgba(255,184,77,0)');
       ctx.fillStyle = g;
       ctx.beginPath();
-      ctx.arc(x, y, 14, 0, Math.PI * 2);
+      ctx.arc(x, y, 16, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(area.cx, area.cy);
-      ctx.lineTo(x, y);
-      ctx.stroke();
+      if (f.mode === 'story') {
+        ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(area.cx, area.cy);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+      }
     }
-    // Draw the spiral arms themselves as faint guides while highlighted.
+    // Draw the spiral arms themselves as glowing guides while highlighted.
     if (s.spirals > 0.01) {
       for (const [family, color] of [
         [fa, CYAN],
         [fb, VIOLET],
       ] as const) {
-        ctx.strokeStyle = rgba(color, 0.55 * s.spirals);
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = rgba(color, 0.7 * s.spirals);
+        ctx.lineWidth = 1.3;
         for (let r = 0; r < family; r++) {
           ctx.beginPath();
           for (let n = r; n < whole; n += family) {
-            const p = seedAt(n, s.angle);
-            const x = area.cx + p.x * k;
-            const y = area.cy - p.y * k;
+            const [x, y] = at(n);
             if (n === r) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
           }

@@ -226,22 +226,72 @@ export function longRun(rho: number): LongRun {
 
 // ── Engine ────────────────────────────────────────────────────────────────
 
-const CYAN = [110, 231, 255] as const;
-const AMBER = [255, 184, 77] as const;
-const VIOLET = [178, 160, 255] as const;
+type RGB = readonly [number, number, number];
+
+const CYAN: RGB = [110, 231, 255];
+const AMBER: RGB = [255, 184, 77];
+const VIOLET: RGB = [178, 160, 255];
+
+/** Flow speed ramp: slow violet → cyan → gold → white-hot at full speed. */
+const SPEED_RAMP: readonly RGB[] = [
+  [120, 96, 255],
+  [110, 231, 255],
+  [255, 206, 120],
+  [255, 246, 228],
+];
+/** Wing ramp for the swarm: left wing cyan, the crossing pale, right amber. */
+const WING_RAMP: readonly RGB[] = [CYAN, [214, 222, 255], AMBER];
 
 const rgba = (c: readonly number[], a: number) =>
-  `rgba(${c[0]},${c[1]},${c[2]},${Math.max(0, Math.min(1, a))})`;
+  `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${Math.max(0, Math.min(1, a))})`;
+
+function ramp(stops: readonly RGB[], x: number): RGB {
+  const f = Math.max(0, Math.min(1, x)) * (stops.length - 1);
+  const i = Math.min(stops.length - 2, Math.floor(f));
+  const k = f - i;
+  const a = stops[i];
+  const b = stops[i + 1];
+  return [
+    a[0] + (b[0] - a[0]) * k,
+    a[1] + (b[1] - a[1]) * k,
+    a[2] + (b[2] - a[2]) * k,
+  ];
+}
+
+/** The Lorenz vector field at `p`: the velocity a point there moves with. */
+export function lorenzFlow(p: Vec3, rho = RHO): Vec3 {
+  return [
+    SIGMA * (p[1] - p[0]),
+    p[0] * (rho - p[2]) - p[1],
+    p[0] * p[1] - BETA * p[2],
+  ];
+}
+
+const speed = (p: Vec3, rho = RHO) => Math.hypot(...lorenzFlow(p, rho));
+
+/** Speed that maps to the top of the colour ramp (≈ fastest on the wings). */
+const SPEED_TOP = 160;
+
+/** Colour buckets for batched swarm strokes (one path per bucket). */
+const BUCKETS = 12;
 
 export type LorenzText = {
   /** Distance label between the twins, e.g. "相距 0.00001". */
   gap: (value: string) => string;
 };
 
+/** Length of the free-play film ("my version"), seconds. */
+export const LORENZ_FREE_FILM = 15;
+
 export class LorenzEngine implements WonderEngine {
   readonly beats = LORENZ_BEATS;
   readonly length = LORENZ_STORY_LENGTH;
+  /** Cold open: the swarm already spread over the butterfly. */
+  readonly teaser = [39, 43] as const;
+  readonly glow = 0.85;
   readonly data = lorenzStoryData();
+  /** Flow speed along the first path, for its colour. */
+  private mainSpeed = this.data.main.map((p) => speed(p));
   scene: LorenzScene = lorenzStory(0);
 
   /** Free play. */
@@ -255,15 +305,27 @@ export class LorenzEngine implements WonderEngine {
   private swarmT = -1;
   private free: { a: Vec3; path: Vec3[] } | null = null;
   private drag: { yaw: number; tilt: number } = { yaw: 0, tilt: 0 };
+  /** Seconds since the reader last turned the camera (free play drifts). */
+  private idle = 0;
 
   constructor(private text: LorenzText) {}
 
   attach() {}
 
+  /** Camera angles (radians), for share links. */
+  camera(): { yaw: number; tilt: number } {
+    return { ...this.drag };
+  }
+
+  setCamera(yaw: number, tilt: number) {
+    this.drag = { yaw, tilt: Math.max(-1.2, Math.min(1.2, tilt)) };
+  }
+
   /** Turn the camera by a pointer drag (CSS px). */
   rotate(dx: number, dy: number) {
     this.drag.yaw += dx * 0.006;
     this.drag.tilt = Math.max(-1.2, Math.min(1.2, this.drag.tilt + dy * 0.004));
+    this.idle = 0;
   }
 
   leaveStory(t: number) {
@@ -273,6 +335,7 @@ export class LorenzEngine implements WonderEngine {
     if (t < SWARM_T + 8) this.swarmAt(SWARM_T + 8);
     const last = this.data.main[this.data.main.length - 1];
     this.free = { a: last, path: [last] };
+    this.prefill(1500);
   }
 
   replay() {
@@ -282,9 +345,87 @@ export class LorenzEngine implements WonderEngine {
     this.rho = RHO;
   }
 
+  clone(): LorenzEngine {
+    const e = new LorenzEngine(this.text);
+    e.rho = this.rho;
+    e.count = this.count;
+    e.showPath = this.showPath;
+    e.drag = { ...this.drag };
+    e.scene = { ...this.scene };
+    if (this.free) {
+      e.free = { a: this.free.a, path: this.free.path.slice() };
+    }
+    return e;
+  }
+
+  /**
+   * "My version": a fresh tiny ball released on the reader's ρ, watched by a
+   * slowly turning camera, with the long-run path behind it.
+   */
+  freeFilm(): number {
+    this.release();
+    this.idle = 10;
+    this.scene = {
+      ...this.scene,
+      main: 0,
+      twins: 0,
+      swarm: 1,
+      ghost: this.showPath ? 1 : 0,
+      zoom: 1,
+    };
+    return LORENZ_FREE_FILM;
+  }
+
+  /**
+   * Restart the free path on the current ρ (so its long-run shape is drawn)
+   * and drop a tiny ball where neighbours split fastest, as the story does.
+   * On the classic ρ that is the story's own point; otherwise try a few
+   * spots just before the path switches wings (x changes sign) and keep the
+   * one where two points 0.001 apart end up furthest apart.
+   */
+  private release() {
+    if (!this.free) {
+      const last = this.data.main[this.data.main.length - 1];
+      this.free = { a: last, path: [last] };
+    }
+    this.free.path = [this.free.a];
+    this.prefill(3000);
+    this.reseed(
+      this.rho === RHO
+        ? this.data.main[Math.round(SWARM_SEED_T / H)]
+        : bestRelease(this.free.path, this.rho)
+    );
+  }
+
+  /**
+   * A swarm already spread over the long-run shape: the ball, released as
+   * above and run on for `time` Lorenz time units. For share links, which
+   * should open on the finished picture, not on a dot.
+   */
+  spread(time = 8) {
+    this.release();
+    const h = 0.01;
+    for (let k = 0; k < time / h; k++) {
+      for (let i = 0; i < this.swarm.length; i++) {
+        this.swarm[i] = lorenzStep(this.swarm[i], h, this.rho);
+      }
+    }
+  }
+
+  /** Run the free path ahead so its long-run shape is already drawn. */
+  private prefill(steps: number) {
+    if (!this.free) return;
+    let a = this.free.a;
+    for (let i = 0; i < steps; i++) {
+      a = lorenzStep(a, 0.005, this.rho);
+      this.free.path.push(a);
+    }
+    this.free.a = a;
+  }
+
   /** Drop a fresh tiny ball of `count` points where the path is now. */
-  reseed() {
-    const centre = this.free?.a ?? this.data.swarmSeed[0];
+  reseed(at?: Vec3) {
+    const centre = at ?? this.free?.a ?? this.data.swarmSeed[0];
     const rand = rng(11);
     const out: Vec3[] = [];
     while (out.length < this.count) {
@@ -336,52 +477,53 @@ export class LorenzEngine implements WonderEngine {
         ghost: lerp(s.ghost, this.showPath ? 1 : 0, e),
         zoom: lerp(s.zoom, 1, e),
       };
+      // Left alone, the camera drifts round the butterfly.
+      this.idle += f.dt;
+      if (f.playing && this.idle > 2.5) {
+        this.drag.yaw += f.dt * 0.07 * Math.min(1, (this.idle - 2.5) / 2);
+      }
       yaw = this.drag.yaw;
       tilt = this.drag.tilt;
       if (f.playing) this.stepFree(f.dt);
     }
 
     const area = safeArea(f.width, f.height, f.insets);
-    const k = Math.min(area.w / 56, area.h / 54) * this.scene.zoom;
+    const k = Math.min(area.w / 50, area.h / 52) * this.scene.zoom;
     const cy = Math.cos(yaw);
     const sy = Math.sin(yaw);
     const ct = Math.cos(tilt);
     const st = Math.sin(tilt);
     const zc =
       this.rho - 1 > 0 && f.mode === 'free' ? Math.max(this.rho - 3, 1) : 25;
+    // Orthographic view, plus depth (towards the camera = +) for shading.
     const proj = (p: Vec3): [number, number] => {
       const x1 = p[0] * cy - p[1] * sy;
       const depth = p[0] * sy + p[1] * cy;
       const y1 = (p[2] - zc) * ct - depth * st;
       return [area.cx + x1 * k, area.cy - y1 * k];
     };
+    const near = (p: Vec3) => {
+      const depth = p[0] * sy + p[1] * cy;
+      const d = -(depth * ct + (p[2] - zc) * st);
+      return Math.max(0, Math.min(1, 0.5 + d / 50));
+    };
 
     const s = this.scene;
-    // The single trajectory, drawn on as it is computed.
+    // The single trajectory, drawn on as it is computed, coloured by speed.
     if (s.main > 0.01) {
       const n = f.mode === 'story' ? mainIndex(f.t) : data.main.length - 1;
-      trail(ctx, data.main, 0, n, proj, CYAN, s.main, 8, false, 2);
-      head(ctx, proj(data.main[n]), AMBER, s.main);
+      flowTrail(ctx, data.main, this.mainSpeed, 0, n, proj, near, s.main);
+      head(ctx, proj(data.main[n]), AMBER, s.main, 1.2);
     }
     if (s.ghost > 0.01) {
       const path = f.mode === 'free' && this.free ? this.free.path : data.main;
-      trail(
-        ctx,
-        path,
-        0,
-        path.length - 1,
-        proj,
-        VIOLET,
-        s.ghost * 0.6,
-        1,
-        true
-      );
+      ghostTrail(ctx, path, proj, s.ghost);
     }
     if (s.twins > 0.01) {
       const n = f.mode === 'story' ? twinIndex(f.t) : data.twinA.length - 1;
-      const from = Math.max(0, n - 600);
-      trail(ctx, data.twinA, from, n, proj, CYAN, s.twins, 3);
-      trail(ctx, data.twinB, from, n, proj, AMBER, s.twins, 3);
+      const from = Math.max(0, n - 700);
+      trail(ctx, data.twinA, from, n, proj, CYAN, s.twins);
+      trail(ctx, data.twinB, from, n, proj, AMBER, s.twins);
       const pa = proj(data.twinA[n]);
       const pb = proj(data.twinB[n]);
       head(ctx, pa, CYAN, s.twins);
@@ -389,7 +531,7 @@ export class LorenzEngine implements WonderEngine {
       this.gap = dist(data.twinA[n], data.twinB[n]);
       if (this.gap > 0.3) {
         ctx.setLineDash([3, 4]);
-        ctx.strokeStyle = rgba([255, 255, 255], 0.35 * s.twins);
+        ctx.strokeStyle = rgba([255, 255, 255], 0.4 * s.twins);
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(pa[0], pa[1]);
@@ -397,25 +539,72 @@ export class LorenzEngine implements WonderEngine {
         ctx.stroke();
         ctx.setLineDash([]);
       }
-      ctx.fillStyle = rgba([236, 234, 244], 0.85 * s.twins);
+      ctx.fillStyle = rgba([236, 234, 244], 0.9 * s.twins);
       ctx.font = '500 13px "JetBrains Mono", ui-monospace, monospace';
       ctx.textAlign = 'left';
       ctx.fillText(this.text.gap(formatGap(this.gap)), pa[0] + 14, pa[1] - 12);
     }
     if (s.swarm > 0.01 && this.swarm.length) {
-      ctx.globalCompositeOperation = 'lighter';
-      const n = this.swarm.length;
-      for (let i = 0; i < n; i++) {
-        const [x, y] = proj(this.swarm[i]);
-        const c = i % 3 === 0 ? AMBER : i % 3 === 1 ? CYAN : VIOLET;
-        ctx.fillStyle = rgba(c, 0.55 * s.swarm);
-        ctx.fillRect(x - 1, y - 1, 2, 2);
-      }
-      ctx.globalCompositeOperation = 'source-over';
+      this.paintSwarm(ctx, proj, near, s.swarm, k);
     }
     if (f.mode === 'free' && this.free) {
       head(ctx, proj(this.free.a), AMBER, 1);
     }
+  }
+
+  /**
+   * Each point is a short streak along the flow (its velocity times a small
+   * time step), so the swarm reads as moving fluid; colour says which wing
+   * it is circling (sign of x), brightness how near the camera it is.
+   */
+  private paintSwarm(
+    ctx: CanvasRenderingContext2D,
+    proj: (p: Vec3) => [number, number],
+    near: (p: Vec3) => number,
+    alpha: number,
+    k: number
+  ) {
+    const tau = 0.008;
+    const paths: Path2D[][] = [];
+    for (let b = 0; b < BUCKETS; b++) paths.push([new Path2D(), new Path2D()]);
+    const n = this.swarm.length;
+    // Thin out the alpha for big swarms so they don't burn to white.
+    const density = Math.min(1, Math.sqrt(3000 / Math.max(n, 1)));
+    for (let i = 0; i < n; i++) {
+      const p = this.swarm[i];
+      const v = lorenzFlow(p, this.rho);
+      const back: Vec3 = [
+        p[0] - v[0] * tau,
+        p[1] - v[1] * tau,
+        p[2] - v[2] * tau,
+      ];
+      const [x0, y0] = proj(back);
+      const [x1, y1] = proj(p);
+      const wing = Math.tanh(p[0] / 7) * 0.5 + 0.5;
+      const b = Math.min(BUCKETS - 1, Math.floor(wing * BUCKETS));
+      const layer = near(p) > 0.5 ? 1 : 0;
+      const path = paths[b][layer];
+      if (Math.abs(x1 - x0) + Math.abs(y1 - y0) < 0.6) {
+        path.moveTo(x1 - 0.5, y1);
+        path.lineTo(x1 + 0.5, y1);
+      } else {
+        path.moveTo(x0, y0);
+        path.lineTo(x1, y1);
+      }
+    }
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    const width = Math.max(1, Math.min(1.8, k * 0.1));
+    for (let b = 0; b < BUCKETS; b++) {
+      const c = ramp(WING_RAMP, (b + 0.5) / BUCKETS);
+      for (const layer of [0, 1]) {
+        ctx.strokeStyle = rgba(c, alpha * density * (layer ? 0.75 : 0.38));
+        ctx.lineWidth = layer ? width : width * 0.8;
+        ctx.stroke(paths[b][layer]);
+      }
+    }
+    ctx.restore();
   }
 
   private stepFree(dt: number) {
@@ -449,7 +638,88 @@ export class LorenzEngine implements WonderEngine {
   }
 }
 
-/** A trajectory segment as a glowing line, older parts fading out. */
+/** See `LorenzEngine.freeFilm`. */
+function bestRelease(path: readonly Vec3[], rho: number): Vec3 {
+  let best = path[path.length - 1];
+  let spread = -1;
+  let tried = 0;
+  for (let i = 60; i < path.length && tried < 6; i++) {
+    if (Math.sign(path[i][0]) === Math.sign(path[i - 1][0])) continue;
+    tried++;
+    const start = path[i - 60];
+    let a = start;
+    let b: Vec3 = [start[0] + 1e-3, start[1], start[2]];
+    for (let k = 0; k < 400; k++) {
+      a = lorenzStep(a, 0.01, rho);
+      b = lorenzStep(b, 0.01, rho);
+    }
+    const d = dist(a, b);
+    if (d > spread) {
+      spread = d;
+      best = start;
+    }
+    i += 120;
+  }
+  return best;
+}
+
+/**
+ * The first path, coloured by how fast the point moves along it (the
+ * length of the Lorenz velocity), older parts dimmer, nearer parts brighter.
+ */
+function flowTrail(
+  ctx: CanvasRenderingContext2D,
+  pts: readonly Vec3[],
+  speeds: readonly number[],
+  from: number,
+  to: number,
+  proj: (p: Vec3) => [number, number],
+  near: (p: Vec3) => number,
+  alpha: number
+) {
+  if (to - from < 2) return;
+  const seg = 6;
+  let prev = proj(pts[from]);
+  for (let a = from; a < to; a += seg) {
+    const b = Math.min(to, a + seg);
+    const mid = (a + b) >> 1;
+    const age = (b - from) / (to - from);
+    const fade = 0.18 + 0.82 * age ** 1.5;
+    const c = ramp(SPEED_RAMP, speeds[mid] / SPEED_TOP);
+    const depth = 0.55 + 0.45 * near(pts[mid]);
+    ctx.strokeStyle = rgba(c, alpha * fade * depth);
+    ctx.lineWidth = 1 + 1.4 * depth * age;
+    ctx.beginPath();
+    ctx.moveTo(prev[0], prev[1]);
+    for (let i = a + 1; i <= b; i++) {
+      prev = proj(pts[i]);
+      ctx.lineTo(prev[0], prev[1]);
+    }
+    ctx.stroke();
+  }
+}
+
+/** The long-run path as a faint violet veil behind the swarm. */
+function ghostTrail(
+  ctx: CanvasRenderingContext2D,
+  pts: readonly Vec3[],
+  proj: (p: Vec3) => [number, number],
+  alpha: number
+) {
+  if (pts.length < 2) return;
+  ctx.strokeStyle = rgba(VIOLET, 0.32 * alpha);
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  const p0 = proj(pts[0]);
+  ctx.moveTo(p0[0], p0[1]);
+  for (let i = 1; i < pts.length; i++) {
+    const p = proj(pts[i]);
+    ctx.lineTo(p[0], p[1]);
+  }
+  ctx.stroke();
+}
+
+/** A trajectory segment in one colour, older parts fading out. */
 function trail(
   ctx: CanvasRenderingContext2D,
   pts: readonly Vec3[],
@@ -457,32 +727,25 @@ function trail(
   to: number,
   proj: (p: Vec3) => [number, number],
   color: readonly number[],
-  alpha: number,
-  glow: number,
-  flat = false,
-  width = 1.6
+  alpha: number
 ) {
   if (to - from < 2) return;
-  const chunks = flat ? 1 : 24;
+  const chunks = 32;
   const span = to - from;
   for (let c = 0; c < chunks; c++) {
     const a = from + Math.floor((span * c) / chunks);
     const b = from + Math.floor((span * (c + 1)) / chunks);
-    const age = flat ? 1 : 0.3 + 0.7 * ((c + 1) / chunks) ** 1.2;
-    const stroke = (w: number, k: number) => {
-      ctx.strokeStyle = rgba(color, alpha * age * k);
-      ctx.lineWidth = w;
-      ctx.beginPath();
-      const p0 = proj(pts[a]);
-      ctx.moveTo(p0[0], p0[1]);
-      for (let i = a + 1; i <= b; i++) {
-        const p = proj(pts[i]);
-        ctx.lineTo(p[0], p[1]);
-      }
-      ctx.stroke();
-    };
-    if (glow > 1) stroke(glow, 0.12);
-    stroke(flat ? 0.8 : width, flat ? 0.5 : 1);
+    const age = 0.15 + 0.85 * ((c + 1) / chunks) ** 1.4;
+    ctx.strokeStyle = rgba(color, alpha * age);
+    ctx.lineWidth = 0.8 + 1.4 * age;
+    ctx.beginPath();
+    const p0 = proj(pts[a]);
+    ctx.moveTo(p0[0], p0[1]);
+    for (let i = a + 1; i <= b; i++) {
+      const p = proj(pts[i]);
+      ctx.lineTo(p[0], p[1]);
+    }
+    ctx.stroke();
   }
 }
 
@@ -490,18 +753,20 @@ function head(
   ctx: CanvasRenderingContext2D,
   [x, y]: [number, number],
   color: readonly number[],
-  alpha: number
+  alpha: number,
+  size = 1
 ) {
-  const g = ctx.createRadialGradient(x, y, 0, x, y, 16);
-  g.addColorStop(0, rgba(color, 0.6 * alpha));
+  const r = 18 * size;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, rgba(color, 0.7 * alpha));
   g.addColorStop(1, rgba(color, 0));
   ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.arc(x, y, 16, 0, Math.PI * 2);
+  ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = rgba(color, alpha);
+  ctx.fillStyle = rgba([255, 250, 240], alpha);
   ctx.beginPath();
-  ctx.arc(x, y, 3.6, 0, Math.PI * 2);
+  ctx.arc(x, y, 3.2 * size, 0, Math.PI * 2);
   ctx.fill();
 }
 

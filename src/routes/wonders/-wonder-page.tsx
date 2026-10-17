@@ -14,20 +14,36 @@ import {
 import { m } from '@/paraglide/messages.js';
 import { Footer } from '@/blocks/footer';
 import { siteNavLinks } from '@/blocks/site-nav';
+import { AttractorWonder } from '@/components/attractor-wonder';
+import { BuffonWonder } from '@/components/buffon-wonder';
+import { CollatzWonder } from '@/components/collatz-wonder';
 import { FourierWonder } from '@/components/fourier-wonder';
+import { GaltonWonder } from '@/components/galton-wonder';
 import { LocaleSelector } from '@/components/locale-selector';
 import { LorenzWonder } from '@/components/lorenz-wonder';
 import { MandelbrotWonder } from '@/components/mandelbrot-wonder';
+import { NewtonWonder } from '@/components/newton-wonder';
 import { PageBreadcrumbs } from '@/components/page-breadcrumbs';
+import { PendulumWaveWonder } from '@/components/pendulum-wave-wonder';
 import { PhyllotaxisWonder } from '@/components/phyllotaxis-wonder';
+import { PrimeSpiralWonder } from '@/components/prime-spiral-wonder';
 import { RichMath } from '@/components/rich-math';
 import { SiteNavMenu } from '@/components/site-nav-menu';
 import { Clauses } from '@/components/wonder-card';
+import {
+  WonderExportContext,
+  type WonderExportInfo,
+} from '@/components/wonder-export';
 import type { WonderStageLabels } from '@/components/wonder-stage';
 import { getCurve } from '@/content/curves';
 import { getLab, labPath } from '@/content/labs';
 import { localeText, type ContentLocale } from '@/content/text';
-import { wonderOgImage, wonderPath, type Wonder } from '@/content/wonders';
+import {
+  publicWonders,
+  wonderOgImage,
+  wonderPath,
+  type Wonder,
+} from '@/content/wonders';
 
 import { WorkspaceAccount } from '../labs/-labs-page';
 
@@ -175,6 +191,89 @@ function formatZoom(factor: number, lang: ContentLocale): string {
   return `${fixed(factor / 1e12)}T×`;
 }
 
+/** Host and path as printed on exports: curvg.com/zh/wonders/<slug>. */
+function shownUrl(wonder: Wonder, lang: ContentLocale): string {
+  let host = 'curvg.com';
+  try {
+    const url = new URL(envConfigs.app_url);
+    if (!/^(localhost|127\.)/.test(url.hostname)) {
+      host = url.host.replace(/^www\./, '');
+    }
+  } catch {
+    // Keep the default.
+  }
+  return `${host}${lang === 'zh' ? '/zh' : ''}${wonderPath(wonder)}`;
+}
+
+/** The wonder after this one, wrapping round: suggested when a story ends. */
+function nextWonder(wonder: Wonder, lang: ContentLocale) {
+  const all = publicWonders();
+  if (all.length < 2) return undefined;
+  const i = all.findIndex((item) => item.slug === wonder.slug);
+  const next = all[(i + 1) % all.length];
+  return { href: wonderPath(next), name: localeText(next.name, lang) };
+}
+
+/** Export copy and labels for the stage's video/snapshot tools. */
+function exportInfo(wonder: Wonder, lang: ContentLocale): WonderExportInfo {
+  return {
+    slug: wonder.slug,
+    path: wonderPath(wonder),
+    next: nextWonder(wonder, lang),
+    text: {
+      eyebrow: `${envConfigs.app_name} · ${m['wonders.breadcrumb']()} · ${m['wonders.page.no']({ number: wonder.number })}`,
+      title: localeText(wonder.question, lang),
+      captions: wonder.beats.map((beat) => localeText(beat, lang)),
+      takeaway: localeText(wonder.takeaway, lang),
+      url: shownUrl(wonder, lang),
+      cta: m['wonders.export.cta'](),
+    },
+    labels: {
+      snapshot: m['wonders.export.snapshot'](),
+      snapshotSaved: m['wonders.export.snapshot_saved'](),
+      copyLink: m['wonders.export.copy_link'](),
+      linkCopied: m['wonders.export.link_copied'](),
+      next: m['wonders.export.next'](),
+      video: m['wonders.export.video'](),
+      dialogTitle: m['wonders.export.dialog_title'](),
+      dialogLead: m['wonders.export.dialog_lead'](),
+      content: m['wonders.export.content'](),
+      story: (seconds) => m['wonders.export.story']({ seconds }),
+      storyNote: m['wonders.export.story_note'](),
+      mine: m['wonders.export.mine'](),
+      mineNote: m['wonders.export.mine_note'](),
+      aspect: m['wonders.export.aspect'](),
+      landscape: m['wonders.export.landscape'](),
+      portrait: m['wonders.export.portrait'](),
+      quality: m['wonders.export.quality'](),
+      free: m['wonders.export.free'](),
+      freeNote: m['wonders.export.free_note'](),
+      hd: m['wonders.export.hd'](),
+      hdNote: m['wonders.export.hd_note'](),
+      credits: (cost) => m['wonders.export.credits']({ cost }),
+      balance: (balance) => m['wonders.export.balance']({ balance }),
+      endCard: m['wonders.export.end_card'](),
+      start: m['wonders.export.start'](),
+      signIn: m['wonders.export.sign_in'](),
+      rendering: (percent) => m['wonders.export.rendering']({ percent }),
+      renderingNote: m['wonders.export.rendering_note'](),
+      cancel: m['wonders.export.cancel'](),
+      downloadFree: m['wonders.export.download_free'](),
+      downloadHd: (cost) => m['wonders.export.download_hd']({ cost }),
+      upsell: m['wonders.export.upsell'](),
+      upgrade: m['wonders.export.upgrade'](),
+      noCredits: m['wonders.export.no_credits'](),
+      unsupported: m['wonders.export.unsupported'](),
+      failed: m['wonders.export.failed'](),
+      again: m['wonders.export.again'](),
+      close: m['wonders.export.close'](),
+      endTitle: m['wonders.export.end_title'](),
+      endBody: m['wonders.export.end_body'](),
+      endPlay: m['wonders.export.end_play'](),
+    },
+  };
+}
+
 /** The interactive stage for a wonder, by slug. */
 function StageFor({ wonder, lang }: { wonder: Wonder; lang: ContentLocale }) {
   const overlay = (
@@ -202,6 +301,8 @@ function StageFor({ wonder, lang }: { wonder: Wonder; lang: ContentLocale }) {
     story: m['wonders.stage.story'](),
     params: m['wonders.stage.params'](),
     canvas,
+    fullscreen: m['wonders.stage.fullscreen'](),
+    exitFullscreen: m['wonders.stage.exit_fullscreen'](),
   });
 
   switch (wonder.slug) {
@@ -293,6 +394,152 @@ function StageFor({ wonder, lang }: { wonder: Wonder; lang: ContentLocale }) {
           }}
         />
       );
+    case 'pendulum-wave':
+      return (
+        <PendulumWaveWonder
+          overlay={overlay}
+          stage={stage(m['wonders.pendulum.canvas']())}
+          labels={{
+            time: m['wonders.pendulum.time'](),
+            gap: m['wonders.pendulum.gap'](),
+            pattern: m['wonders.pendulum.pattern'](),
+            groups: (count) => m['wonders.pendulum.groups']({ count }),
+            together: m['wonders.pendulum.together'](),
+            wave: m['wonders.pendulum.wave'](),
+            jump: m['wonders.pendulum.jump'](),
+            speed: m['wonders.pendulum.speed'](),
+            count: m['wonders.pendulum.count'](),
+            showWave: m['wonders.pendulum.show_wave'](),
+            hint: m['wonders.pendulum.hint'](),
+          }}
+        />
+      );
+    case 'prime-spirals':
+      return (
+        <PrimeSpiralWonder
+          overlay={overlay}
+          stage={stage(m['wonders.primes.canvas']())}
+          labels={{
+            view: m['wonders.primes.view'](),
+            primes: m['wonders.primes.primes'](),
+            arms: m['wonders.primes.arms'](),
+            armsValue: (count) => m['wonders.primes.arms_value']({ count }),
+            oneSpiral: m['wonders.primes.one_spiral'](),
+            zoom: m['wonders.primes.zoom'](),
+            presets: m['wonders.primes.presets'](),
+            primesOnly: m['wonders.primes.primes_only'](),
+            colour: m['wonders.primes.colour'](),
+            noColour: m['wonders.primes.no_colour'](),
+            hint: m['wonders.primes.hint'](),
+            formatCount: (value) =>
+              value.toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US'),
+          }}
+        />
+      );
+    case 'newton-fractal':
+      return (
+        <NewtonWonder
+          overlay={overlay}
+          stage={stage(m['wonders.newton.canvas']())}
+          labels={{
+            noWebgl: m['wonders.mandelbrot.no_webgl'](),
+            reached: (steps) => m['wonders.newton.reached']({ steps }),
+            never: m['wonders.newton.never'](),
+            guess: m['wonders.newton.guess'](),
+            equation: m['wonders.newton.equation'](),
+            custom: m['wonders.newton.custom'](),
+            zoom: m['wonders.mandelbrot.zoom'](),
+            roots: m['wonders.newton.roots'](),
+            presets: m['wonders.newton.presets'](),
+            addRoot: m['wonders.newton.add_root'](),
+            removeRoot: m['wonders.newton.remove_root'](),
+            overview: m['wonders.newton.overview'](),
+            hint: m['wonders.newton.hint'](),
+            formatZoom: (factor) => formatZoom(factor, lang),
+          }}
+        />
+      );
+    case 'galton-board':
+      return (
+        <GaltonWonder
+          overlay={overlay}
+          stage={stage(m['wonders.galton.canvas']())}
+          labels={{
+            dropped: m['wonders.galton.dropped'](),
+            middle: m['wonders.galton.middle'](),
+            versus: (measured, expected) =>
+              m['wonders.galton.versus']({ measured, expected }),
+            mean: m['wonders.galton.mean'](),
+            rows: m['wonders.galton.rows'](),
+            tilt: m['wonders.galton.tilt'](),
+            rate: m['wonders.galton.rate'](),
+            dropMore: m['wonders.galton.drop_more'](),
+            reset: m['wonders.galton.reset'](),
+            pascal: m['wonders.galton.pascal'](),
+            curve: m['wonders.galton.curve'](),
+            hint: m['wonders.galton.hint'](),
+          }}
+        />
+      );
+    case 'buffon-needle':
+      return (
+        <BuffonWonder
+          overlay={overlay}
+          stage={stage(m['wonders.buffon.canvas']())}
+          labels={{
+            thrown: m['wonders.buffon.thrown'](),
+            crossed: m['wonders.buffon.crossed'](),
+            versus: (measured, expected) =>
+              m['wonders.galton.versus']({ measured, expected }),
+            estimate: m['wonders.buffon.estimate'](),
+            length: m['wonders.buffon.length'](),
+            rate: m['wonders.buffon.rate'](),
+            throwMore: m['wonders.buffon.throw_more'](),
+            reset: m['wonders.galton.reset'](),
+            graph: m['wonders.buffon.graph'](),
+            hint: m['wonders.buffon.hint'](),
+          }}
+        />
+      );
+    case 'collatz-tree':
+      return (
+        <CollatzWonder
+          overlay={overlay}
+          stage={stage(m['wonders.collatz.canvas']())}
+          labels={{
+            numbers: m['wonders.collatz.numbers'](),
+            steps: m['wonders.collatz.steps'](),
+            peak: m['wonders.collatz.peak'](),
+            count: m['wonders.collatz.count'](),
+            even: m['wonders.collatz.even'](),
+            odd: m['wonders.collatz.odd'](),
+            follow: m['wonders.collatz.follow'](),
+            none: m['wonders.collatz.none'](),
+            hint: m['wonders.collatz.hint'](),
+            formatCount: (value) =>
+              value.toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US'),
+          }}
+        />
+      );
+    case 'strange-attractors':
+      return (
+        <AttractorWonder
+          overlay={overlay}
+          stage={stage(m['wonders.attractors.canvas']())}
+          labels={{
+            lambda: m['wonders.attractors.lambda'](),
+            kind: m['wonders.attractors.kind'](),
+            kinds: {
+              chaos: m['wonders.attractors.kind_chaos'](),
+              curve: m['wonders.attractors.kind_curve'](),
+              cycle: m['wonders.attractors.kind_cycle'](),
+            },
+            gallery: m['wonders.attractors.gallery'](),
+            random: m['wonders.attractors.random'](),
+            hint: m['wonders.attractors.hint'](),
+          }}
+        />
+      );
     default:
       return null;
   }
@@ -318,7 +565,9 @@ export function WonderPage({
     <div className="dark wonder-page">
       <div className="relative">
         <WonderTopBar wonder={wonder} lang={lang} />
-        <StageFor wonder={wonder} lang={lang} />
+        <WonderExportContext.Provider value={exportInfo(wonder, lang)}>
+          <StageFor wonder={wonder} lang={lang} />
+        </WonderExportContext.Provider>
       </div>
 
       <article id="explain" className="wonder-article">

@@ -708,17 +708,60 @@ export type FourierTarget = {
  * `fourierStory(t)`; free play eases the live scene towards `target`, and a
  * free-hand stroke is collected while `drawing` is on.
  */
+/** Length of the free-play film ("my version"), seconds. */
+export const FOURIER_FREE_FILM = 17;
+/** Seconds over which the film's circles double up to the reader's count. */
+const FILM_GROW = 8;
+
 export class FourierEngine implements WonderEngine {
   readonly beats = FOURIER_BEATS;
   readonly length = FOURIER_STORY_LENGTH;
+  /** Cold open: π assembling out of a hundred circles. */
+  readonly teaser = [49, 53] as const;
+  readonly glow = 0.6;
   readonly data: FourierData = fourierData();
   scene: FourierScene = fourierStory(0);
   target: FourierTarget = { shape: 'pi', count: 30, showCircles: true };
   drawing = false;
   stroke: Point[] = [];
   private height = 0;
+  /** Film clock, while a free-play film is drawn. */
+  private film: { t: number } | null = null;
 
   constructor(private text: FourierPaintText) {}
+
+  clone(): FourierEngine {
+    const e = new FourierEngine(this.text);
+    e.data.custom = this.data.custom;
+    e.target = { ...this.target };
+    e.scene = { ...this.scene };
+    return e;
+  }
+
+  /**
+   * "My version": the reader's shape assembled circle by circle — 1, 2, 4,
+   * 8 … up to their count — while the pen traces it, then once more whole.
+   */
+  freeFilm(): number {
+    const wave = isWaveShape(this.target.shape);
+    this.scene = {
+      ...this.scene,
+      theta: 0,
+      tau: 0,
+      mix: wave ? 0 : 1,
+      waveCount: 1,
+      pathCount: 1,
+      ghost: 0.4,
+      gibbs: 0,
+      tags: 0,
+      trail: 1,
+      reach: 1,
+      reveal: 1,
+      camera: { x: 0, y: 0, zoom: 1 },
+    };
+    this.film = { t: 0 };
+    return FOURIER_FREE_FILM;
+  }
 
   attach() {}
 
@@ -811,14 +854,23 @@ export class FourierEngine implements WonderEngine {
     const wave = isWaveShape(shape);
     const ease = 1 - Math.exp(-dt * 6);
     const spin = moving ? 1 : 0;
+    let waveCount = wave ? s.waveCount + (n - s.waveCount) * ease : s.waveCount;
+    let pathCount = wave ? s.pathCount : s.pathCount + (n - s.pathCount) * ease;
+    if (this.film) {
+      // Doubling, not adding: each step visibly sharpens the picture.
+      this.film.t += dt;
+      const grown = n ** Math.min(1, this.film.t / FILM_GROW);
+      if (wave) waveCount = grown;
+      else pathCount = grown;
+    }
     return {
       ...s,
       theta: s.theta + FREE_SPIN * dt * spin,
       tau: s.tau + FREE_TRACE * dt * spin,
       wave: wave ? shape : s.wave,
       path: shape === 'custom' ? 'custom' : shape === 'pi' ? 'pi' : s.path,
-      waveCount: wave ? s.waveCount + (n - s.waveCount) * ease : s.waveCount,
-      pathCount: wave ? s.pathCount : s.pathCount + (n - s.pathCount) * ease,
+      waveCount,
+      pathCount,
       mix: s.mix + ((wave ? 0 : 1) - s.mix) * ease,
       trail: 1,
       reach: 1,

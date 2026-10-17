@@ -51,14 +51,19 @@ function displayMonthlyEquivalent(product: PricingProduct, locale: string) {
 
 /**
  * Where checkout lands: back in the creator conversation that sent the user
- * here (`/pricing?return=/creator?animationId=…`), else the creator.
+ * here (`/pricing?return=/creator?animationId=…`) or the wonder whose video
+ * export sent them (`/wonders/<slug>?export=1`), else the creator.
  */
 function checkoutReturnPath() {
   const back =
     typeof window === 'undefined'
       ? null
       : new URLSearchParams(window.location.search).get('return');
-  return back && /^\/creator(\?|$)/.test(back) ? back : '/creator';
+  return back &&
+    (/^\/creator(\?|$)/.test(back) ||
+      /^\/wonders\/[a-z0-9-]+(\?export=1)?$/.test(back))
+    ? back
+    : '/creator';
 }
 
 export function Pricing({
