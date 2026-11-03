@@ -99,12 +99,12 @@ Logo 是一笔画成的 G，起点是琥珀色圆环把手（实验画板上"可
 
 按日期倒序，记录影响定位、页面结构或可维护性的变化（逐条提交见 `git log`）。
 
-### 2026-11-03 — GPT 推荐流量核对：首次来源归因进 D1，首页和实验页的 FAQ、一致性修正（未部署）
+### 2026-11-03 — GPT 推荐流量核对：首次来源归因进 D1，首页和实验页的 FAQ、一致性修正（14:56 UTC 上线，`766cda1`）
 
 - 按 Site-Analysis 的"GPT 推荐流量打法"§3 逐项核对，结果、证据和上线步骤在 `docs/GPT_TRAFFIC_CHECKLIST.md`。
 - 归因：`cg_ft` / `cg_lt` cookie（`src/lib/attribution.ts`，采集组件挂在 `__root.tsx`），注册写 `user` 的 6 个 `ft_*` 列，
   下单和续费写 `order` 的 9 列；迁移 `drizzle/0006_traffic_attribution.sql`；GA4 用户属性 `first_source/first_medium/first_ai`
-  和 `ai_referral` 事件。生产 D1 的迁移记录缺 0005（结构已有），上线前先补记，见清单。
+  和 `ai_referral` 事件。生产 D1 的迁移记录原来缺 0005（结构已有），上线时先补记再只执行 0006；Worker `82a3c365`，发布记录见清单。
 - 首页：首屏副标题写清"免费、给谁用、不用登录"；FAQ 9 → 12 条；`WebApplication` 带 5 个 `Offer`（和定价页共用 `pricingOffers()`）。
 - 实验章节页：标题下加"免费 · 不用登录"一行；新增 11–12 条 FAQ（前半来自本章数据）和 `FAQPage`。
 - 一致性：首页 FAQ、llms.txt、对比文章里旧的"审方案"流程、"新账号送渲染额度"、"curated AI models"、"30 条曲线"都已改正。

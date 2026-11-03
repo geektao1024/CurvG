@@ -2,7 +2,7 @@
 
 来源：`~/aitools/Site-Analysis/docs/project/GPT推荐流量-打法.zh.md`（v1）§3 清单；首次来源归因按
 `~/aitools/Site-Analysis/docs/specs/通用/2026-10-23-traffic-source-attribution.zh.md`（下称"归因规格"）。
-2026-11-03 逐项核对并补站内缺口。`[x]` 已做，`[~]` 部分，`[ ]` 没做。"本次"指 2026-11-03 这一轮改动（未部署）。
+2026-11-03 逐项核对并补站内缺口。`[x]` 已做，`[~]` 部分，`[ ]` 没做。"本次"指 2026-11-03 这一轮改动，已于 2026-11-03 14:56 UTC 上线（提交 `766cda1`，Worker 版本 `82a3c365`，记录见"发布记录"）。
 
 线上复测：`scripts/ai-crawler-check.sh https://curvg.com [路径…]`（5 种 AI 爬虫 UA，打印状态码、H1 数、FAQPage、`<details>` 数）。
 
@@ -75,7 +75,7 @@
 - [~] **还没改**：`/math-animation-tool`（ChatGPT 落地第三多）整页仍把"描述 → 审场景方案和代码 → 渲染"写成主流程，
   `pages.tool.faq2_a` 说可以直接改场景方案。现在这是测试版流程，主线是模板。要整页改写，牵涉关键词页的定位，留给下一轮。
 
-## 归因（本次，代码完成、本地验证，未上线）
+## 归因（本次，2026-11-03 14:56 UTC 上线）
 
 按归因规格整套实施（CurvG 之前只有 `user.utm_source` 一列，没有地方写它）：
 
@@ -122,6 +122,25 @@
 6. 把上线时间（UTC）告诉 Site-Analysis，工作台按归因规格 §9 核对后打开 `has_attribution`。
 
 回滚：Worker 回到上一版本即可，新列留着无影响。
+
+### 发布记录（2026-11-03，负责人授权）
+
+- 提交 `766cda1`，已推送 `origin/main`。发布前 security-scan 通过（脚本无发现；人工审查补了隐私政策里的 cookie 说明）。
+  从 `766cda1` 的干净 git 工作树构建部署（只拷入 gitignored 的 `wrangler.jsonc`、`.env.production`），`pnpm run cf:deploy`。
+- D1：先只读确认迁移记录到 0004、0005 的三列已在、0006 的列和索引都不存在（用户 265、订单 12）。
+  Time Travel 书签 `00004b67-00000000-00005118-3ff7700eb6f6407c08d05932a9d4b629`（14:54 UTC）。
+  补记 0005（1 行）→ `migrations list` 只剩 0006 → `migrations apply --remote` 只执行了 0006（18 条语句）。
+  之后：`user` 6 个 `ft_*` 列、`order` 9 列、2 个索引都在，用户和订单行数不变。
+- Worker：`82a3c365-26ec-4c3a-a352-0be566523b30`，2026-11-03 14:56:21 UTC 起 100%。上一版本 `67aa848f-4df8-41fe-9089-1b7d4d0af451`。
+- 冒烟（headless Chromium，线上）：`/?utm_source=smoke-1103` → `cg_ft` = `smoke-1103/referral//`（Secure、Lax）；邮箱注册
+  → 用户行 `ft_source=smoke-1103`、`ft_landing_path=/`；注册返回和 `get-session` 不含 `ft_*`；发起结账，打开 Stripe 结账页
+  （没付款）→ 订单行 `ft_source`、`lt_source` 都是 `smoke-1103`，状态 `created`。首页 12 条 FAQ + Offer、`/labs/geometry`
+  中英文 11 条 FAQ + "免费"一行、llms.txt 新口径都已在线上。
+- 清理：测试号的 `order`、`session`、`account`、`user` 各 1 行已删（按测试号 id 删，事先查过 20 张带 `user_id` 的表只有这 4 行），
+  删除后用户 265、订单 12。Stripe 那边的结账会话没付款，24 小时后自动过期。
+- 回滚：`npx wrangler rollback 67aa848f-4df8-41fe-9089-1b7d4d0af451`（新列留着无害）；如要连数据库一起回退，
+  `npx wrangler d1 time-travel restore curvg-db --bookmark=00004b67-00000000-00005118-3ff7700eb6f6407c08d05932a9d4b629`
+  （会丢掉书签之后的所有写入，只在必要时用）。
 
 ## 诊断
 
