@@ -147,6 +147,7 @@ async function POST({ request }: { request: Request }) {
           : undefined,
       },
       provider: providerKey,
+      cookieHeader: request.headers.get('cookie'),
     });
 
     return respData({ checkout_url: checkout.checkoutInfo.checkoutUrl });

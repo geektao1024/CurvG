@@ -2,12 +2,9 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { envConfigs } from '@/config';
 import {
-  pricingCatalog,
-  PUBLIC_SUBSCRIPTION_PRODUCT_IDS,
-} from '@/config/pricing';
-import {
   absoluteUrl,
   localizedLinks,
+  pricingOffers,
   serializeJsonLd,
   socialMeta,
 } from '@/lib/seo';
@@ -57,29 +54,7 @@ function PricingPage() {
   );
 }
 
-/**
- * Offers straight from `src/config/pricing.ts`, the file checkout charges
- * from, so the prices in search results cannot drift from the real ones.
- */
 function pricingJsonLd(title: string, url: string) {
-  const offers = PUBLIC_SUBSCRIPTION_PRODUCT_IDS.map((id) => {
-    const product = pricingCatalog[id];
-    const price = (product.priceInCents / 100).toFixed(2);
-    const currency = product.currency.toUpperCase();
-    return {
-      '@type': 'Offer',
-      name: `${product.planName} (${product.plan?.interval === 'year' ? 'yearly' : 'monthly'})`,
-      price,
-      priceCurrency: currency,
-      url,
-      priceSpecification: {
-        '@type': 'UnitPriceSpecification',
-        price,
-        priceCurrency: currency,
-        billingDuration: product.plan?.interval === 'year' ? 'P1Y' : 'P1M',
-      },
-    };
-  });
   return {
     '@context': 'https://schema.org',
     '@type': 'WebApplication',
@@ -88,9 +63,6 @@ function pricingJsonLd(title: string, url: string) {
     applicationCategory: 'EducationalApplication',
     operatingSystem: 'Web',
     description: title,
-    offers: [
-      { '@type': 'Offer', name: 'Free', price: '0', priceCurrency: 'USD', url },
-      ...offers,
-    ],
+    offers: pricingOffers(url),
   };
 }

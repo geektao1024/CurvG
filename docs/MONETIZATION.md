@@ -31,7 +31,7 @@
 
 | 档位   | 月付   | 年付（折合每月） | 每周期积分 | 约多少视频（月付） | 每个视频约 |
 | ------ | ------ | ---------------- | ---------- | ------------------ | ---------- |
-| 免费   | $0     | —                | —          | 第一个免费         | —          |
+| 免费   | $0     | —                | —          | 3 个免费预览       | —          |
 | 入门版 | $9.90  | $95（$7.92）     | 300        | 15                 | $0.66      |
 | Pro    | $18.90 | $181（$15.08）   | 1,000      | 50                 | $0.38      |
 
@@ -115,7 +115,10 @@ Stripe 账户默认开启 Managed Payments：Stripe 作为记录商户（merchan
 改套餐或文案时，下面这些地方要一起改，且只能写已经上线、在生产上跑得通的能力：
 
 - 定价页 `src/blocks/pricing.tsx` + `landing.pricing.*`（含 FAQ）
-- 首页价格条 `home.pricing.*`、首页 FAQ `landing.faq.free.*`
+- 首页价格条 `home.pricing.*`、首页 FAQ `landing.faq.free.*`、`landing.faq.video_cost.*`（价格读 `pricing.ts`）、`landing.faq.export.*`
+- 实验章节页 FAQ `labs.faq.video.*`（"3 个免费预览""套餐每月 $X 起"，价格读 `pricing.ts`，`src/routes/labs/-labs-page.tsx` 的 `labFaq()`）
+- 首页与定价页 JSON-LD 的 `Offer`（`src/lib/seo.ts` 的 `pricingOffers()`，读 `pricing.ts`）
+- 对比文章 `src/content/posts/best-math-video-apps.{en,zh}.mdx` 的 CurvG 一节
 - 关键词落地页 `/free-math-video-creator`（`pages.free.*`）、工具页 `pages.tool.band_lead`
 - `llms.txt` / `llms-full.txt` 的产品描述
 - 奇观导出窗口 `wonders.export.*`（免费档"带水印、不限次数"，高清档"1080p 60 帧、无水印"，价格读 `animation_render_credits`）

@@ -3,6 +3,7 @@ import { LogIn } from 'lucide-react';
 import { useSession } from '@/core/auth/client';
 import { Link } from '@/core/i18n/navigation';
 import { envConfigs } from '@/config';
+import { getPricingProduct } from '@/config/pricing';
 import {
   absoluteUrl,
   breadcrumbJsonLd,
@@ -36,6 +37,7 @@ import {
   type Lab,
   type LabSuite,
 } from '@/content/labs';
+import { LAB_VIDEO_TEMPLATES } from '@/content/labs/video';
 import { contentLocale, localeText, type ContentLocale } from '@/content/text';
 import { wonderPath, wondersForLab } from '@/content/wonders';
 
@@ -100,7 +102,143 @@ function workspaceLabels(boardTitle: string): WorkspaceLabels {
     ctaTitle: m['labs.cta.title'](),
     ctaBody: m['labs.cta.body'](),
     ctaButton: m['labs.cta.button'](),
+    freeNote: m['labs.ws.free_note'](),
+    faqTitle: m['labs.faq.title'](),
   };
+}
+
+export type LabFaqEntry = { question: string; answer: string };
+
+/**
+ * Ten-plus direct answers per chapter (docs/GPT_TRAFFIC_CHECKLIST.md): the
+ * first half is built from the chapter's own data (its question, key ideas,
+ * level, guided tour, quiz, film), the rest is how every lab works. Rendered
+ * in the lesson panel and as FAQPage structured data from the same list.
+ */
+export function labFaq(target: WorkspaceTarget, locale: string): LabFaqEntry[] {
+  const lang = contentLocale(locale);
+  const opts = { locale: locale as never };
+  const { suite, lab } = target;
+  const chapter = localeText(lab.chapterTitle, lang);
+  const list = (items: string[], last: string) =>
+    lang === 'zh'
+      ? items.join('、')
+      : items.length > 1
+        ? `${items.slice(0, -1).join(', ')} ${last} ${items.at(-1)}`
+        : (items[0] ?? '');
+  const levels = levelLabels(locale);
+  const levelNames = lab.levels.map((level) =>
+    lang === 'zh' ? levels[level] : levels[level].toLowerCase()
+  );
+  const index = suite.chapters.findIndex((c) => c.slug === lab.slug) + 1;
+  const make = m['labs.ws.make_video']({}, opts);
+  const starter = getPricingProduct('starter_monthly');
+  const startingPrice = starter
+    ? new Intl.NumberFormat(lang === 'zh' ? 'zh-CN' : 'en-US', {
+        style: 'currency',
+        currency: starter.currency,
+        maximumFractionDigits: starter.priceInCents % 100 === 0 ? 0 : 2,
+      }).format(starter.priceInCents / 100)
+    : '';
+  const videoAnswer = [
+    LAB_VIDEO_TEMPLATES[lab.slug]
+      ? m['labs.faq.video.template']({ make }, opts)
+      : m['labs.faq.video.prompt']({ make }, opts),
+    startingPrice
+      ? m['labs.faq.video.price']({ price: startingPrice }, opts)
+      : '',
+  ]
+    .filter(Boolean)
+    .join(lang === 'zh' ? '' : ' ');
+
+  const entries: (LabFaqEntry | null)[] = [
+    {
+      question: localeText(lab.question, lang),
+      answer: localeText(lab.summary, lang),
+    },
+    {
+      question: m['labs.faq.covers.question']({ chapter }, opts),
+      answer: m['labs.faq.covers.answer'](
+        {
+          points: list(
+            lab.keyPoints.map((point) => localeText(point, lang)),
+            'and'
+          ),
+          index,
+          total: suite.chapters.length,
+          suite: localeText(suite.name, lang),
+          subject: localeText(subjectOf(suite).name, lang).toLowerCase(),
+        },
+        opts
+      ),
+    },
+    {
+      question: m['labs.faq.level.question']({ chapter }, opts),
+      answer: m['labs.faq.level.answer'](
+        { levels: list(levelNames, 'and') },
+        opts
+      ),
+    },
+    {
+      question: m['labs.faq.use.question']({}, opts),
+      answer: m['labs.faq.use.answer'](
+        {
+          count: lab.guide.length,
+          // Arrows, not commas: step titles can contain commas themselves.
+          steps: lab.guide
+            .map((step) => localeText(step.title, lang))
+            .join(' → '),
+          reset: m['labs.ws.reset_params']({}, opts),
+        },
+        opts
+      ),
+    },
+    {
+      question: m['labs.faq.check.question']({ chapter }, opts),
+      answer: m['labs.faq.check.answer'](
+        { count: lab.quiz.length, quiz: m['labs.quiz.title']({}, opts) },
+        opts
+      ),
+    },
+    labVideo(lab, lang)
+      ? {
+          question: m['labs.faq.film.question']({}, opts),
+          answer: m['labs.faq.film.answer']({}, opts),
+        }
+      : null,
+    {
+      question: m['labs.faq.free.question']({}, opts),
+      answer: m['labs.faq.free.answer']({}, opts),
+    },
+    {
+      question: m['labs.faq.video.question']({}, opts),
+      answer: videoAnswer,
+    },
+    {
+      question: m['labs.faq.class.question']({}, opts),
+      answer: m['labs.faq.class.answer'](
+        {
+          paper: m['labs.ws.style_paper']({}, opts),
+          studio: m['labs.ws.style_studio']({}, opts),
+          pen: m['labs.ws.pen']({}, opts),
+        },
+        opts
+      ),
+    },
+    {
+      question: m['labs.faq.mobile.question']({}, opts),
+      answer: m['labs.faq.mobile.answer']({}, opts),
+    },
+    {
+      question: m['labs.faq.lang.question']({}, opts),
+      answer: m['labs.faq.lang.answer']({}, opts),
+    },
+    {
+      question: m['labs.faq.numbers.question']({}, opts),
+      answer: m['labs.faq.numbers.answer']({}, opts),
+    },
+  ];
+  return entries.filter((entry): entry is LabFaqEntry => entry !== null);
 }
 
 /** A suite chapter. Every public lab sits in exactly one suite. */
@@ -225,6 +363,7 @@ export function WorkspacePage({
       related={relatedLinks(lab, lang)}
       videoHref={labVideoHref(lab, lang)}
       film={labVideo(lab, lang)}
+      faq={labFaq(target, locale)}
       account={<WorkspaceAccount />}
       siteMenu={
         <SiteNavMenu
@@ -354,6 +493,16 @@ export function workspaceHead(target: WorkspaceTarget, locale: string) {
     locale
   );
 
+  const faq = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: labFaq(target, locale).map(({ question, answer }) => ({
+      '@type': 'Question',
+      name: question,
+      acceptedAnswer: { '@type': 'Answer', text: answer },
+    })),
+  };
+
   const film = labVideo(lab, lang);
   const video = film
     ? {
@@ -388,6 +537,7 @@ export function workspaceHead(target: WorkspaceTarget, locale: string) {
         children: serializeJsonLd([
           resource,
           quiz,
+          faq,
           breadcrumb,
           ...(video ? [video] : []),
         ]),

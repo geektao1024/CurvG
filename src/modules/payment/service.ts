@@ -25,6 +25,7 @@ import {
   order,
   paymentCheckoutLease,
   subscription,
+  user,
 } from '@/config/db/schema';
 import {
   getPricingProduct,
@@ -41,6 +42,13 @@ import {
   SubscriptionStatus,
   updateBySubscriptionNo,
 } from '@/modules/subscriptions/service';
+import {
+  EMPTY_FIRST_TOUCH,
+  orderAttribution,
+  renewalAttribution,
+  type OrderAttribution,
+  type UserFirstTouch,
+} from '@/lib/attribution';
 import { isProduction } from '@/lib/env';
 import { getUuid, md5 } from '@/lib/hash';
 
@@ -401,6 +409,45 @@ export async function getPaymentProviderAvailability() {
   };
 }
 
+// --- Attribution (src/lib/attribution.ts) ---
+
+const ATTRIBUTION_USER_COLUMNS = {
+  createdAt: user.createdAt,
+  ftSource: user.ftSource,
+  ftMedium: user.ftMedium,
+  ftCampaign: user.ftCampaign,
+  ftLandingPath: user.ftLandingPath,
+  ftReferrer: user.ftReferrer,
+  ftAt: user.ftAt,
+};
+
+async function findUserFirstTouch(
+  userId: string
+): Promise<UserFirstTouch | null> {
+  try {
+    const [row] = await db()
+      .select(ATTRIBUTION_USER_COLUMNS)
+      .from(user)
+      .where(eq(user.id, userId))
+      .limit(1);
+    return row ?? null;
+  } catch (error) {
+    // Attribution must never block a checkout or a renewal.
+    console.error('[payment] attribution user read failed', {
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+const EMPTY_ORDER_ATTRIBUTION: OrderAttribution = {
+  ...EMPTY_FIRST_TOUCH,
+  ltSource: '',
+  ltLandingPath: '',
+  ltAt: null,
+};
+
 // --- Checkout ---
 
 export async function createCheckout(params: {
@@ -412,6 +459,8 @@ export async function createCheckout(params: {
   planName?: string;
   credits?: number;
   creditsValidDays?: number;
+  /** The checkout request's Cookie header, for first / last touch. */
+  cookieHeader?: string | null;
 }): Promise<CheckoutSession> {
   const { userId, userEmail, paymentOrder, provider } = params;
   const pm = await getPaymentManager();
@@ -597,6 +646,16 @@ export async function createCheckout(params: {
     // Persist the internal order before the external call. A webhook can arrive
     // immediately after provider creation; metadata.orderNo can now always find
     // a row, and a local write failure cannot leave an untracked remote checkout.
+    // Attribution is written here only; the paid update never touches it.
+    let attribution = EMPTY_ORDER_ATTRIBUTION;
+    try {
+      attribution = orderAttribution({
+        user: await findUserFirstTouch(userId),
+        cookieHeader: params.cookieHeader,
+      });
+    } catch {
+      attribution = EMPTY_ORDER_ATTRIBUTION;
+    }
     const orderId = getUuid();
     await db()
       .insert(order)
@@ -617,6 +676,7 @@ export async function createCheckout(params: {
         paymentProvider: resolvedProvider,
         checkoutInfo: '',
         description: catalogProduct.description,
+        ...attribution,
       });
 
     let session: CheckoutSession;
@@ -1808,6 +1868,11 @@ export async function handleSubscriptionRenewal(
     throwSubscriptionWebhookContention(provider, session.subscriptionId);
   }
 
+  // Webhook, no browser request: first touch from the user row, no last touch.
+  const attribution = renewalAttribution(
+    await findUserFirstTouch(existingSub.userId)
+  );
+
   try {
     await db().transaction(async (tx: any) => {
       await tx
@@ -1844,6 +1909,7 @@ export async function handleSubscriptionRenewal(
           transactionId: paymentInfo?.transactionId,
           paymentUserName: paymentInfo?.paymentUserName,
           paymentUserId: paymentInfo?.paymentUserId,
+          ...attribution,
         })
         .onConflictDoUpdate({
           target: order.orderNo,

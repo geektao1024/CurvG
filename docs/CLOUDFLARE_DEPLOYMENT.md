@@ -7,6 +7,10 @@ Last verified: 2026-07-22
 - Worker: `curvg`
 - Temporary URL: <https://curvg.471787092.workers.dev>
 - D1: `curvg-db` (APAC), schema migration applied
+- D1 migration drift (read-only check 2026-11-03): `d1_migrations` records up to `0004`, but production already has the
+  columns from `0005` (applied by hand). Record it before the next `migrations apply`, otherwise apply stops at 0005 with
+  "duplicate column": `INSERT INTO d1_migrations (name) VALUES ('0005_clean_frightful_four.sql')`. Pending after that:
+  `0006_traffic_attribution.sql`, which must run before deploying the code that writes it (`docs/GPT_TRAFFIC_CHECKLIST.md`).
 - R2: `curvg-assets`
 - Production build: `pnpm cf:build` passes
 - Live checks: homepage returns HTTP 200, expected title renders, and `/api/config/public` reads successfully

@@ -10,7 +10,16 @@ import { VerifyEmail } from '@/core/email/templates/verify-email';
 import { AUTH_SECRET_PLACEHOLDER, envConfigs } from '@/config';
 import * as schema from '@/config/db/schema';
 import { getAllConfigs } from '@/modules/config/service';
+import { firstTouchFromTouch, readTouchCookies } from '@/lib/attribution';
 import { getUuid } from '@/lib/hash';
+
+const hiddenText = {
+  type: 'string',
+  input: false,
+  returned: false,
+  required: false,
+  defaultValue: '',
+} as const;
 
 function assertProductionAuthSecret() {
   // Only enforce at runtime in production.
@@ -222,10 +231,41 @@ export function getAuth(configs?: Record<string, string>) {
           required: false,
           defaultValue: '',
         },
+        // First-touch attribution (src/lib/attribution.ts). Server-only:
+        // never accepted from the client, never sent back in the session.
+        ftSource: hiddenText,
+        ftMedium: hiddenText,
+        ftCampaign: hiddenText,
+        ftLandingPath: hiddenText,
+        ftReferrer: hiddenText,
+        ftAt: { type: 'date', input: false, returned: false, required: false },
       },
     },
     advanced: {
       database: { generateId: () => getUuid() },
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          // Email sign-up and every OAuth / One Tap first sign-in pass here.
+          // Attribution must never block an account, so failures fall back
+          // to "unknown" (empty columns).
+          before: async (user, context) => {
+            try {
+              const cookie =
+                context?.request?.headers?.get('cookie') ??
+                context?.headers?.get('cookie') ??
+                null;
+              const { ft } = readTouchCookies(cookie);
+              if (!ft) return;
+              return { data: { ...user, ...firstTouchFromTouch(ft) } };
+            } catch (error) {
+              console.error('[auth] first-touch attribution skipped', error);
+              return;
+            }
+          },
+        },
+      },
     },
     emailAndPassword: {
       enabled: emailAndPasswordEnabled,

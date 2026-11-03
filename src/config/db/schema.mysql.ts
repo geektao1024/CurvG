@@ -37,10 +37,20 @@ export const user = table(
     utmSource: varchar('utm_source', { length: 100 }).notNull().default(''),
     ip: varchar('ip', { length: 45 }).notNull().default(''),
     locale: varchar('locale', { length: 20 }).notNull().default(''),
+    // First touch (src/lib/attribution.ts). Written once, never returned to the browser.
+    ftSource: varchar('ft_source', { length: 200 }).notNull().default(''),
+    ftMedium: varchar('ft_medium', { length: 200 }).notNull().default(''),
+    ftCampaign: varchar('ft_campaign', { length: 200 }).notNull().default(''),
+    ftLandingPath: varchar('ft_landing_path', { length: 200 })
+      .notNull()
+      .default(''),
+    ftReferrer: varchar('ft_referrer', { length: 200 }).notNull().default(''),
+    ftAt: timestamp('ft_at'),
   },
   (table) => [
     index('idx_user_name').on(table.name),
     index('idx_user_created_at').on(table.createdAt),
+    index('idx_user_ft_source').on(table.ftSource),
   ]
 );
 
@@ -206,6 +216,21 @@ export const order = table(
     transactionId: varchar191('transaction_id'),
     paymentUserName: varchar191('payment_user_name'),
     paymentUserId: varchar191('payment_user_id'),
+    // First touch (src/lib/attribution.ts). Written once, never returned to the browser.
+    ftSource: varchar('ft_source', { length: 200 }).notNull().default(''),
+    ftMedium: varchar('ft_medium', { length: 200 }).notNull().default(''),
+    ftCampaign: varchar('ft_campaign', { length: 200 }).notNull().default(''),
+    ftLandingPath: varchar('ft_landing_path', { length: 200 })
+      .notNull()
+      .default(''),
+    ftReferrer: varchar('ft_referrer', { length: 200 }).notNull().default(''),
+    ftAt: timestamp('ft_at'),
+    // Last non-direct touch before checkout; renewals leave it empty.
+    ltSource: varchar('lt_source', { length: 200 }).notNull().default(''),
+    ltLandingPath: varchar('lt_landing_path', { length: 200 })
+      .notNull()
+      .default(''),
+    ltAt: timestamp('lt_at'),
   },
   (table) => [
     index('idx_order_user_status_payment_type').on(
@@ -218,6 +243,7 @@ export const order = table(
       table.paymentProvider
     ),
     index('idx_order_created_at').on(table.createdAt),
+    index('idx_order_ft_source').on(table.ftSource),
   ]
 );
 

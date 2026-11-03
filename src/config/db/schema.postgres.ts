@@ -36,10 +36,18 @@ export const user = table(
     utmSource: text('utm_source').notNull().default(''),
     ip: text('ip').notNull().default(''),
     locale: text('locale').notNull().default(''),
+    // First touch (src/lib/attribution.ts). Written once, never returned to the browser.
+    ftSource: text('ft_source').notNull().default(''),
+    ftMedium: text('ft_medium').notNull().default(''),
+    ftCampaign: text('ft_campaign').notNull().default(''),
+    ftLandingPath: text('ft_landing_path').notNull().default(''),
+    ftReferrer: text('ft_referrer').notNull().default(''),
+    ftAt: timestamp('ft_at'),
   },
   (table) => [
     index('idx_user_name').on(table.name),
     index('idx_user_created_at').on(table.createdAt),
+    index('idx_user_ft_source').on(table.ftSource),
   ]
 );
 
@@ -218,6 +226,17 @@ export const order = table(
     transactionId: text('transaction_id'),
     paymentUserName: text('payment_user_name'),
     paymentUserId: text('payment_user_id'),
+    // First touch (src/lib/attribution.ts). Written once, never returned to the browser.
+    ftSource: text('ft_source').notNull().default(''),
+    ftMedium: text('ft_medium').notNull().default(''),
+    ftCampaign: text('ft_campaign').notNull().default(''),
+    ftLandingPath: text('ft_landing_path').notNull().default(''),
+    ftReferrer: text('ft_referrer').notNull().default(''),
+    ftAt: timestamp('ft_at'),
+    // Last non-direct touch before checkout; renewals leave it empty.
+    ltSource: text('lt_source').notNull().default(''),
+    ltLandingPath: text('lt_landing_path').notNull().default(''),
+    ltAt: timestamp('lt_at'),
   },
   (table) => [
     index('idx_order_user_status_payment_type').on(
@@ -230,6 +249,7 @@ export const order = table(
       table.paymentProvider
     ),
     index('idx_order_created_at').on(table.createdAt),
+    index('idx_order_ft_source').on(table.ftSource),
   ]
 );
 

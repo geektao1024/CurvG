@@ -1,4 +1,8 @@
 import { envConfigs } from '@/config';
+import {
+  pricingCatalog,
+  PUBLIC_SUBSCRIPTION_PRODUCT_IDS,
+} from '@/config/pricing';
 import { baseLocale, locales, localizeUrl } from '@/paraglide/runtime.js';
 
 export const DEFAULT_SOCIAL_IMAGE_PATH = '/og/curvg-social.png';
@@ -165,5 +169,36 @@ export function siteJsonLd(locale: string) {
       inLanguage: locale === 'zh' ? 'zh-CN' : 'en',
       publisher: { '@id': `${home}#organization` },
     },
+  ];
+}
+
+/**
+ * Schema.org Offers straight from `src/config/pricing.ts`, the file checkout
+ * charges from, so prices in structured data cannot drift from the real ones.
+ * Used by /pricing and the homepage WebApplication.
+ */
+export function pricingOffers(url: string) {
+  const paid = PUBLIC_SUBSCRIPTION_PRODUCT_IDS.map((id) => {
+    const product = pricingCatalog[id];
+    const price = (product.priceInCents / 100).toFixed(2);
+    const currency = product.currency.toUpperCase();
+    const yearly = product.plan?.interval === 'year';
+    return {
+      '@type': 'Offer',
+      name: `${product.planName} (${yearly ? 'yearly' : 'monthly'})`,
+      price,
+      priceCurrency: currency,
+      url,
+      priceSpecification: {
+        '@type': 'UnitPriceSpecification',
+        price,
+        priceCurrency: currency,
+        billingDuration: yearly ? 'P1Y' : 'P1M',
+      },
+    };
+  });
+  return [
+    { '@type': 'Offer', name: 'Free', price: '0', priceCurrency: 'USD', url },
+    ...paid,
   ];
 }

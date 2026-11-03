@@ -21,6 +21,7 @@ import { 'common.error.title' as commonErrorTitle } from '@/paraglide/messages/c
 import { 'common.not_found.hint' as commonNotFoundHint } from '@/paraglide/messages/common_not_found_hint.js';
 import { 'common.not_found.message' as commonNotFoundMessage } from '@/paraglide/messages/common_not_found_message.js';
 import { getLocale } from '@/paraglide/runtime.js';
+import { AttributionCapture } from '@/components/analytics/attribution-capture';
 import { GoogleAnalytics } from '@/components/analytics/google-analytics';
 import { MicrosoftClarity } from '@/components/analytics/microsoft-clarity';
 import { Plausible } from '@/components/analytics/plausible';
@@ -128,6 +129,7 @@ function RootComponent() {
         {analytics?.gaId ? (
           <GoogleAnalytics measurementId={analytics.gaId} />
         ) : null}
+        <AttributionCapture />
         {analytics?.plausibleDomain ? (
           <Plausible
             domain={analytics.plausibleDomain}

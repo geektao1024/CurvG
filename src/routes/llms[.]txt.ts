@@ -24,13 +24,13 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
     path: '/creator',
     title: 'Manim AI Generator (Creator)',
     description:
-      'The creation workspace: describe a math concept, review the proposed scene plan and generated Manim code, then render the approved scene to a video.',
+      'The video creator: pick a verified template (or let the AI pick one and fill in the parameters), adjust the parameters, render a narrated MP4 and download the Manim source. Free-form AI generation for topics without a template is a beta.',
   },
   {
     path: '/pricing',
     title: 'Pricing',
     description:
-      'Free, Starter ($9.90), and Pro ($18.90) plans with curated AI models and cloud render credits.',
+      'Labs, wonders and curves are free. Video plans: Free (3 preview videos, 720p, watermarked), Starter ($9.90/month) and Pro ($18.90/month); plans differ only in how many clean 1080p videos they cover and the price per video.',
   },
   {
     path: '/math-animation-tool',
@@ -73,14 +73,13 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
   },
 ];
 
-const PRODUCT_DESCRIPTION =
-  'CurvG turns math into animations you can watch, play with and export: free interactive math and physics labs, animated math wonders (Fourier series, the Mandelbrot set, the Lorenz attractor, phyllotaxis), a 30-curve encyclopedia, and a Creator that plans Manim Community explainer videos.';
+const PRODUCT_DESCRIPTION = `CurvG turns math into animations you can watch, play with and export: free interactive math and physics labs, animated math wonders (Fourier series, the Mandelbrot set, the Lorenz attractor, phyllotaxis), an encyclopedia of ${CURVES.length} math curves, and a video creator that renders Manim Community explainer videos from verified templates.`;
 
 const PRODUCT_FACTS = [
   'The labs, math wonders and curve encyclopedia are free and run in the browser; numbers shown on them are computed live and pinned by tests.',
   'Subjects: mathematics first; physics only where the mathematics is the subject (motion, oscillations, waves, chaos).',
   'CurvG does not claim that AI output is automatically mathematically correct.',
-  'The Creator can generate a scene plan and Manim code that users can review, copy, and download.',
+  'The video creator shows the Manim source of every video; users can copy and download it.',
   'Direct code editing and compilation in the browser are not currently available.',
   'Hosted cloud rendering is available; paid plans include render credits, and failed or canceled renders are refunded.',
   'Videos are made from verified templates (an AI picks the template and fills in the parameters; free-form AI generation is a beta). Every verified account gets 3 free preview videos (720p, watermarked); clean 1080p videos are priced by the number of videos.',

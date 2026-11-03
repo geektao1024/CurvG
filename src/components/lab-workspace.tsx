@@ -106,6 +106,9 @@ export type WorkspaceLabels = {
   ctaTitle: string;
   ctaBody: string;
   ctaButton: string;
+  /** One line under the lead: free, no sign-in. */
+  freeNote: string;
+  faqTitle: string;
 };
 
 /** A link out of the lab: another lab, a curve page or a library topic. */
@@ -181,6 +184,7 @@ export function LabWorkspace({
   related,
   videoHref,
   film,
+  faq = [],
   account,
   siteMenu,
 }: {
@@ -200,6 +204,8 @@ export function LabWorkspace({
   videoHref: string;
   /** The chapter's narrated film, once published. */
   film?: LabVideo;
+  /** Direct answers shown under the quiz (plain text, already localized). */
+  faq?: readonly { question: string; answer: string }[];
   /** Sign-in link or the user menu. */
   account: ReactNode;
   /** The site's top-level navigation (SiteNavMenu), shared with every page. */
@@ -397,6 +403,7 @@ export function LabWorkspace({
         showGrid={showGrid}
         videoHref={videoHref}
         film={film}
+        faq={faq}
         tags={tags}
         related={related}
         footer={
@@ -433,6 +440,7 @@ type ChapterViewProps = {
   showGrid: boolean;
   videoHref: string;
   film?: LabVideo;
+  faq: readonly { question: string; answer: string }[];
   tags: readonly string[];
   related: readonly WorkspaceLink[];
   footer: ReactNode;
@@ -453,6 +461,7 @@ function ChapterView({
   showGrid,
   videoHref,
   film,
+  faq,
   tags,
   related,
   footer,
@@ -601,6 +610,7 @@ function ChapterView({
               <b>{t(lab.question)}</b>
             </p>
             <p>{t(lab.summary)}</p>
+            <p className="lw-free">{labels.freeNote}</p>
             {draggable ? (
               <p className="text-(--lw-muted)">{labels.dragHint}</p>
             ) : null}
@@ -722,6 +732,21 @@ function ChapterView({
             <section className="lw-sect">
               <h2 className="lw-subh">{labels.related}</h2>
               <RelatedLinks links={related} labels={labels} />
+            </section>
+          ) : null}
+
+          {faq.length > 0 ? (
+            <section className="lw-sect">
+              <h2 className="lw-subh">{labels.faqTitle}</h2>
+              {/* Closed <details> keep the answers in the server HTML. */}
+              <div className="lw-faq">
+                {faq.map((item) => (
+                  <details key={item.question}>
+                    <summary>{item.question}</summary>
+                    <p>{item.answer}</p>
+                  </details>
+                ))}
+              </div>
             </section>
           ) : null}
 

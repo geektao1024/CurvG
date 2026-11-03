@@ -4,6 +4,7 @@ import { envConfigs } from '@/config';
 import {
   localizedLinks,
   localizedUrl,
+  pricingOffers,
   serializeJsonLd,
   siteJsonLd,
   socialMeta,
@@ -69,6 +70,8 @@ export const Route = createFileRoute('/')({
           description,
           applicationCategory: 'EducationalApplication',
           operatingSystem: 'Web',
+          isAccessibleForFree: true,
+          offers: pricingOffers(localizedUrl('/pricing', locale)),
         },
         {
           '@type': 'FAQPage',
