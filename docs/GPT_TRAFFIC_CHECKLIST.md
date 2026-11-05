@@ -53,7 +53,7 @@
 - [~] "best X" 对比页：`/blog/best-math-video-apps`（8 个工具、开头声明利益相关、并列表）。本次把 CurvG 一节改成现在的模板出片，
   并加了"局限（2026 年 11 月）"一段：只有 12 个模板、自由生成是测试版、不能在浏览器改代码、模板都是二维的。
   **还缺**：其他 7 个工具的价格和事实没有逐条附"As listed in <月份>"的核实日期（打法 §6 第 3 条）。
-- [x] 最大竞品的替代页：`/manim-alternative`（与原生 Manim CE 的诚实对比，写了什么时候原生 Manim 更合适）。
+- [x] 最大竞品的替代页：`/manim-alternative`。2026-11-05 改成多家对比（Motion Canvas、Remotion、Blender、GeoGebra、Tracé、LemmaReel、fastanim、CurvG，FAQ 10 条，官网核实日期 11-05），保留与原生 Manim CE 的对比。依据：ChatGPT 诊断里原页 3 次都没被检索到，见 `Site-Analysis/docs/project/GPT诊断记录/CurvG-2026-11-05.zh.md`。
 - [~] 3–5 篇 how-to：只有 `/blog/ai-manim-animation-workflow` 1 篇。31 个实验章节本身是"怎么理解 X"的承接页，
   但"how to make a math video / how to animate a function"这类任务问题还没有指南。
 - [ ] 原创数据页：没有。候选：用 60 条曲线已算好的弧长、面积等关键值做一张总表页；或奇观页里已经钉在测试里的数字。

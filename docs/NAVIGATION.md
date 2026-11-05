@@ -76,7 +76,7 @@
 
 - 站外链接一律新窗口打开，`rel="noopener noreferrer"`；导航和页脚的外链由 `isExternalHref` 自动处理。
 - 资料来源（维基百科等）放在内容页末尾"资料"处，不进导航。
-- 不链竞品；借鉴来源只记在 `docs/`。
+- 不链竞品；借鉴来源只记在 `docs/`。例外（2026-11-05）：对比页和替代页（`/manim-alternative`、`/blog/best-math-video-apps`）要列出每家工具并附官方来源，让读者和 AI 能核对（`docs/GPT_TRAFFIC_CHECKLIST.md`）。其他页面仍不链竞品。
 
 ## 8. 新增页面检查表
 

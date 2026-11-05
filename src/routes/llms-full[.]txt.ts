@@ -38,9 +38,9 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
   },
   {
     path: '/manim-alternative',
-    title: 'Manim Alternative Without Coding',
+    title: 'Manim Alternatives Compared',
     description:
-      'An honest comparison of CurvG and raw Manim CE, including when raw Manim is the better choice.',
+      'Eight Manim alternatives compared (Motion Canvas, Remotion, Blender, GeoGebra, Tracé, LemmaReel, fastanim, CurvG): cost, whether you need code, where each falls short, and when raw Manim is the better choice.',
   },
   {
     path: '/curves',

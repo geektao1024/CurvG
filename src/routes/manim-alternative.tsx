@@ -2,7 +2,10 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
-import { ManimAlternativePage } from '@/blocks/page-manim-alternative';
+import {
+  ManimAlternativePage,
+  manimAltFaq,
+} from '@/blocks/page-manim-alternative';
 import { SitePage } from '@/blocks/site-page';
 
 import { marketingHead } from './-marketing-head';
@@ -24,20 +27,7 @@ export const Route = createFileRoute('/manim-alternative')({
       locale,
       title: m['pages.manimAlt.meta_title']({}, { locale }),
       description: m['pages.manimAlt.meta_description']({}, { locale }),
-      faq: [
-        {
-          question: m['pages.manimAlt.faq1_q']({}, { locale }),
-          answer: m['pages.manimAlt.faq1_a']({}, { locale }),
-        },
-        {
-          question: m['pages.manimAlt.faq2_q']({}, { locale }),
-          answer: m['pages.manimAlt.faq2_a']({}, { locale }),
-        },
-        {
-          question: m['pages.manimAlt.faq3_q']({}, { locale }),
-          answer: m['pages.manimAlt.faq3_a']({}, { locale }),
-        },
-      ],
+      faq: manimAltFaq(locale),
     });
   },
   component: RoutePage,

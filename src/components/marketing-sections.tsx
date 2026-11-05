@@ -291,3 +291,210 @@ export function CtaBand({
     </section>
   );
 }
+
+export function ToolList({
+  id,
+  title,
+  description,
+  limitLabel,
+  priceLabel,
+  items,
+}: {
+  id: string;
+  title: string;
+  description?: string;
+  limitLabel: string;
+  priceLabel: string;
+  items: Array<{
+    name: string;
+    fit: string;
+    body: string;
+    limit: string;
+    price: string;
+    href: string;
+    linkLabel: string;
+  }>;
+}) {
+  return (
+    <section
+      className="curvg-stage curvg-frame border-b px-6 py-12 sm:px-10"
+      aria-labelledby={id}
+    >
+      <h2 id={id} className="curvg-heading max-w-2xl text-2xl sm:text-3xl">
+        {title}
+      </h2>
+      {description && (
+        <p className="text-muted-foreground mt-4 max-w-2xl text-base leading-relaxed">
+          {description}
+        </p>
+      )}
+      <ol className="mt-8 space-y-5">
+        {items.map((item, index) => (
+          <li key={item.name} className="bg-card rounded-2xl border p-6">
+            <h3 className="text-lg font-semibold tracking-tight">
+              <span className="text-primary mr-2 font-mono text-sm">
+                {index + 1}.
+              </span>
+              {item.name}
+              <span className="text-muted-foreground font-normal">
+                {' '}
+                · {item.fit}
+              </span>
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed">{item.body}</p>
+            <p className="text-muted-foreground mt-3 text-sm leading-relaxed">
+              <strong className="text-foreground font-medium">
+                {limitLabel}:
+              </strong>{' '}
+              {item.limit}
+            </p>
+            <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
+              <strong className="text-foreground font-medium">
+                {priceLabel}:
+              </strong>{' '}
+              {item.price}
+            </p>
+            <p className="mt-3 text-sm">
+              {item.href.startsWith('/') ? (
+                <Link
+                  href={item.href}
+                  className="text-primary font-medium underline underline-offset-4"
+                >
+                  {item.linkLabel}
+                </Link>
+              ) : (
+                <a
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary font-medium underline underline-offset-4"
+                >
+                  {item.linkLabel}
+                </a>
+              )}
+            </p>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+export function CompareGrid({
+  id,
+  title,
+  description,
+  headers,
+  rows,
+}: {
+  id: string;
+  title: string;
+  description?: string;
+  headers: string[];
+  rows: Array<{ name: string; cells: string[]; highlight?: boolean }>;
+}) {
+  return (
+    <section
+      className="curvg-stage curvg-frame border-b px-6 py-12 sm:px-10"
+      aria-labelledby={id}
+    >
+      <h2 id={id} className="curvg-heading max-w-2xl text-2xl sm:text-3xl">
+        {title}
+      </h2>
+      {description && (
+        <p className="text-muted-foreground mt-4 max-w-2xl text-base leading-relaxed">
+          {description}
+        </p>
+      )}
+      <div className="bg-card mt-8 overflow-x-auto rounded-2xl border">
+        <table className="w-full min-w-[640px] text-sm">
+          <thead>
+            <tr className="border-b text-left">
+              {headers.map((header) => (
+                <th
+                  key={header}
+                  className="text-muted-foreground px-5 py-3.5 font-mono text-xs tracking-[0.12em] uppercase"
+                >
+                  {header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.name} className="border-b last:border-b-0">
+                <th
+                  scope="row"
+                  className={`px-5 py-3.5 text-left align-top font-medium ${
+                    row.highlight ? 'text-primary' : ''
+                  }`}
+                >
+                  {row.name}
+                </th>
+                {row.cells.map((cell, index) => (
+                  <td
+                    key={`${row.name}-${index}`}
+                    className="text-muted-foreground px-5 py-3.5 align-top leading-relaxed"
+                  >
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+export function SourceList({
+  id,
+  title,
+  description,
+  items,
+}: {
+  id: string;
+  title: string;
+  description?: string;
+  items: Array<{ label: string; href: string }>;
+}) {
+  return (
+    <section
+      className="curvg-stage curvg-frame border-b px-6 py-12 sm:px-10"
+      aria-labelledby={id}
+    >
+      <h2 id={id} className="curvg-heading max-w-2xl text-2xl sm:text-3xl">
+        {title}
+      </h2>
+      {description && (
+        <p className="text-muted-foreground mt-4 max-w-2xl text-base leading-relaxed">
+          {description}
+        </p>
+      )}
+      <ul className="mt-6 grid gap-2 text-sm sm:grid-cols-2">
+        {items.map((item) => (
+          <li key={item.label}>
+            {item.href.startsWith('/') ? (
+              <Link
+                href={item.href}
+                className="text-primary underline underline-offset-4"
+              >
+                {item.label}
+              </Link>
+            ) : (
+              <a
+                href={item.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline underline-offset-4"
+              >
+                {item.label}
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
