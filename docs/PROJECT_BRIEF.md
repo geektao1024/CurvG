@@ -1,6 +1,6 @@
 # CurvG 项目总览
 
-更新时间：2026-10-17。本文是项目的总入口：定位、页面版图、当前状态、边界和变更记录。
+更新时间：2026-11-05。本文是项目的总入口：定位、页面版图、当前状态、边界和变更记录。
 细节以各专题文档为准（见文末「文档地图」）。
 
 ## 1. 基本信息
@@ -74,6 +74,7 @@ Logo 是一笔画成的 G，起点是琥珀色圆环把手（实验画板上"可
 
 仍未完成：
 
+- **邮箱注册的用户拿不到免费预览**（2026-11-05 只读查询生产库）：`freePreviewsRemaining` 要求 `email_verified`，线上没开邮箱验证（`email_verification_enabled` 未设）。邮箱注册 32 人只有 1 人验证过，Google 登录 235 人全部已验证。按代码，其余 31 人没有积分时点渲染会收到 402。全站写的"验证过邮箱的账号有 3 个免费预览"字面上没错，但这些人走不通。要负责人决定：开邮箱验证，还是放宽这个条件。
 - **生成可用性**：2026-08-01 之后没有出过片。根因与重构见 `docs/PIPELINE_REFACTOR_2026-10.md`（2026-10-16）：
   失败分类 bug（已部署修复）、KIE Haiku 5.5 线路不可用（改为 KIE GPT-6 Luna）、曲线错位与连线不跟随点（编译器修复）。
   部署后看 `animation_planning_attempt` 与 `ai_task`（`animation_render`）确认端到端出片。
@@ -98,6 +99,13 @@ Logo 是一笔画成的 G，起点是琥珀色圆环把手（实验画板上"可
 ## 9. 变更记录
 
 按日期倒序，记录影响定位、页面结构或可维护性的变化（逐条提交见 `git log`）。
+
+### 2026-11-05 — `/manim-alternative` 改成 8 家对比（06:06 UTC 上线，`fa38291`，Worker `636144c7`）
+
+- 原页只比原生 Manim，11-05 的 ChatGPT 诊断里 3 次都没被检索到。改成 8 家（Motion Canvas、Remotion、Blender、GeoGebra、Tracé、LemmaReel、fastanim、CurvG），每家写短板和价格，加横向对比表和来源，保留 CurvG vs Manim 表；FAQ 3 → 10 条。竞品事实由 Site-Analysis 会话 11-05 在官网和代码库核实。
+- 新组件 `ToolList`、`CompareGrid`、`SourceList`（`marketing-sections.tsx`）；`manimAltFaq(locale)` 同时供页面和 `FAQPage`。
+- 对比页可以链到被比较的工具（`NAVIGATION.md` §7 的例外）；这一页写死了价格和视频数，已列进 `MONETIZATION.md` §6。
+- 发布、检测、冒烟和回滚见 `GPT_TRAFFIC_CHECKLIST.md`"发布记录"。发布时查出邮箱注册用户拿不到免费预览，见第 7 节。
 
 ### 2026-11-03 — GPT 推荐流量核对：首次来源归因进 D1，首页和实验页的 FAQ、一致性修正（14:56 UTC 上线，`766cda1`）
 

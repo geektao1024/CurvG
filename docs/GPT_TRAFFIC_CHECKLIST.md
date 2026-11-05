@@ -31,7 +31,7 @@
   - 定价页：`WebApplication` + 同样 5 个 `Offer`。
   - 实验章节页：`LearningResource` + `Quiz` + `FAQPage`（本次新增，11–12 条）+ `BreadcrumbList`（有成片的加 `VideoObject`）。
   - 博客：`BlogPosting` + `BreadcrumbList`；曲线页：`LearningResource` + `FAQPage`（2 条）+ `BreadcrumbList`；
-    `/manim-alternative`、`/math-animation-tool`、`/free-math-video-creator`：`FAQPage`（各 3 条）。
+    `/manim-alternative`：`FAQPage`（10 条）；`/math-animation-tool`、`/free-math-video-creator`：`FAQPage`（各 3 条）。这三个关键词页都还没有 `BreadcrumbList`（2026-11-05 用 `seo-check` 查出，老问题）。
 - [x] llms.txt（111 行）和 llms-full.txt。本次改了 3 处和全站不一致的说法，见"一致性"。
 
 ## 内容
@@ -47,7 +47,8 @@
   - 实验章节页 0 → 11–12 条（`labFaq()`，`src/routes/labs/-labs-page.tsx`）：前半用本章自己的数据（本章的问题和简介、要点、
     年级、引导步骤、小测题数、有无成片），后半是所有实验通用的问答（免费/注册、做成视频和价格、课堂、手机、中英文、数字从哪来）。
     "做成视频"这条按本章有没有对应模板给两种说法（`LAB_VIDEO_TEMPLATES`）。
-  - 没做：`/math-animation-tool`、`/manim-alternative`、`/free-math-video-creator` 各 3 条，曲线页 2 条，`/creator` 没有 FAQ。
+  - `/manim-alternative` 3 → 10 条（2026-11-05）。
+  - 没做：`/math-animation-tool`、`/free-math-video-creator` 各 3 条，曲线页 2 条，`/creator` 没有 FAQ。
 - [x] 免费和付费对比表：`/pricing` 的"Plan comparison"表；首页价格条"Labs are free. Pay when you make videos."。
       定价页和 JSON-LD 的价格一致（同一个 `pricing.ts`）。
 - [~] "best X" 对比页：`/blog/best-math-video-apps`（8 个工具、开头声明利益相关、并列表）。本次把 CurvG 一节改成现在的模板出片，
@@ -142,6 +143,25 @@
   `npx wrangler d1 time-travel restore curvg-db --bookmark=00004b67-00000000-00005118-3ff7700eb6f6407c08d05932a9d4b629`
   （会丢掉书签之后的所有写入，只在必要时用）。
 
+## 发布记录：`/manim-alternative` 多家对比（2026-11-05，负责人授权）
+
+- 提交 `fa38291`，推送 `origin/main`。从这个提交的干净 git 工作树构建部署（只拷入 gitignored 的 `wrangler.jsonc`、`.env.production`），`pnpm run cf:deploy`。没有数据库迁移，没有写生产 D1。
+- Worker `636144c7-eccd-4237-8186-944815598f8f`，2026-11-05 06:06:59 UTC 起 100%。上一版本 `82a3c365-26ec-4c3a-a352-0be566523b30`。
+- 回滚：`npx wrangler rollback 82a3c365-26ec-4c3a-a352-0be566523b30`。
+- 发布前对照代码核实了页面里的本站说法：12 个模板（`VIDEO_TEMPLATES`）、全 2D、不能在浏览器改代码、31 个公开实验（`publicLabs()`）、3 个免费预览（`animation_free_previews` 线上未设，默认 3）、Starter 300 积分 ÷ 20 ≈ 15 个、Pro 1,000 ÷ 20 ≈ 50 个（线上 `animation_render_credits` = 20）、Manim 源码可查看复制下载（`video-studio/studio.tsx`）、失败退积分（`ai-tasks/service.ts`）。
+- 发布前改掉的：保留下来的旧文案还在讲"审场景方案""编辑规格"（`row_skill_curvg`、`row_control_curvg`、`when_curvg_2`、`faq3_a`），改成模板出片；"大家问得最多的对比"没有依据，改掉（`table_desc`）；中文的"清晰的 1080p"改成全站口径"1080p 无水印"。页脚读的就是 `landing.footer.manim_alternative`，没有兜底列表。
+- 规范：`docs/NAVIGATION.md` §7 原来写"不链竞品"，加了对比页和替代页的例外。`docs/MONETIZATION.md` §6 把这一页列进页面承诺清单，因为文案里写死了价格和视频数。
+- 检测：`pnpm test` 651/651；`tsc` 205 行，和发布前基线相同，改动文件 0 条（主工作区要先构建一次重新生成 `src/paraglide`，否则新 key 会报错）；`pnpm build`、`pnpm cf:build` 通过；`seo-check` 本地和线上都过（32 个页面 + robots/sitemap/OG）；en/zh 键集一致（1904）。
+- 冒烟（线上）：
+  - 中英文两页 × OAI-SearchBot、ChatGPT-User、GPTBot 全部 200；1 个 H1、8 家工具、8 条短板、HTML 10 条 FAQ、JSON-LD `FAQPage` 10 条，两者顺序一致，语言正确。
+  - headless Chromium 390px、1440px：中英文两页和首页、`/pricing`、`/math-animation-tool`、`/free-math-video-creator` 都没有页面级横向溢出，没有 JS 报错。手机上两张表（640px）在自己的容器里滚动。
+  - 16 个不重复链接都返回 200。外链都是新窗口 + `noopener noreferrer`；中文页内链带 `/zh`；真实点击内链和外链都正常。
+  - llms.txt、llms-full.txt 是新描述，旧描述 0 处；sitemap 有中英文两个地址；页脚中英文都生效。
+  - 抽查：首页 12 条 FAQ + 5 个 `Offer`，`/pricing` 5 个 `Offer`，两个关键词页 FAQ 仍是 3 条，`/labs/geometry` 11 条。
+  - `scripts/ai-crawler-check.sh` 50 次请求 49 次 200。1 次（`/manim-alternative` + GPTBot）5 秒连接失败，同 UA 重试 6 次都是 200。偶发，和 11-03 `/curves` 那次相同，分不清是本机网络还是边缘节点。同时修了脚本：请求失败时不再沿用上一次响应的 H1 和 FAQ 数字。
+- IndexNow：**没有推**，仓库里没有脚本，`public/` 也没有 key 文件。
+- 复查：2026-11-19 前后由 Site-Analysis 再问一轮 ChatGPT，诊断记录见 `Site-Analysis/docs/project/GPT诊断记录/CurvG-2026-11-05.zh.md`。
+
 ## 诊断
 
 - [ ] 上线后问一轮 ChatGPT（打法 §4 的 6 个问题）。按负责人 11-03 的安排，由 Site-Analysis 会话在 ego 里统一排队问，结果转回本仓库，
@@ -171,8 +191,8 @@
 
 ## 还缺（按影响排序）
 
-1. 生产迁移 + 部署（上面的步骤），之后工作台才能算 ChatGPT 来的注册和付费。
+1. 邮箱注册的用户拿不到免费预览（2026-11-05 查出，详见 `docs/PROJECT_BRIEF.md` 第 7 节）。这一条影响转化，要负责人决定怎么改。
 2. `/math-animation-tool` 整页改成模板出片口径（ChatGPT 落地第三多，现在和首页 FAQ 说法不一致）。
-3. 关键词页和曲线页的 FAQ 补到 10 条；对比页给竞品信息加核实月份。
+3. `/math-animation-tool`、`/free-math-video-creator` 和曲线页的 FAQ 补到 10 条；`best-math-video-apps` 给竞品信息加核实月份，并改掉 "Python + FFmpeg + LaTeX"（Manim 官方文档里 LaTeX 是可选的）。三个关键词页补 `BreadcrumbList`。`/manim-alternative` 第二个按钮链到的 `ai-manim-animation-workflow` 还在讲审方案流程，要改口径。
 4. About / 方法说明页；原创数据页（曲线关键值总表）；1–2 篇"怎么做数学视频"的指南。
 5. Cloudflare AI 爬虫开关、Bing 提交、GA4 后台配置（负责人）。

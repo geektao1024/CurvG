@@ -11,6 +11,7 @@ Last verified: 2026-07-22
   without a record; it was recorded first so `migrations apply` ran only `0006`. Apply new migrations with
   `npx wrangler d1 migrations apply curvg-db --remote` before deploying code that writes the new columns
   (`docs/GPT_TRAFFIC_CHECKLIST.md`, release log).
+- Latest release: Worker version `636144c7-eccd-4237-8186-944815598f8f` (commit `fa38291`), 2026-11-05 06:06:59 UTC. Roll back with `npx wrangler rollback 82a3c365-26ec-4c3a-a352-0be566523b30` (release log in `docs/GPT_TRAFFIC_CHECKLIST.md`).
 - R2: `curvg-assets`
 - Production build: `pnpm cf:build` passes
 - Live checks: homepage returns HTTP 200, expected title renders, and `/api/config/public` reads successfully

@@ -25,6 +25,8 @@ for p in "${PATHS[@]}"; do
   for entry in "${UAS[@]}"; do
     name=${entry%%|*}
     ua=${entry#*|}
+    # Empty first: a failed request must not report the previous response's counts.
+    : > "$TMP"
     meta=$(curl -s --max-time 30 -A "$ua" -o "$TMP" -w '%{http_code} %{time_total}' "$BASE$p")
     h1=$(grep -ao '<h1' "$TMP" | wc -l | tr -d ' ')
     faq=$(grep -ao '"FAQPage"' "$TMP" | wc -l | tr -d ' ')
