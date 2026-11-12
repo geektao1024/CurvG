@@ -83,7 +83,7 @@
 - [x] `/math-animation-tool` 整页改成模板出片（2026-11-12）：标题"Templates to MP4, No Code"，步骤是选模板 / 调参数 / 云端渲染，"几何与证明"卡换成模板真有的"三角函数与曲线"，FAQ 改掉"直接改场景方案"并加两条（模板没覆盖怎么办、数字怎么保证对）。
       `/pricing` 对比表"AI workflow"一行改成"模板出片：全部验证过的视频模板、可下载的 Manim 源码"（删掉重复的"复制与下载 Python"行）；首页 meta description 和 llms-full 的首页描述改成模板出片。
 - [x] 模板视频是无声的，旁白以画面字幕呈现（`src/lib/video-templates/manim.ts` 的 `caption()`），但首页、实验页 CTA、对比文章、llms.txt 写的是"narrated / 配音"。2026-11-12 改成"captioned / 带字幕"或去掉。实验自己的成片（`labs.faq.film`）确实有配音，没改。
-- [~] **还没改**：首页"从实验到视频"一节（`home.video.*`）的标题和说明还是"每一步一个镜头、先检查分镜和代码"，这是自由生成测试版的流程；`/blog/ai-manim-animation-workflow` 整篇是旧流程。
+- [x] 首页"从实验到视频"一节和 `/blog/ai-manim-animation-workflow` 改成模板出片（2026-11-12 第二次发布，负责人要求）：首页去掉"镜头 N"标签和"先检查分镜和代码"，写明按钮打开对应模板、参数按实验填好；博客整篇重写（新标题"How a Topic Becomes a Verified Video"，12 个模板表、自由生成测试版的边界、FAQ），封面图用 `scripts/brand-images.mjs` 重新生成。
 
 ## 归因（本次，2026-11-03 14:56 UTC 上线）
 
@@ -218,8 +218,8 @@
 
 ## 还缺（按影响排序）
 
-1. 邮箱注册的用户拿不到免费预览（2026-11-05 查出，详见 `docs/PROJECT_BRIEF.md` 第 7 节）。这一条影响转化，要负责人决定怎么改。
-2. 首页"从实验到视频"一节和 `/blog/ai-manim-animation-workflow` 还是自由生成（审分镜和代码）的旧流程；llms.txt 里这篇的标题"Prompt to Reviewable Code"也是。
+1. （2026-11-12 负责人定：开邮箱验证，见发布记录。）
+2. （2026-11-12 已改：首页"从实验到视频"一节和 `/blog/ai-manim-animation-workflow`。）
 3. `/math-animation-tool`（5 条）、`/free-math-video-creator`（3 条）和曲线页的 FAQ 补到 10 条；三个关键词页补 `BreadcrumbList`。
 4. 原创数据页（曲线关键值总表）；1–2 篇"怎么做数学视频"的指南。`/about` 写不写具名的人（负责人定）。
 5. Cloudflare AI 爬虫开关、Bing 提交、GA4 后台配置（负责人）。AlternativeTo 等其他第三方榜单（负责人定）。

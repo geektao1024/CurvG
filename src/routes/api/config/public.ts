@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 
+import { cloudflareEmailFromConfigs } from '@/core/email/cloudflare';
 import { filterPublicConfigs, getAllConfigs } from '@/modules/config/service';
 import { respData } from '@/lib/resp';
 
@@ -35,11 +36,8 @@ const publicKeys = [
 function isEmailSendingConfigured(configs: Record<string, string>): boolean {
   const provider = configs.email_provider || 'resend';
   if (provider === 'cloudflare') {
-    return (
-      !!configs.cloudflare_email_api_token &&
-      !!configs.cloudflare_email_account_id &&
-      !!configs.cloudflare_email_sender_email
-    );
+    // Same rule as auth: REST token + account, or the Worker binding.
+    return cloudflareEmailFromConfigs(configs) !== null;
   }
   return !!configs.resend_api_key && !!configs.resend_sender_email;
 }

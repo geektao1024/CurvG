@@ -4,7 +4,7 @@ import { oneTap } from 'better-auth/plugins';
 
 import { db } from '@/core/db';
 import type { EmailProvider } from '@/core/email';
-import { CloudflareEmailProvider } from '@/core/email/cloudflare';
+import { cloudflareEmailFromConfigs } from '@/core/email/cloudflare';
 import { ResendProvider } from '@/core/email/resend';
 import { VerifyEmail } from '@/core/email/templates/verify-email';
 import { AUTH_SECRET_PLACEHOLDER, envConfigs } from '@/config';
@@ -116,18 +116,10 @@ function getEmailProvider(
   const selected = configs.email_provider || 'resend';
 
   if (selected === 'cloudflare') {
-    const apiToken = configs.cloudflare_email_api_token;
-    const accountId = configs.cloudflare_email_account_id;
-    const from = configs.cloudflare_email_sender_email;
-    if (!apiToken || !accountId || !from) return null;
-    return {
-      provider: new CloudflareEmailProvider({
-        apiToken,
-        accountId,
-        defaultFrom: from,
-      }),
-      from,
-    };
+    // REST API with a token, else the Worker's `send_email` binding.
+    const provider = cloudflareEmailFromConfigs(configs);
+    if (!provider) return null;
+    return { provider, from: configs.cloudflare_email_sender_email };
   }
 
   // Default: resend

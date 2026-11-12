@@ -16,8 +16,10 @@ const SAMPLE = {
 
 /**
  * Homepage conversion band: a lab's guided steps beside a rendered video,
- * so the free lab and the paid video read as one thing. Shows the lab's
- * own narrated film once it is published, the gallery sample until then.
+ * so the free lab and the paid video read as one thing. The button opens the
+ * lab's video template with its numbers filled in (LAB_VIDEO_TEMPLATES).
+ * Shows the lab's own narrated film once it is published, the gallery
+ * sample (silent, captioned) until then.
  */
 export function HomeLabVideo() {
   const lang = getLocale() === 'zh' ? 'zh' : 'en';
@@ -48,12 +50,7 @@ export function HomeLabVideo() {
                     {String(i + 1).padStart(2, '0')}
                   </span>
                   <div>
-                    <p className="flex flex-wrap items-baseline gap-x-2 text-sm font-semibold">
-                      {step.title[lang]}
-                      <span className="text-muted-foreground font-mono text-[10px] font-normal tracking-[0.12em] uppercase">
-                        {m['home.video.shot']({ n: i + 1 })}
-                      </span>
-                    </p>
+                    <p className="text-sm font-semibold">{step.title[lang]}</p>
                     <RichMath
                       source={step.body[lang]}
                       className="text-muted-foreground mt-1 text-sm leading-relaxed"
@@ -81,9 +78,11 @@ export function HomeLabVideo() {
                 {m['home.video.sample_label']()}
               </span>
             </div>
-            <figcaption className="text-muted-foreground mt-3 text-sm leading-relaxed">
-              {m['home.video.sample_caption']()}
-            </figcaption>
+            {!film && (
+              <figcaption className="text-muted-foreground mt-3 text-sm leading-relaxed">
+                {m['home.video.sample_caption']()}
+              </figcaption>
+            )}
             <div className="mt-auto flex flex-wrap items-center gap-4 pt-6">
               <Link
                 href={labVideoHref(lab, lang)}
