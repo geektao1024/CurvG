@@ -74,7 +74,7 @@ Logo 是一笔画成的 G，起点是琥珀色圆环把手（实验画板上"可
 
 仍未完成：
 
-- **邮箱注册的用户拿不到免费预览**（2026-11-05 只读查询生产库）：`freePreviewsRemaining` 要求 `email_verified`，线上没开邮箱验证（`email_verification_enabled` 未设）。邮箱注册 32 人只有 1 人验证过，Google 登录 235 人全部已验证。按代码，其余 31 人没有积分时点渲染会收到 402。全站写的"验证过邮箱的账号有 3 个免费预览"字面上没错，但这些人走不通。要负责人决定：开邮箱验证，还是放宽这个条件。
+- ~~**邮箱注册的用户拿不到免费预览**~~（2026-11-12 已解决：负责人定开邮箱验证，验证信走 Cloudflare 发信，见 `GPT_TRAFFIC_CHECKLIST.md` 发布记录）（2026-11-05 只读查询生产库）：`freePreviewsRemaining` 要求 `email_verified`，线上没开邮箱验证（`email_verification_enabled` 未设）。邮箱注册 32 人只有 1 人验证过，Google 登录 235 人全部已验证。按代码，其余 31 人没有积分时点渲染会收到 402。全站写的"验证过邮箱的账号有 3 个免费预览"字面上没错，但这些人走不通。要负责人决定：开邮箱验证，还是放宽这个条件。
 - **生成可用性**：2026-08-01 之后没有出过片。根因与重构见 `docs/PIPELINE_REFACTOR_2026-10.md`（2026-10-16）：
   失败分类 bug（已部署修复）、KIE Haiku 5.5 线路不可用（改为 KIE GPT-6 Luna）、曲线错位与连线不跟随点（编译器修复）。
   部署后看 `animation_planning_attempt` 与 `ai_task`（`animation_render`）确认端到端出片。
@@ -99,6 +99,12 @@ Logo 是一笔画成的 G，起点是琥珀色圆环把手（实验画板上"可
 ## 9. 变更记录
 
 按日期倒序，记录影响定位、页面结构或可维护性的变化（逐条提交见 `git log`）。
+
+### 2026-11-12（第二次）— 开邮箱验证；首页"从实验到视频"和流程文章改成模板出片（07:51 UTC 上线，`949acc8`，Worker `132f67cd`）
+
+- 邮箱注册用户拿不到免费预览的原因是没开邮箱验证，而没开是因为生产上没配发信服务。现在验证信和找回密码邮件走 Cloudflare Email Service：Worker 加 `send_email` 绑定 `EMAIL`（`wrangler.jsonc` 不进 git，`wrangler.example.jsonc` 同步），`config` 写 `email_provider=cloudflare`、发件人 `CurvG <hello@curvg.com>`、`email_verification_enabled=true`。线上用临时邮箱走完注册、收信、点链接、拿到 3 个免费预览，测试号已删。
+- 之前没验证的邮箱注册用户下次登录要先验证（登录页自动补发）。
+- 首页"从实验到视频"一节去掉"镜头 N"和"先检查分镜和代码"；`/blog/ai-manim-animation-workflow` 整篇按模板出片重写。
 
 ### 2026-11-12 — 11-12 ChatGPT 诊断的调整：IndexNow、`/about`、对比页补工具、旧流程文案（07:12 UTC 上线，`4dc031d`，Worker `da1c11c9`）
 

@@ -189,6 +189,20 @@
 - 站外：CurvG 提交到 Indie Alternatives（`https://indiealternatives.dev/submit`，2026-11-12 06:44 UTC，邮箱 `hello@curvg.com`，分类 Animation / Education / Video，定价 freemium，平台 web），页面显示"Thanks, we got it."，等人工审核。`hello@curvg.com` 是同一天在 agentic-inbox R2 里新建的邮箱（`mailboxes/hello@curvg.com.json`）。
 - 复查：Site-Analysis 下一轮（约 11-19 至 11-26）看 Q2、Q6 能不能检索到 `/manim-alternative`，Q8 能不能保持。
 
+## 发布记录：开邮箱验证、首页和流程文章改成模板出片（2026-11-12 第二次，负责人授权）
+
+- 负责人 11-12 原话："邮箱注册这个开邮箱验证。首页那个改下。博客的那个也改下。……直接推送更新部署上线。"
+- 提交 `949acc8`，推送 `origin/main`。干净工作树构建部署（拷入 gitignored 的 `wrangler.jsonc`，这次加了 `"send_email": [{ "name": "EMAIL" }]`，和 `.env.production`）。等 Blocksona（`9238bed3`）冒烟完才部署。
+- Worker `132f67cd-5888-43d6-a855-e5a14be7dffa`，2026-11-12 07:51:29 UTC 起 100%，绑定里有 `env.EMAIL (unrestricted) Send Email`。上一版本 `da1c11c9-f6b6-4ddb-a831-f9f0eeba2082`。
+- 邮箱验证：原来没开，是因为 CurvG 生产上根本没配发信服务（`config` 表和 Worker 密钥里都没有 Resend 或 Cloudflare 发信）。curvg.com 的 Cloudflare Email Sending 10-23 就已开通（`wrangler email sending settings curvg.com`：Enabled，DKIM `cf-bounce`）。验证信是事务邮件，按条款可以走 Cloudflare（playbook `营销邮件发信`）。代码改成没有 REST token 时走 Worker 的 `send_email` 绑定（`src/core/email/cloudflare.ts` 的 `cloudflareEmailFromConfigs`，auth 和 `/api/config/public` 共用），不用新建 API token。
+- 生产 D1 `config`（07:52 UTC，写 3 行，原来都不存在）：`email_provider=cloudflare`、`cloudflare_email_sender_email=CurvG <hello@curvg.com>`、`email_verification_enabled=true`。之后 `/api/config/public` 的 `email_verification_enabled`、`password_reset_enabled` 都是 `true`（找回密码邮件也随之能用了）。撤销：`DELETE FROM config WHERE name IN ('email_provider','cloudflare_email_sender_email','email_verification_enabled')`，5 秒内生效，不用部署。
+- 端到端（线上）：R2 建临时邮箱 `verify-smoke-1112@curvg.com` → `POST /api/auth/sign-up/email`（返回 `emailVerified: false`、没有自动登录）→ `send-verification-email` → agentic-inbox 日志 `rcptTo` 是测试邮箱、退信域 `cf-bounce.curvg.com`，`createEmail` ok；邮件发件人 `hello@curvg.com`、标题 "Verify your email - CurvG"，链接 `https://curvg.com/api/auth/verify-email?token=…&callbackURL=/creator`；curl 打开链接 302 到 `/creator`，会话里 `emailVerified: true`，`/api/animations/models` 返回 `freePreviews: 3`。清理：查过 19 张带 `user_id` 的表，只有 `session`、`account` 各 1 行，连同 `user` 1 行按测试号 id 删除（用户 275 → 274）；R2 测试邮箱删除。
+- 影响：之前邮箱注册、没验证的用户（11-05 查是 31 人），下次登录会被要求先验证，登录页自动补发验证信；已登录的会话不受影响。Google 登录本来就是已验证。剩余风险（低）：有人大量注册会占用整个 Cloudflare 账号共用的每日发信额度；better-auth 生产默认限流，代码里同一邮箱 60 秒只发一封。
+- 首页"从实验到视频"一节、`/blog/ai-manim-animation-workflow`（新标题 "AI Manim Animation: How a Topic Becomes a Verified Video"，中英文，封面重新生成）改成模板出片。
+- 检测：`pnpm test` 655/655（新增 `tests/cloudflare-email.test.ts` 4 条；Python 3.11）；`tsc` 205 行同基线、改动文件 0 条；`pnpm build`、`pnpm cf:build` 通过；本地 `seo-check` 通过；security-scan 无发现。
+- 冒烟（线上）：中英文首页没有"Shot / 镜头"和"分镜"字样、新标题在；中英文博客 200、新 H1、`BlogPosting` + `BreadcrumbList`、没有 "reviewable"；llms.txt 旧标题 0 处；sitemap 这篇 `lastmod` 2026-11-12；AI 爬虫 UA 5 个地址 × 5 种 25/25 都是 200；headless Chrome 390px、1440px 下首页、博客、`/sign-up`、`/verify-email` 都没有横向溢出、没有脚本错误。
+- IndexNow：08:00 UTC 推 `/`、`/blog`、`/blog/ai-manim-animation-workflow`（各中英文，6 个），返回 200。
+
 ## 诊断
 
 - [ ] 上线后问一轮 ChatGPT（打法 §4 的 6 个问题）。按负责人 11-03 的安排，由 Site-Analysis 会话在 ego 里统一排队问，结果转回本仓库，
