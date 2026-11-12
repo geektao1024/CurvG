@@ -100,6 +100,16 @@ Logo 是一笔画成的 G，起点是琥珀色圆环把手（实验画板上"可
 
 按日期倒序，记录影响定位、页面结构或可维护性的变化（逐条提交见 `git log`）。
 
+### 2026-11-12 — 11-12 ChatGPT 诊断的调整：IndexNow、`/about`、对比页补工具、旧流程文案（07:12 UTC 上线，`4dc031d`，Worker `da1c11c9`）
+
+- 依据：Site-Analysis `docs/project/GPT诊断记录/CurvG-2026-11-12.zh.md`（D-055）。`/manim-alternative` 两轮 6 次没进 ChatGPT 的检索，而 Google 已排到第 5.8 名，推断卡在 Bing 索引；加问的 Q8 两次以"no-code"推荐 CurvG，出处是对比文章。
+- 收录：IndexNow（`public/<key>.txt` + `pnpm indexnow <路径…>`），sitemap 每个地址带 `lastmod`（`src/content/page-dates.ts`）。以后改页面，部署后推一次。
+- 对比文章：快速结论加写代码的去处（链 `/manim-alternative`），新增"不写代码怎么做 3Blue1Brown 风格视频"一节，竞品价格写明 2026 年 11 月，改掉"Python + FFmpeg + LaTeX"，页头显示更新日期。替代页 9 家（Revideo 并进 Motion Canvas，新增 Synfig）。
+- 旧流程文案：`/math-animation-tool` 整页改成模板出片；`/pricing` 对比表、首页 meta、llms 改口径；定价卡片默认月付，一行写清月付和年付。模板视频没有声音、靠字幕讲解，站上创作相关的"配音 / narrated"都改成"带字幕"。
+- 新页 `/about`（不写具名的人），页脚"法律"栏改成"关于"，加联系邮箱 `hello@curvg.com`（`src/config/contact.ts`；邮箱在 agentic-inbox 里新建）。
+- 站外：CurvG 提交到 Indie Alternatives（Manim 的替代品目录，人工审核）。
+- 发布、检测、冒烟见 `GPT_TRAFFIC_CHECKLIST.md`"发布记录"。
+
 ### 2026-11-05 — `/manim-alternative` 改成 8 家对比（06:06 UTC 上线，`fa38291`，Worker `636144c7`）
 
 - 原页只比原生 Manim，11-05 的 ChatGPT 诊断里 3 次都没被检索到。改成 8 家（Motion Canvas、Remotion、Blender、GeoGebra、Tracé、LemmaReel、fastanim、CurvG），每家写短板和价格，加横向对比表和来源，保留 CurvG vs Manim 表；FAQ 3 → 10 条。竞品事实由 Site-Analysis 会话 11-05 在官网和代码库核实。

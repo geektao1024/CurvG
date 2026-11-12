@@ -171,6 +171,24 @@
 - IndexNow：**没有推**，仓库里没有脚本，`public/` 也没有 key 文件。
 - 复查：2026-11-19 前后由 Site-Analysis 再问一轮 ChatGPT，诊断记录见 `Site-Analysis/docs/project/GPT诊断记录/CurvG-2026-11-05.zh.md`。
 
+## 发布记录：11-12 诊断的调整（2026-11-12，负责人授权）
+
+- 依据：Site-Analysis `docs/project/GPT诊断记录/CurvG-2026-11-12.zh.md`（D-055）的"给 CurvG 会话的调整要求"。负责人 11-12 授权改完直接推送、部署。
+- 提交 `4dc031d`，推送 `origin/main`。从这个提交的干净 git 工作树构建部署（只拷入 gitignored 的 `wrangler.jsonc`、`.env.production`），`pnpm run cf:deploy`。没有数据库迁移，没有写生产 D1。按"一次只部署一个站"，等 CropDen（`a91be4cd`）、Blocksona（`b04469b6`）冒烟完才部署。
+- Worker `da1c11c9-f6b6-4ddb-a831-f9f0eeba2082`，2026-11-12 07:12:21 UTC 起 100%。上一版本 `636144c7-eccd-4237-8186-944815598f8f`。回滚：`npx wrangler rollback 636144c7-eccd-4237-8186-944815598f8f`。
+- 竞品事实（11-12 官网、GitHub API、npm / PyPI 核实）：Revideo 自称 Motion Canvas 的分支，仓库已 301 到 `midrender/revideo`，npm 0.11.0（2026-07-10），团队"now primarily works on Midrender"；Synfig GPL v3，正式版 1.4.5（2024-05-19），开发版 1.5.5（2026-03），源码里没有 LaTeX 功能；Motion Canvas 正式版仍是 v3.17.2（2024-12），之后只有 3.18.0-alpha.0；Manim 安装页"Step 2 (optional): Installing LaTeX"，0.19.0 更新日志写明不用再装 FFmpeg；Microsoft 365 Personal $9.99/月或 $99.99/年，Canva Pro US$144/年（月付价没核实到，没写），After Effects US$22.99/月（年度计划按月付）。blender.org、canva.com 对抓取返回 403，Blender 许可读的是官方仓库 README / COPYING。
+- 检测：`pnpm test` 651/651（本机 `python3` 是 3.9，渲染器校验脚本要 3.10+，用 Homebrew 3.11 跑）；`tsc` 205 行，和发布前基线相同，改动文件 0 条；`pnpm build`、`pnpm cf:build` 通过；`seo-check` 本地 32 个页面 + robots/sitemap/OG 通过；security-scan 无发现；en/zh 键集一致（1921）。
+- 冒烟（线上）：
+  - 中英文的 `/about`、`/pricing`、`/math-animation-tool`、`/manim-alternative`、`/blog/best-math-video-apps` 和首页都 200、各 1 个 H1。JSON-LD：`/about` `BreadcrumbList` + `AboutPage`（`Organization` 带 `hello@curvg.com`），首页 `Organization` 带邮箱；`/math-animation-tool` `FAQPage` 5 条，`/manim-alternative` 10 条，首页 12 条。
+  - 定价卡片 SSR：Starter "$9.90/mo, or $7.92/mo billed yearly ($95 a year)"，Pro "$18.90/mo, or $15.08/mo billed yearly ($181 a year)"，中文"每月 US$9.90，或按年付每月 US$7.92（每年 US$95）"；对比表没有 "AI workflow" / "Reviewable"。
+  - 对比文章中英文："Updated Nov 12, 2026"/"更新于"、新一节、Revideo、链到替代页各 4 处，"FFmpeg + LaTeX" 0 处。替代页中英文 Synfig、Revideo、Midrender 都在。工具页旧流程字样 0 处。首页 meta 是新描述。页脚中英文有关于页和 mailto。
+  - sitemap 238 个地址全部有 `lastmod`，含中英文 `/about`；llms.txt 有 `/about`、"Nine Manim alternatives"、"captioned MP4"，llms-full 首页旧描述已去掉。key 文件 `text/plain` 200。
+  - `scripts/ai-crawler-check.sh` 11 个地址 × 5 种 AI 爬虫 UA，55/55 都是 200。
+  - headless Chrome 390px、1440px：11 个页面都没有页面级横向溢出，没有页面脚本错误（控制台只有未登录时 Google One Tap 的 FedCM 提示）。
+- IndexNow：07:21 UTC 推了 14 个地址（`/`、`/about`、`/pricing`、`/math-animation-tool`、`/manim-alternative`、`/blog`、`/blog/best-math-video-apps`，各中英文），返回 202（已接收，key 待校验）。
+- 站外：CurvG 提交到 Indie Alternatives（`https://indiealternatives.dev/submit`，2026-11-12 06:44 UTC，邮箱 `hello@curvg.com`，分类 Animation / Education / Video，定价 freemium，平台 web），页面显示"Thanks, we got it."，等人工审核。`hello@curvg.com` 是同一天在 agentic-inbox R2 里新建的邮箱（`mailboxes/hello@curvg.com.json`）。
+- 复查：Site-Analysis 下一轮（约 11-19 至 11-26）看 Q2、Q6 能不能检索到 `/manim-alternative`，Q8 能不能保持。
+
 ## 诊断
 
 - [ ] 上线后问一轮 ChatGPT（打法 §4 的 6 个问题）。按负责人 11-03 的安排，由 Site-Analysis 会话在 ego 里统一排队问，结果转回本仓库，
