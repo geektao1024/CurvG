@@ -46,6 +46,18 @@ export const mdxComponents: MDXComponents = {
     ...props
   }: AnchorHTMLAttributes<HTMLAnchorElement>) => {
     const external = /^https?:\/\//i.test(href);
+    if (/^mailto:/i.test(href)) {
+      return (
+        <a
+          href={href}
+          className={cn(
+            'text-primary font-medium underline-offset-4 hover:underline',
+            className
+          )}
+          {...props}
+        />
+      );
+    }
     return (
       <Link
         href={href}

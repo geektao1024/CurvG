@@ -79,7 +79,14 @@ export function SiteFooter({
                 <ul className="space-y-2">
                   {col.links.map((link) => (
                     <li key={link.label}>
-                      {isExternalHref(link.href) ? (
+                      {link.href.startsWith('mailto:') ? (
+                        <a
+                          href={link.href}
+                          className="text-muted-foreground hover:text-foreground text-sm transition-colors"
+                        >
+                          {link.label}
+                        </a>
+                      ) : isExternalHref(link.href) ? (
                         <a
                           href={link.href}
                           target="_blank"

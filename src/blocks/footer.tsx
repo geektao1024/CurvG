@@ -1,3 +1,4 @@
+import { CONTACT_EMAIL } from '@/config/contact';
 import { m } from '@/paraglide/messages.js';
 import { getLocale } from '@/paraglide/runtime.js';
 import { SiteFooter, type FooterColumn } from '@/components/site-footer';
@@ -11,7 +12,7 @@ import { curveCategoryHref, curveCategoryLabel } from './curve-categories';
 export function Footer() {
   const lang = getLocale() === 'zh' ? 'zh' : 'en';
   // Same sections as the top nav (docs/NAVIGATION.md §6): labs, wonders,
-  // curves, create (with the keyword landing pages), guides, legal.
+  // curves, create (with the keyword landing pages), guides, about + legal.
   const columns: FooterColumn[] = [
     {
       title: m['landing.nav.labs'](),
@@ -82,8 +83,13 @@ export function Footer() {
       ],
     },
     {
-      title: m['landing.footer.legal'](),
+      title: m['landing.footer.company'](),
       links: [
+        { label: m['landing.footer.about'](), href: '/about' },
+        {
+          label: m['landing.footer.contact']({ email: CONTACT_EMAIL }),
+          href: `mailto:${CONTACT_EMAIL}`,
+        },
         { label: m['landing.footer.privacy'](), href: '/privacy-policy' },
         { label: m['landing.footer.terms'](), href: '/terms-of-service' },
       ],

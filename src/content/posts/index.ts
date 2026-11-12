@@ -143,5 +143,8 @@ export function formatPostDate(dateIso: string, locale: string): string {
     year: 'numeric',
     month: locale === 'zh' ? 'long' : 'short',
     day: 'numeric',
+    // Dates are calendar days (YYYY-MM-DD); format them as written, not
+    // shifted into the reader's time zone.
+    timeZone: 'UTC',
   }).format(new Date(dateIso));
 }

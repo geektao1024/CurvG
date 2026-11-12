@@ -1,0 +1,42 @@
+import { CURVES } from '@/content/curves';
+import { publicLabs } from '@/content/labs';
+import { publicWonders } from '@/content/wonders';
+
+export const meta = {
+  title: 'About CurvG | CurvG',
+  description:
+    'What CurvG is, how we check the mathematics on the site, how to report a mistake, and how to reach us.',
+  updated_at: '2026-11-12',
+};
+
+## What CurvG is
+
+CurvG is a math website for students, teachers and people who make math videos. It has four parts:
+
+- **[Interactive labs](/labs)**: {publicLabs().length} chapters of math and physics, from middle school to first-year university. You drag the board, follow the guided steps and check yourself with a short quiz. Free, and no account needed.
+- **[Math wonders](/wonders)**: {publicWonders().length} animated stories, such as [Fourier series drawn by spinning circles](/wonders/fourier-epicycles) and the [Mandelbrot set](/wonders/mandelbrot-set). Free.
+- **[Curve encyclopedia](/curves)**: {CURVES.length} curves with their equations and key values, each exportable as SVG, PNG or CSV. Free.
+- **[Video creator](/creator)**: turns a topic into a narrated video rendered with Manim Community, using one of 12 verified templates. Every account with a verified email gets 3 free preview videos (720p, watermarked); clean 1080p videos need a paid plan ([pricing](/pricing)). Every video comes with its Manim source.
+
+CurvG is an independent product. Manim is an open-source project maintained by the Manim Community; CurvG is not affiliated with the Manim Community or 3Blue1Brown.
+
+## How we check the mathematics
+
+- **Labs.** The board computes every value from the formula while you drag; nothing on it is a drawing of the answer. Automated tests compile every formula and draw every board in both languages, check that quiz questions are well-formed, and check that every link on a chapter leads somewhere real.
+- **Curves.** Equations, arc lengths, areas and the other key values come from the same definition that draws the curve, and a test checks that the stated values match the curve on screen.
+- **Wonders.** Numbers in the story text, such as an error, a period or a count, are recomputed by a test, so the words cannot drift away from the animation.
+- **Template videos.** Each template is code we wrote and tested. Every number on screen (a derivative, a sum, a root, a determinant) is computed before the render. Parameters that can't be computed exactly, such as a point where the function has no derivative, are rejected with a reason before anything is spent, and the same parameters always give the same video.
+- **Free-form videos (beta).** Topics outside the templates go to an AI that writes the scene from scratch. It is checked automatically, but it can still get the mathematics wrong, and when the check finds a problem we show you the warning instead of hiding it. Watch these videos before you use them in class.
+- **Comparison pages.** Pages that compare tools, such as [Manim alternatives](/manim-alternative) and [the best apps for math videos](/blog/best-math-video-apps), give the month we checked each fact and link to the official source.
+
+## Found a mistake?
+
+Email [hello@curvg.com](mailto:hello@curvg.com) with the page address and what looks wrong; a screenshot helps. We correct the page itself and change the date shown on it, so a fixed page doesn't hide that it changed.
+
+If the problem is with your account, a payment or a video you made, sign in and use **Contact support** in Settings, or write to the same address.
+
+## Contact
+
+- Questions, corrections, classroom use and press: [hello@curvg.com](mailto:hello@curvg.com)
+- Account, billing and renders: **Contact support** in Settings after you sign in
+- How we handle your data: [privacy policy](/privacy-policy) · [terms of service](/terms-of-service)

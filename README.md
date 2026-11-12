@@ -28,7 +28,7 @@ Website: [curvg.com](https://curvg.com) · Project brief and change log:
 | `/pricing`                                                                  | Plans and credits                                                                                                           | —                               |
 | `/blog`, `/blog/{slug}`                                                     | Guides (MDX in `src/content/posts`)                                                                                         | —                               |
 | `/math-animation-tool`, `/free-math-video-creator`, `/manim-alternative`    | One-keyword landing pages                                                                                                   | `SEO_CONTENT_STRATEGY.md`       |
-| `/privacy-policy`, `/terms-of-service`                                      | MDX static pages                                                                                                            | —                               |
+| `/about`, `/privacy-policy`, `/terms-of-service`                            | MDX static pages (`/about`: what CurvG is, how the math is checked, how to report a mistake, contact)                       | —                               |
 | `/settings/*`, `/admin/*`                                                   | Account and admin (not indexed)                                                                                             | `AGENTS.md`                     |
 
 `sitemap.xml`, `llms.txt` and `llms-full.txt` are generated from the same

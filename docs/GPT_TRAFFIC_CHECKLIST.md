@@ -25,13 +25,16 @@
   Cloudflare 后台的 Bot Fight Mode、"Block AI bots" 开关没有核对（本会话不碰 Cloudflare 设置），**待负责人看一眼**。
 - [~] sitemap：有首页、34 个实验地址、61 个曲线地址、12 个奇观地址、博客 3 个、3 个关键词页、定价、法律页，加 118 个 `/zh` 地址。
   GSC：Site-Analysis 有 curvg 的 `gsc_page_daily`（07-30 起），资源已验证；sitemap 是否提交、**Bing Webmaster 是否提交未核实**。
+  2026-11-12：每个地址都有 `<lastmod>`（实验、奇观、博客读自己的日期，总览页取子页最新，其余在 `src/content/page-dates.ts`，改文案时手动改日期）；新增 `/about`。
+- [x] IndexNow（2026-11-12）：key 文件 `public/6485bfde1f61740eaebca5315ff6f3d6.txt`，推送 `pnpm indexnow <路径…>`（中英文一起推，路径必须在线上 sitemap 里；`--all` 推全部，`--dry-run` 只打印）。**以后改了页面，部署后推一次。**
 - [x] JSON-LD（本次后）：
   - 首页：`Organization` + `WebSite` + `WebApplication`（本次加了 5 个 `Offer`：Free、Starter 月/年、Pro 月/年，读自
     `src/config/pricing.ts`，和定价页共用 `pricingOffers()`）+ `FAQPage`（9 → 12 条）。
   - 定价页：`WebApplication` + 同样 5 个 `Offer`。
   - 实验章节页：`LearningResource` + `Quiz` + `FAQPage`（本次新增，11–12 条）+ `BreadcrumbList`（有成片的加 `VideoObject`）。
   - 博客：`BlogPosting` + `BreadcrumbList`；曲线页：`LearningResource` + `FAQPage`（2 条）+ `BreadcrumbList`；
-    `/manim-alternative`：`FAQPage`（10 条）；`/math-animation-tool`、`/free-math-video-creator`：`FAQPage`（各 3 条）。这三个关键词页都还没有 `BreadcrumbList`（2026-11-05 用 `seo-check` 查出，老问题）。
+    `/manim-alternative`：`FAQPage`（10 条）；`/math-animation-tool`：`FAQPage`（3 → 5 条，2026-11-12）；`/free-math-video-creator`：`FAQPage`（3 条）。这三个关键词页都还没有 `BreadcrumbList`（2026-11-05 用 `seo-check` 查出，老问题）。
+  - `/about`（2026-11-12）：`BreadcrumbList` + `AboutPage`（`mainEntity` 是带 `email`、`contactPoint` 的 `Organization`）；首页 `Organization` 也加了这两项。
 - [x] llms.txt（111 行）和 llms-full.txt。本次改了 3 处和全站不一致的说法，见"一致性"。
 
 ## 内容
@@ -48,17 +51,21 @@
     年级、引导步骤、小测题数、有无成片），后半是所有实验通用的问答（免费/注册、做成视频和价格、课堂、手机、中英文、数字从哪来）。
     "做成视频"这条按本章有没有对应模板给两种说法（`LAB_VIDEO_TEMPLATES`）。
   - `/manim-alternative` 3 → 10 条（2026-11-05）。
-  - 没做：`/math-animation-tool`、`/free-math-video-creator` 各 3 条，曲线页 2 条，`/creator` 没有 FAQ。
+  - `/math-animation-tool` 3 → 5 条（2026-11-12，模板出片口径）。
+  - 没做：`/math-animation-tool` 5 条、`/free-math-video-creator` 3 条，曲线页 2 条，`/creator` 没有 FAQ。
 - [x] 免费和付费对比表：`/pricing` 的"Plan comparison"表；首页价格条"Labs are free. Pay when you make videos."。
       定价页和 JSON-LD 的价格一致（同一个 `pricing.ts`）。
-- [~] "best X" 对比页：`/blog/best-math-video-apps`（8 个工具、开头声明利益相关、并列表）。本次把 CurvG 一节改成现在的模板出片，
-  并加了"局限（2026 年 11 月）"一段：只有 12 个模板、自由生成是测试版、不能在浏览器改代码、模板都是二维的。
-  **还缺**：其他 7 个工具的价格和事实没有逐条附"As listed in <月份>"的核实日期（打法 §6 第 3 条）。
+- [x] "best X" 对比页：`/blog/best-math-video-apps`（8 个工具、开头声明利益相关、并列表）。11-03 把 CurvG 一节改成现在的模板出片，
+      并加了"局限（2026 年 11 月）"一段：只有 12 个模板、自由生成是测试版、不能在浏览器改代码、模板都是二维的。
+      2026-11-12：每个工具的价格写明"2026 年 11 月"（官网核实：Microsoft 365 Personal $9.99/月、Canva Pro US$144/年、After Effects US$22.99/月等；Canva 月付价没核实到，没写）；
+      "The quick answer"加一行把写代码的人引到 `/manim-alternative`（Motion Canvas / Revideo / Remotion）；新增一节"How do I make 3Blue1Brown-style math videos without code?"（Manim / Motion Canvas / CurvG 各适合谁，ChatGPT 11-12 的 Q8 两次因"no-code"推荐了 CurvG）；
+      "Python + FFmpeg + LaTeX"改成"LaTeX 可选、0.19 起不用单装 FFmpeg"（Manim 官方安装页和 0.19 更新日志）；页头显示"更新于"日期。
 - [x] 最大竞品的替代页：`/manim-alternative`。2026-11-05 改成多家对比（Motion Canvas、Remotion、Blender、GeoGebra、Tracé、LemmaReel、fastanim、CurvG，FAQ 10 条，官网核实日期 11-05），保留与原生 Manim CE 的对比。依据：ChatGPT 诊断里原页 3 次都没被检索到，见 `Site-Analysis/docs/project/GPT诊断记录/CurvG-2026-11-05.zh.md`。
+      2026-11-12 补到 9 家：Revideo 并进 Motion Canvas 一条（Motion Canvas 的分支，仓库已搬到 `midrender/revideo`，团队主要在做 Midrender），新增 Synfig（GPL 桌面 2D 动画软件，没有公式支持，最新正式版 1.4.5 是 2024-05）。依据：11-12 诊断 Q2 三次里 Revideo 出现 3 次、Synfig 2 次。第二个按钮从旧流程的 `ai-manim-animation-workflow` 改链到对比文章。
 - [~] 3–5 篇 how-to：只有 `/blog/ai-manim-animation-workflow` 1 篇。31 个实验章节本身是"怎么理解 X"的承接页，
   但"how to make a math video / how to animate a function"这类任务问题还没有指南。
 - [ ] 原创数据页：没有。候选：用 60 条曲线已算好的弧长、面积等关键值做一张总表页；或奇观页里已经钉在测试里的数字。
-- [ ] About / 方法说明页：没有 `/about`。"数字怎么算""视频怎么做（模板、渲染前算好每个数）""多久核对"散在 FAQ 和 llms.txt。
+- [x] About / 方法说明页：`/about`（2026-11-12）：CurvG 是什么、实验 / 曲线 / 奇观 / 模板视频 / 自由生成测试版 / 对比页各自怎么核对、怎么报错、联系邮箱 `hello@curvg.com`（agentic-inbox 里 11-12 新建的邮箱）。没写具名的人（负责人另定）。页脚"法律"栏改成"关于"，加关于页和联系邮箱。
 - [~] 程序化页面：曲线页 H1 下有一句话 + 公式和关键值，FAQ 只有 2 条；实验页本次有了数据驱动的 FAQ。
 
 ## 一致性（2026-11-03 已修）
@@ -73,8 +80,10 @@
     并写明自由生成是测试版、可能出错。
 - [x] 数字口径：llms.txt 写"a 30-curve encyclopedia"，同一文件列表写 60 条；改为 `${CURVES.length}`（现 60）。
 - [x] 界面上没有发现误导性展示。
-- [~] **还没改**：`/math-animation-tool`（ChatGPT 落地第三多）整页仍把"描述 → 审场景方案和代码 → 渲染"写成主流程，
-  `pages.tool.faq2_a` 说可以直接改场景方案。现在这是测试版流程，主线是模板。要整页改写，牵涉关键词页的定位，留给下一轮。
+- [x] `/math-animation-tool` 整页改成模板出片（2026-11-12）：标题"Templates to MP4, No Code"，步骤是选模板 / 调参数 / 云端渲染，"几何与证明"卡换成模板真有的"三角函数与曲线"，FAQ 改掉"直接改场景方案"并加两条（模板没覆盖怎么办、数字怎么保证对）。
+      `/pricing` 对比表"AI workflow"一行改成"模板出片：全部验证过的视频模板、可下载的 Manim 源码"（删掉重复的"复制与下载 Python"行）；首页 meta description 和 llms-full 的首页描述改成模板出片。
+- [x] 模板视频是无声的，旁白以画面字幕呈现（`src/lib/video-templates/manim.ts` 的 `caption()`），但首页、实验页 CTA、对比文章、llms.txt 写的是"narrated / 配音"。2026-11-12 改成"captioned / 带字幕"或去掉。实验自己的成片（`labs.faq.film`）确实有配音，没改。
+- [~] **还没改**：首页"从实验到视频"一节（`home.video.*`）的标题和说明还是"每一步一个镜头、先检查分镜和代码"，这是自由生成测试版的流程；`/blog/ai-manim-animation-workflow` 整篇是旧流程。
 
 ## 归因（本次，2026-11-03 14:56 UTC 上线）
 
@@ -192,7 +201,7 @@
 ## 还缺（按影响排序）
 
 1. 邮箱注册的用户拿不到免费预览（2026-11-05 查出，详见 `docs/PROJECT_BRIEF.md` 第 7 节）。这一条影响转化，要负责人决定怎么改。
-2. `/math-animation-tool` 整页改成模板出片口径（ChatGPT 落地第三多，现在和首页 FAQ 说法不一致）。
-3. `/math-animation-tool`、`/free-math-video-creator` 和曲线页的 FAQ 补到 10 条；`best-math-video-apps` 给竞品信息加核实月份，并改掉 "Python + FFmpeg + LaTeX"（Manim 官方文档里 LaTeX 是可选的）。三个关键词页补 `BreadcrumbList`。`/manim-alternative` 第二个按钮链到的 `ai-manim-animation-workflow` 还在讲审方案流程，要改口径。
-4. About / 方法说明页；原创数据页（曲线关键值总表）；1–2 篇"怎么做数学视频"的指南。
-5. Cloudflare AI 爬虫开关、Bing 提交、GA4 后台配置（负责人）。
+2. 首页"从实验到视频"一节和 `/blog/ai-manim-animation-workflow` 还是自由生成（审分镜和代码）的旧流程；llms.txt 里这篇的标题"Prompt to Reviewable Code"也是。
+3. `/math-animation-tool`（5 条）、`/free-math-video-creator`（3 条）和曲线页的 FAQ 补到 10 条；三个关键词页补 `BreadcrumbList`。
+4. 原创数据页（曲线关键值总表）；1–2 篇"怎么做数学视频"的指南。`/about` 写不写具名的人（负责人定）。
+5. Cloudflare AI 爬虫开关、Bing 提交、GA4 后台配置（负责人）。AlternativeTo 等其他第三方榜单（负责人定）。

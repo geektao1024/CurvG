@@ -150,8 +150,18 @@ function BlogPostPage() {
           <div className="text-muted-foreground mt-4 flex items-center gap-4 text-sm">
             <span className="inline-flex items-center gap-1.5">
               <Calendar className="size-4" />
-              {formatPostDate(post.createdAt, locale)}
+              <time dateTime={post.createdAt}>
+                {formatPostDate(post.createdAt, locale)}
+              </time>
             </span>
+            {post.updatedAt &&
+              post.updatedAt.slice(0, 10) !== post.createdAt.slice(0, 10) && (
+                <time dateTime={post.updatedAt}>
+                  {m['blog.updated_on']({
+                    date: formatPostDate(post.updatedAt, locale),
+                  })}
+                </time>
+              )}
             {(post.authorName || post.authorImage) && (
               <span className="inline-flex items-center gap-2">
                 {post.authorImage && (

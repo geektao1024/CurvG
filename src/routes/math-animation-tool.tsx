@@ -37,6 +37,14 @@ export const Route = createFileRoute('/math-animation-tool')({
           question: m['pages.tool.faq3_q']({}, { locale }),
           answer: m['pages.tool.faq3_a']({}, { locale }),
         },
+        {
+          question: m['pages.tool.faq4_q']({}, { locale }),
+          answer: m['pages.tool.faq4_a']({}, { locale }),
+        },
+        {
+          question: m['pages.tool.faq5_q']({}, { locale }),
+          answer: m['pages.tool.faq5_a']({}, { locale }),
+        },
       ],
     });
   },

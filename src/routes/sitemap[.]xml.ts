@@ -8,7 +8,9 @@ import {
   publicLabs,
   publicSubjects,
   subjectPath,
+  suitesForSubject,
 } from '@/content/labs';
+import { CURVES_UPDATED, newestDate, PAGE_UPDATED } from '@/content/page-dates';
 import {
   getLocalPostLocales,
   getLocalPosts,
@@ -26,40 +28,61 @@ type Entry = {
 
 const ALL_LOCALES = [...locales];
 
+// `updated_at` of the static MDX pages (about, privacy, terms), English copy.
+const STATIC_PAGE_META = import.meta.glob<{ updated_at: string }>(
+  '/src/content/pages/*.en.mdx',
+  { eager: true, import: 'meta' }
+);
+
+function staticPageUpdated(slug: string): string | undefined {
+  return STATIC_PAGE_META[`/src/content/pages/${slug}.en.mdx`]?.updated_at;
+}
+
+const LABS_UPDATED = newestDate(publicLabs().map((lab) => lab.updated));
+const WONDERS_UPDATED = newestDate(
+  publicWonders().map((wonder) => wonder.updated)
+);
+
 const STATIC_ENTRIES: Entry[] = [
   {
     path: '',
     availableLocales: ALL_LOCALES,
+    lastModified: newestDate([PAGE_UPDATED[''], LABS_UPDATED ?? '']),
     changeFrequency: 'weekly',
     priority: 1,
   },
   {
     path: '/creator',
     availableLocales: ALL_LOCALES,
+    lastModified: PAGE_UPDATED['/creator'],
     changeFrequency: 'weekly',
     priority: 0.9,
   },
   {
     path: '/math-animation-tool',
     availableLocales: ALL_LOCALES,
+    lastModified: PAGE_UPDATED['/math-animation-tool'],
     changeFrequency: 'monthly',
     priority: 0.8,
   },
   {
     path: '/free-math-video-creator',
     availableLocales: ALL_LOCALES,
+    lastModified: PAGE_UPDATED['/free-math-video-creator'],
     changeFrequency: 'monthly',
     priority: 0.8,
   },
   {
     path: '/manim-alternative',
     availableLocales: ALL_LOCALES,
+    lastModified: PAGE_UPDATED['/manim-alternative'],
     changeFrequency: 'monthly',
     priority: 0.7,
   },
   {
     path: '/labs',
     availableLocales: ALL_LOCALES,
+    lastModified: LABS_UPDATED,
     changeFrequency: 'weekly',
     priority: 0.9,
   },
@@ -67,6 +90,11 @@ const STATIC_ENTRIES: Entry[] = [
     (subject): Entry => ({
       path: subjectPath(subject.id),
       availableLocales: ALL_LOCALES,
+      lastModified: newestDate(
+        suitesForSubject(subject.id).flatMap((suite) =>
+          suite.chapters.map((lab) => lab.updated)
+        )
+      ),
       changeFrequency: 'weekly',
       priority: 0.9,
     })
@@ -83,6 +111,7 @@ const STATIC_ENTRIES: Entry[] = [
   {
     path: '/wonders',
     availableLocales: ALL_LOCALES,
+    lastModified: WONDERS_UPDATED,
     changeFrequency: 'weekly',
     priority: 0.8,
   },
@@ -98,6 +127,7 @@ const STATIC_ENTRIES: Entry[] = [
   {
     path: '/curves',
     availableLocales: ALL_LOCALES,
+    lastModified: CURVES_UPDATED,
     changeFrequency: 'weekly',
     priority: 0.8,
   },
@@ -105,6 +135,7 @@ const STATIC_ENTRIES: Entry[] = [
     (curve): Entry => ({
       path: `/curves/${curve.slug}`,
       availableLocales: ALL_LOCALES,
+      lastModified: CURVES_UPDATED,
       changeFrequency: 'monthly',
       priority: 0.6,
     })
@@ -112,18 +143,28 @@ const STATIC_ENTRIES: Entry[] = [
   {
     path: '/pricing',
     availableLocales: ALL_LOCALES,
+    lastModified: PAGE_UPDATED['/pricing'],
     changeFrequency: 'monthly',
     priority: 0.7,
   },
   {
+    path: '/about',
+    availableLocales: ALL_LOCALES,
+    lastModified: staticPageUpdated('about'),
+    changeFrequency: 'monthly',
+    priority: 0.5,
+  },
+  {
     path: '/privacy-policy',
     availableLocales: ALL_LOCALES,
+    lastModified: staticPageUpdated('privacy-policy'),
     changeFrequency: 'yearly',
     priority: 0.3,
   },
   {
     path: '/terms-of-service',
     availableLocales: ALL_LOCALES,
+    lastModified: staticPageUpdated('terms-of-service'),
     changeFrequency: 'yearly',
     priority: 0.3,
   },

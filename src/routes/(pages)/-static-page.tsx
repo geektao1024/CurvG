@@ -47,7 +47,17 @@ function pageName(title: string): string {
 // explicit route file (e.g. privacy-policy.tsx) so static segments
 // always outrank dynamic ones — add a new page by creating the MDX
 // content plus a thin route file using this factory.
-export function staticPageRouteOptions(slug: string) {
+export function staticPageRouteOptions(
+  slug: string,
+  options: {
+    /** Extra JSON-LD next to the breadcrumbs (e.g. AboutPage). */
+    structuredData?: (page: {
+      meta: PageMeta;
+      url: string;
+      locale: string;
+    }) => Record<string, unknown>;
+  } = {}
+) {
   return {
     loader: (): LoaderData => {
       const locale = getLocale();
@@ -73,7 +83,7 @@ export function staticPageRouteOptions(slug: string) {
         scripts: [
           {
             type: 'application/ld+json',
-            children: serializeJsonLd(
+            children: serializeJsonLd([
               breadcrumbJsonLd(
                 [
                   {
@@ -83,8 +93,17 @@ export function staticPageRouteOptions(slug: string) {
                   { name: pageName(meta.title), path: `/${slug}` },
                 ],
                 locale
-              )
-            ),
+              ),
+              ...(options.structuredData
+                ? [
+                    options.structuredData({
+                      meta,
+                      url: seoLinks.canonical,
+                      locale,
+                    }),
+                  ]
+                : []),
+            ]),
           },
         ],
       };
@@ -112,7 +131,7 @@ function StaticPage() {
       />
       <header className="border-border mt-8 mb-6 border-b pb-5">
         <h1 className="curvg-heading text-foreground text-3xl md:text-4xl">
-          {meta.title}
+          {pageName(meta.title)}
         </h1>
         <p className="text-muted-foreground mt-2 text-sm">{meta.description}</p>
         <p className="text-muted-foreground mt-2 text-xs">

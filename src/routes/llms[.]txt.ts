@@ -24,7 +24,7 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
     path: '/creator',
     title: 'Manim AI Generator (Creator)',
     description:
-      'The video creator: pick a verified template (or let the AI pick one and fill in the parameters), adjust the parameters, render a narrated MP4 and download the Manim source. Free-form AI generation for topics without a template is a beta.',
+      'The video creator: pick a verified template (or let the AI pick one and fill in the parameters), adjust the parameters, render a captioned MP4 and download the Manim source. Free-form AI generation for topics without a template is a beta.',
   },
   {
     path: '/pricing',
@@ -36,7 +36,7 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
     path: '/math-animation-tool',
     title: 'Online Math Animation Tool',
     description:
-      'How the browser-based workflow covers functions, geometry, calculus, and linear algebra animations.',
+      'Online math animation tool built on 12 verified templates: pick a template or describe a topic, set the parameters (function, range, counts, 16:9 or 9:16), and render a captioned Manim MP4 in the cloud. Covers function graphs, trigonometry and curves, calculus, and 2×2 matrix transformations; other topics go to a free-form beta.',
   },
   {
     path: '/free-math-video-creator',
@@ -48,7 +48,7 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
     path: '/manim-alternative',
     title: 'Manim Alternatives Compared',
     description:
-      'Eight Manim alternatives compared (Motion Canvas, Remotion, Blender, GeoGebra, Tracé, LemmaReel, fastanim, CurvG): cost, whether you need code, where each falls short, and when raw Manim is the better choice.',
+      'Nine Manim alternatives compared (Motion Canvas and its fork Revideo, Remotion, Blender, Synfig, GeoGebra, Tracé, LemmaReel, fastanim, CurvG): cost, whether you need code, where each falls short, and when raw Manim is the better choice. Checked November 2026.',
   },
   {
     path: '/labs',
@@ -60,6 +60,12 @@ const STATIC_PAGES: { path: string; title: string; description: string }[] = [
     path: '/curves',
     title: 'Math Curve Encyclopedia',
     description: `${CURVES.length} classic and fractal curves: interactive graphs with presets, formulas with key values (arc length, area), a drawing animation of how each curve is made, free SVG/PNG/CSV export, and a one-click video brief.`,
+  },
+  {
+    path: '/about',
+    title: 'About CurvG',
+    description:
+      'What CurvG is, how the mathematics on the site is checked (labs, curves, wonders, template videos, the free-form beta), how to report a mistake, and contact: hello@curvg.com.',
   },
   {
     path: '/privacy-policy',
@@ -156,7 +162,7 @@ export const Route = createFileRoute('/llms.txt')({
 
         if (posts.length > 0) {
           lines.push(
-            `- [Manim Math Animation Guides](${app_url}/blog): Practical guides to Manim animation, equation visualization, and reviewable rendering.`,
+            `- [Manim Math Animation Guides](${app_url}/blog): Practical guides to Manim animation and choosing a math video tool.`,
             '',
             '## Blog Posts',
             ''

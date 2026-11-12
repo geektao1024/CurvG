@@ -155,6 +155,7 @@ export function Pricing({
       name: m['landing.pricing.free'](),
       description: m['landing.pricing.free_desc'](),
       price: '$0',
+      priceNote: m['landing.pricing.free_note'](),
       features: cardFeatures,
       comparison: {
         perVideo: m['landing.pricing.comparison.first_free'](),
@@ -162,7 +163,6 @@ export function Pricing({
         renders: '—',
         previews: true,
         review: true,
-        python: true,
         video: m['landing.pricing.comparison.first_free'](),
         expiration: '—',
       },
@@ -172,6 +172,15 @@ export function Pricing({
           ? m['common.pricing.current_plan']()
           : m['common.pricing.open_creator'](),
     };
+  }
+
+  /** Both billing options in one line, whichever toggle is showing. */
+  function billingNote(monthly: PricingProduct, yearly: PricingProduct) {
+    return m['landing.pricing.price_both']({
+      monthly: displayPrice(monthly, locale),
+      yearly: displayMonthlyEquivalent(yearly, locale),
+      total: displayPrice(yearly, locale),
+    });
   }
 
   function paidPlan(params: {
@@ -217,6 +226,9 @@ export function Pricing({
         ? m['landing.pricing.starter_desc']()
         : m['landing.pricing.pro_desc'](),
       price: displayPrice(params.product, locale),
+      priceNote: isStarter
+        ? billingNote(starterMonthly, starterYearly)
+        : billingNote(proMonthly, proYearly),
       originalPrice: params.originalPrice,
       interval: params.interval,
       featured: isStarter,
@@ -232,7 +244,6 @@ export function Pricing({
         }),
         previews: true,
         review: true,
-        python: true,
         video: true,
         expiration: m['landing.pricing.comparison.period_end'](),
       },
@@ -309,7 +320,6 @@ export function Pricing({
         { key: 'renders', label: m['landing.pricing.comparison.renders']() },
         { key: 'perVideo', label: m['landing.pricing.comparison.per_video']() },
         { key: 'video', label: m['landing.pricing.comparison.video']() },
-        { key: 'python', label: m['landing.pricing.comparison.python']() },
         {
           key: 'expiration',
           label: m['landing.pricing.comparison.expiration'](),
@@ -428,6 +438,7 @@ export function Pricing({
           <PricingTable
             planHeading={Heading === 'h1' ? 'h2' : 'h3'}
             groups={groups}
+            defaultGroupKey="monthly"
             onCheckout={handleCheckout}
             loadingPlanId={loadingPlanId}
             comparisonEyebrow={m['landing.pricing.comparison.eyebrow']()}

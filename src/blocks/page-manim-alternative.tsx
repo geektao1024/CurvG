@@ -67,7 +67,8 @@ export function ManimAlternativePage() {
       linkLabel: m['pages.manimAlt.tool_curvg_link'](),
     },
     {
-      name: 'Motion Canvas',
+      // Revideo is a Motion Canvas fork, so it shares this entry.
+      name: 'Motion Canvas / Revideo',
       fit: m['pages.manimAlt.tool_motion_fit'](),
       body: m['pages.manimAlt.tool_motion_body'](),
       limit: m['pages.manimAlt.tool_motion_limit'](),
@@ -91,6 +92,15 @@ export function ManimAlternativePage() {
       limit: m['pages.manimAlt.tool_blender_limit'](),
       price: m['pages.manimAlt.tool_blender_price'](),
       href: 'https://www.blender.org/',
+      linkLabel: m['pages.manimAlt.tool_link_label'](),
+    },
+    {
+      name: 'Synfig',
+      fit: m['pages.manimAlt.tool_synfig_fit'](),
+      body: m['pages.manimAlt.tool_synfig_body'](),
+      limit: m['pages.manimAlt.tool_synfig_limit'](),
+      price: m['pages.manimAlt.tool_synfig_price'](),
+      href: 'https://www.synfig.org/',
       linkLabel: m['pages.manimAlt.tool_link_label'](),
     },
     {
@@ -149,7 +159,7 @@ export function ManimAlternativePage() {
       ],
     },
     {
-      name: 'Motion Canvas',
+      name: 'Motion Canvas / Revideo',
       cells: [
         m['pages.manimAlt.grid_motion_code'](),
         m['pages.manimAlt.grid_motion_output'](),
@@ -170,6 +180,14 @@ export function ManimAlternativePage() {
         m['pages.manimAlt.grid_blender_code'](),
         m['pages.manimAlt.grid_blender_output'](),
         m['pages.manimAlt.grid_blender_price'](),
+      ],
+    },
+    {
+      name: 'Synfig',
+      cells: [
+        m['pages.manimAlt.grid_synfig_code'](),
+        m['pages.manimAlt.grid_synfig_output'](),
+        m['pages.manimAlt.grid_synfig_price'](),
       ],
     },
     {
@@ -233,12 +251,20 @@ export function ManimAlternativePage() {
       href: 'https://github.com/motion-canvas/motion-canvas/releases',
     },
     {
+      label: m['pages.manimAlt.source_revideo'](),
+      href: 'https://midrender.com/revideo',
+    },
+    {
       label: m['pages.manimAlt.source_remotion'](),
       href: 'https://www.remotion.dev/docs/license/pricing',
     },
     {
       label: m['pages.manimAlt.source_blender'](),
       href: 'https://www.blender.org/about/license/',
+    },
+    {
+      label: m['pages.manimAlt.source_synfig'](),
+      href: 'https://www.synfig.org/category/releases/',
     },
     {
       label: m['pages.manimAlt.source_geogebra'](),
@@ -267,7 +293,7 @@ export function ManimAlternativePage() {
         primary={{ label: m['pages.manimAlt.cta_primary'](), href: '/creator' }}
         secondary={{
           label: m['pages.manimAlt.cta_secondary'](),
-          href: '/blog/ai-manim-animation-workflow',
+          href: '/blog/best-math-video-apps',
         }}
       />
       <SectionCards

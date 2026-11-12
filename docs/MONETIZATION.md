@@ -114,13 +114,14 @@ Stripe 账户默认开启 Managed Payments：Stripe 作为记录商户（merchan
 
 改套餐或文案时，下面这些地方要一起改，且只能写已经上线、在生产上跑得通的能力：
 
-- 定价页 `src/blocks/pricing.tsx` + `landing.pricing.*`（含 FAQ）
+- 定价页 `src/blocks/pricing.tsx` + `landing.pricing.*`（含 FAQ）。卡片默认显示月付，价格下一行把月付和年付写在一起（`landing.pricing.price_both`，金额读 `pricing.ts`，2026-11-12）
 - 首页价格条 `home.pricing.*`、首页 FAQ `landing.faq.free.*`、`landing.faq.video_cost.*`（价格读 `pricing.ts`）、`landing.faq.export.*`
 - 实验章节页 FAQ `labs.faq.video.*`（"3 个免费预览""套餐每月 $X 起"，价格读 `pricing.ts`，`src/routes/labs/-labs-page.tsx` 的 `labFaq()`）
 - 首页与定价页 JSON-LD 的 `Offer`（`src/lib/seo.ts` 的 `pricingOffers()`，读 `pricing.ts`）
 - 对比文章 `src/content/posts/best-math-video-apps.{en,zh}.mdx` 的 CurvG 一节
 - 替代页 `/manim-alternative` 的 `pages.manimAlt.tool_curvg_*`、`grid_curvg_*`、`row_cost_curvg`、`faq9_a`、`faq10_a`：文案里写死了 $9.90、$18.90、约 15 / 50 个视频、12 个模板、31 个实验，不读配置，改价或增减模板时手动改
-- 关键词落地页 `/free-math-video-creator`（`pages.free.*`）、工具页 `pages.tool.band_lead`
+- 关键词落地页 `/free-math-video-creator`（`pages.free.*`）、工具页 `pages.tool.band_lead`、`pages.tool.step3_desc`（3 个免费预览、失败退积分）
+- 关于页 `src/content/pages/about.{en,zh}.mdx`（3 个免费预览、1080p 要付费，不写金额）
 - `llms.txt` / `llms-full.txt` 的产品描述
 - 奇观导出窗口 `wonders.export.*`（免费档"带水印、不限次数"，高清档"1080p 60 帧、无水印"，价格读 `animation_render_credits`）
 

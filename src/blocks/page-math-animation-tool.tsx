@@ -49,8 +49,8 @@ export function MathAnimationToolPage() {
             description: m['pages.tool.covers_functions_desc'](),
           },
           {
-            title: m['pages.tool.covers_geometry_title'](),
-            description: m['pages.tool.covers_geometry_desc'](),
+            title: m['pages.tool.covers_trig_title'](),
+            description: m['pages.tool.covers_trig_desc'](),
           },
           {
             title: m['pages.tool.covers_calculus_title'](),
@@ -97,6 +97,14 @@ export function MathAnimationToolPage() {
           {
             question: m['pages.tool.faq3_q'](),
             answer: m['pages.tool.faq3_a'](),
+          },
+          {
+            question: m['pages.tool.faq4_q'](),
+            answer: m['pages.tool.faq4_a'](),
+          },
+          {
+            question: m['pages.tool.faq5_q'](),
+            answer: m['pages.tool.faq5_a'](),
           },
         ]}
       />

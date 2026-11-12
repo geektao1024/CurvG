@@ -1,4 +1,5 @@
 import { envConfigs } from '@/config';
+import { CONTACT_EMAIL } from '@/config/contact';
 import {
   pricingCatalog,
   PUBLIC_SUBSCRIPTION_PRODUCT_IDS,
@@ -159,6 +160,13 @@ export function siteJsonLd(locale: string) {
       name: envConfigs.app_name,
       url: home,
       logo: absoluteUrl('/apple-touch-icon.png'),
+      email: CONTACT_EMAIL,
+      contactPoint: {
+        '@type': 'ContactPoint',
+        contactType: 'customer support',
+        email: CONTACT_EMAIL,
+        availableLanguage: ['en', 'zh'],
+      },
     },
     {
       '@type': 'WebSite',

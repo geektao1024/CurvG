@@ -16,8 +16,8 @@
 └── 价格 /pricing
 ```
 
-指南 `/blog → /blog/{slug}`、关键词落地页（`/math-animation-tool`、`/free-math-video-creator`、`/manim-alternative`）
-和法律页只从页脚进入。
+指南 `/blog → /blog/{slug}`、关键词落地页（`/math-animation-tool`、`/free-math-video-creator`、`/manim-alternative`）、
+关于页 `/about` 和法律页只从页脚进入。
 
 `/library/**` 已于 2026-10-15 下线，旧地址由 `src/routes/library/-redirects.ts` 301 到同一搜索意图的页面
 （曲线类 → `/curves#{category}`，知识点 → 对应实验集或章节），`tests/library-redirects.test.ts` 保证目标存在。
@@ -70,7 +70,7 @@
    - 曲线 → 相关实验、相关奇观；
    - 所有内容页 → 做成视频（转化）。
 
-页脚按导航的栏目分列：实验室｜数学奇观｜曲线百科（七个分类）｜创作（做成视频、价格、常见问题、落地页）｜指南（含外链）｜法律。
+页脚按导航的栏目分列：实验室｜数学奇观｜曲线百科（七个分类）｜创作（做成视频、价格、常见问题、落地页）｜指南（含外链）｜关于（`/about`、联系邮箱 `mailto:`、隐私政策、服务条款；2026-11-12 由"法律"栏改名）。联系邮箱只在 `src/config/contact.ts` 写一处。
 
 ## 7. 外链
 

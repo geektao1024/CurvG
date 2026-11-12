@@ -41,6 +41,8 @@ export interface PricingPlan {
   description?: string;
   price: string;
   originalPrice?: string;
+  /** One line under the price, e.g. both billing options side by side. */
+  priceNote?: string;
   currency?: string;
   interval?: string;
   featured?: boolean;
@@ -71,6 +73,7 @@ export interface PricingGroup {
 
 export function PricingTable({
   groups,
+  defaultGroupKey,
   onCheckout,
   loadingPlanId,
   disabledPlanIds = [],
@@ -84,6 +87,8 @@ export function PricingTable({
   planHeading: PlanHeading = 'h3',
 }: {
   groups: PricingGroup[];
+  /** Group shown first; defaults to the second (yearly) group. */
+  defaultGroupKey?: string;
   onCheckout?: (plan: PricingPlan) => void;
   loadingPlanId?: string | null;
   disabledPlanIds?: string[];
@@ -98,7 +103,7 @@ export function PricingTable({
   planHeading?: 'h2' | 'h3';
 }) {
   const [activeGroup, setActiveGroup] = useState(
-    groups[1]?.key || groups[0]?.key || ''
+    defaultGroupKey || groups[1]?.key || groups[0]?.key || ''
   );
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [billingRevision, setBillingRevision] = useState(0);
@@ -203,6 +208,7 @@ export function PricingTable({
                     price={plan.price}
                     interval={plan.interval}
                     originalPrice={plan.originalPrice}
+                    note={plan.priceNote}
                     animationRevision={billingRevision}
                     animate={
                       billingRevision > 0 &&
@@ -434,12 +440,14 @@ function PriceDisplay({
   price,
   interval,
   originalPrice,
+  note,
   animationRevision,
   animate,
 }: {
   price: string;
   interval?: string;
   originalPrice?: string;
+  note?: string;
   animationRevision: number;
   animate: boolean;
 }) {
@@ -522,6 +530,9 @@ function PriceDisplay({
         <p className="text-muted-foreground mt-1 text-xs leading-4">
           <span className="line-through">{originalPrice}</span>
         </p>
+      )}
+      {note && (
+        <p className="text-muted-foreground mt-2 text-sm leading-5">{note}</p>
       )}
     </div>
   );

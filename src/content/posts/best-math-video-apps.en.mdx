@@ -3,7 +3,7 @@ export const meta = {
   description:
     'An honest comparison of the best apps for making math videos — Manim, CurvG, Desmos, GeoGebra, Keynote, Canva, After Effects, and Blender — matched to the kind of video you are actually making.',
   created_at: '2026-08-04',
-  updated_at: '2026-11-03',
+  updated_at: '2026-11-12',
   author_name: 'CurvG Team',
   author_type: 'Organization',
   image: '/og/posts/best-math-video-apps.en.png',
@@ -11,11 +11,12 @@ export const meta = {
 
 Choosing the best app for making math videos depends on one question more than any other: **how much of the mathematics has to move?** A talking-head lesson with a static slide needs a different tool than a 3Blue1Brown-style animation where a grid deforms under a matrix. This guide compares eight tools across that spectrum.
 
-**Disclosure up front:** CurvG (this site) makes one of the tools below. We've kept the comparison factual and we tell you plainly where a competitor is the better choice.
+**Disclosure up front:** CurvG (this site) makes one of the tools below. We've kept the comparison factual and we tell you plainly where a competitor is the better choice. Prices and versions are as listed on each tool's official site in November 2026.
 
 ## The quick answer
 
 - **Animated math with full code control:** Manim CE
+- **Animated math in code, without Python:** Motion Canvas or its fork Revideo (TypeScript), or Remotion (React). See the [full comparison of Manim alternatives](/manim-alternative)
 - **Animated math without coding:** CurvG
 - **Live graph exploration on camera:** Desmos
 - **Interactive geometry:** GeoGebra
@@ -24,83 +25,101 @@ Choosing the best app for making math videos depends on one question more than a
 - **Broadcast-grade motion design:** After Effects
 - **3D scenes:** Blender
 
+## How do I make 3Blue1Brown-style math videos without code?
+
+Use a tool that writes the animation for you, and accept that you trade away some control. 3Blue1Brown's videos are made with Manim, a Python library, so the full-control route is code. The three common routes differ in how much of it you write:
+
+| Route         | What you write            | Best for                                                                                        | Price (November 2026)                                 |
+| ------------- | ------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Manim         | Python                    | People comfortable in Python who want every frame under their control                           | Free (MIT)                                            |
+| Motion Canvas | TypeScript                | Web developers who want a live preview and an editor for timing animations to a voice-over      | Free (MIT)                                            |
+| CurvG         | Nothing: templates and AI | Teachers and creators who don't want to program, for topics that one of its 12 templates covers | 3 free preview videos; clean 1080p videos need a plan |
+
+- **Manim** is the engine itself: every scene is a Python program that you render on your own computer.
+- **Motion Canvas** is the same idea in TypeScript. It is still code, and its last stable release dates from December 2024.
+- **CurvG** asks what you want to explain, an AI picks one of 12 verified templates (function graphs, derivatives, integrals, the unit circle, Taylor and Fourier series, matrix transformations and more) and fills in its parameters, and the video renders with Manim in the cloud. Previews are free (720p, watermarked); clean 1080p exports are paid ([pricing](/pricing)). Topics outside the templates go to a free-form beta that can get the mathematics wrong, so for anything unusual you are back to code.
+
+If you don't need a rendered video at all, a screen recording of Desmos or GeoGebra is the quickest no-code option. More tools, with and without code, are in our [Manim alternatives comparison](/manim-alternative).
+
 ## 1. Manim CE — the precision engine
 
-[Manim Community](https://www.manim.community/) is the open-source Python engine behind the 3Blue1Brown visual style. Every equation, transformation, and camera move is code, which means unlimited control and perfect reproducibility. The cost is real: you maintain a Python + FFmpeg + LaTeX environment, learn the API, and render on your own machine.
+[Manim Community](https://www.manim.community/) is the open-source Python engine behind the 3Blue1Brown visual style. Every equation, transformation, and camera move is code, which means unlimited control and perfect reproducibility. The cost is real: you set up a Python environment, learn the API, and render on your own machine. LaTeX is optional (you only need it for typeset equations), and since version 0.19 Manim no longer needs a separate FFmpeg install.
 
 **Best for:** developers and creators who want frame-level control and don't mind programming.
-**Price:** free and open source.
+**Price (November 2026):** free and open source (MIT). Latest release 0.22.1, October 2026.
 
 ## 2. CurvG — animated math without the toolchain
 
-[CurvG](/creator) makes narrated Manim Community videos from verified templates: you describe the topic, an AI picks a template and fills in its parameters, and every number on screen is computed in code before the cloud render. You can change the parameters, and every video comes with its Manim source, so there is no lock-in against moving to raw Manim later. Every account with a verified email gets 3 free preview videos (720p, watermarked); clean 1080p videos need a paid plan ([pricing](/pricing)).
+[CurvG](/creator) makes captioned Manim Community videos from verified templates: you describe the topic, an AI picks a template and fills in its parameters, and every number on screen is computed in code before the cloud render. You can change the parameters, and every video comes with its Manim source, so there is no lock-in against moving to raw Manim later. Every account with a verified email gets 3 free preview videos (720p, watermarked); clean 1080p videos need a paid plan ([pricing](/pricing)).
 
 If you need a ready-made demo rather than a new video, CurvG also has free [interactive math and physics labs](/labs) — boards you drag live in class — and [animated math wonders](/wonders) such as [Fourier series drawn by spinning circles](/wonders/fourier-epicycles) and the [Mandelbrot set zoom](/wonders/mandelbrot-set). They run in the browser with nothing to install.
 
-**Limits, as of November 2026:** there are 12 templates (function graphs, transformations, tangents, Riemann sums and integrals, the unit circle, Taylor and Fourier series, parametric and polar curves, matrix transformations). Topics outside them go to a free-form generator that is still a beta and can fail or get the mathematics wrong. You cannot edit the Manim code in the browser, and every template is 2D. If you need any of those today, raw Manim is the better tool.
+**Limits, as of November 2026:** there are 12 templates (function graphs, transformations, tangents, Riemann sums and integrals, the unit circle, Taylor and Fourier series, parametric and polar curves, matrix transformations). Topics outside them go to a free-form generator that is still a beta and can fail or get the mathematics wrong. You cannot edit the Manim code in the browser, and every template is 2D. Videos carry the explanation as on-screen captions, with no voice-over. If you need any of those today, raw Manim is the better tool.
 
 **Best for:** teachers and math creators who want Manim-quality motion without maintaining Python.
-**Price:** free to start; cloud renders spend credits. See the [free math video creator page](/free-math-video-creator) for exactly what costs nothing.
+**Price (November 2026):** free to start; cloud renders spend credits. See the [free math video creator page](/free-math-video-creator) for exactly what costs nothing.
 
 ## 3. Desmos — graphs that move while you talk
 
 The [Desmos](https://www.desmos.com/) graphing calculator animates parameters with sliders, and a screen recording of that exploration is often the fastest possible math video. It doesn't produce standalone rendered animations, and visual styling is limited — but for "watch what happens as _a_ grows", nothing is quicker.
 
 **Best for:** live parameter exploration, homework help clips.
-**Price:** free.
+**Price (November 2026):** free.
 
 ## 4. GeoGebra — interactive geometry on record
 
 [GeoGebra](https://www.geogebra.org/) shines for compass-and-straightedge constructions, transformations, and 3D solids. Like Desmos, the usual video workflow is screen recording an interaction. Its applet ecosystem is enormous, so you can often start from an existing construction instead of building your own.
 
 **Best for:** geometry lessons and interactive demonstrations.
-**Price:** free for personal, non-commercial use.
+**Price (November 2026):** free for non-commercial use; commercial use needs a separate license.
 
 ## 5. Keynote / PowerPoint — the underrated step-revealer
 
 For proof walk-throughs where lines of algebra appear one at a time, slide software with motion transitions (Magic Move in Keynote, Morph in PowerPoint) is genuinely good — and your institution almost certainly already licenses it. Equations are static images, so nothing _continuously_ deforms, but step reveals cover a large share of classroom needs.
 
 **Best for:** derivations, annotated worked examples.
-**Price:** included with macOS / Microsoft 365 plans.
+**Price (November 2026):** Keynote is free on Apple devices. PowerPoint comes with every Microsoft 365 consumer plan; in the US, Personal is $9.99 a month or $99.99 a year.
 
 ## 6. Canva — fast social clips with light math
 
 [Canva](https://www.canva.com/) is a template-first video editor: captions, stock motion graphics, and quick exports for Shorts or Reels. Mathematical notation support is thin (you'll paste equations as images), and nothing is truly computed — but for a 30-second concept teaser with music, it's efficient.
 
 **Best for:** social media teasers around math content.
-**Price:** freemium.
+**Price (November 2026):** free plan; Canva Pro is US$144 a year for one person.
 
 ## 7. After Effects — when design quality is the product
 
 Adobe After Effects offers broadcast-grade typography, easing, and compositing. Equations are artwork rather than mathematics, so accuracy is entirely manual — a rescaled graph won't recompute. Serious channels often combine it with Manim: Manim for the math, After Effects for the polish.
 
 **Best for:** professional motion design and channel branding.
-**Price:** paid subscription.
+**Price (November 2026):** US$22.99 a month on Adobe's annual plan, billed monthly.
 
 ## 8. Blender — free 3D for the ambitious
 
 [Blender](https://www.blender.org/) is the free path to 3D math scenes — surfaces, solids of revolution, vector fields in space — plus Grease Pencil for 2D. The learning curve is the steepest here, and precise mathematical animation requires scripting in Python anyway.
 
 **Best for:** 3D-heavy explainers by patient creators.
-**Price:** free and open source.
+**Price (November 2026):** free and open source (GPL).
 
 ## Side-by-side
 
-| Tool          | Math actually computed? | Coding needed | Rendered video out | Price           |
-| ------------- | ----------------------- | ------------- | ------------------ | --------------- |
-| Manim CE      | Yes                     | Python        | Yes (local)        | Free            |
-| CurvG         | Yes (templates)         | None          | Yes (cloud MP4)    | Free to start   |
-| Desmos        | Yes                     | None          | Screen record      | Free            |
-| GeoGebra      | Yes                     | None          | Screen record      | Free (personal) |
-| Keynote/PPT   | No (static equations)   | None          | Yes (export)       | Bundled         |
-| Canva         | No                      | None          | Yes                | Freemium        |
-| After Effects | No                      | None          | Yes                | Paid            |
-| Blender       | Partly (via scripting)  | Optional      | Yes (local)        | Free            |
+Prices as listed on each official site in November 2026.
+
+| Tool          | Math actually computed? | Coding needed | Rendered video out | Price                   |
+| ------------- | ----------------------- | ------------- | ------------------ | ----------------------- |
+| Manim CE      | Yes                     | Python        | Yes (local)        | Free                    |
+| CurvG         | Yes (templates)         | None          | Yes (cloud MP4)    | Free previews; paid HD  |
+| Desmos        | Yes                     | None          | Screen record      | Free                    |
+| GeoGebra      | Yes                     | None          | Screen record      | Free (non-commercial)   |
+| Keynote/PPT   | No (static equations)   | None          | Yes (export)       | Free / Microsoft 365    |
+| Canva         | No                      | None          | Yes                | Free; Pro US$144/year   |
+| After Effects | No                      | None          | Yes                | US$22.99/month (annual) |
+| Blender       | Partly (via scripting)  | Optional      | Yes (local)        | Free                    |
 
 ## How to choose
 
 - **You teach daily and need one clip per lesson:** start with Desmos or GeoGebra recordings; move to [CurvG](/math-animation-tool) when you want rendered, reusable animations.
-- **You're building a YouTube explainer channel:** Manim if you code, CurvG if you don't — the [honest comparison](/manim-alternative) covers exactly when raw Manim is the better pick.
+- **You're building a YouTube explainer channel:** Manim if you code, CurvG if you don't — the [Manim alternatives comparison](/manim-alternative) covers code tools such as Motion Canvas and Remotion too, and when raw Manim is the better pick.
 - **You need one polished social clip:** Canva or Keynote will get you there fastest.
 - **You're not sure what to animate first:** browse the [math curve encyclopedia](/curves) — every curve there converts into an animation brief with one click.
 
