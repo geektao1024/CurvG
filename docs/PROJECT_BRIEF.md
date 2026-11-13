@@ -100,6 +100,13 @@ Logo 是一笔画成的 G，起点是琥珀色圆环把手（实验画板上"可
 
 按日期倒序，记录影响定位、页面结构或可维护性的变化（逐条提交见 `git log`）。
 
+### 2026-11-14 — 编排容器空闲自动退出，停掉一直在跑的实例（编排 Worker `903c8234`，`7c06631`、`f8797f9`）
+
+- 问题：Python 编排容器（`curvg-orchestrator`，basic，1 GiB / 4 GB）从 2026-11-06 起昼夜不停：`containersUsageAdaptiveGroups` 显示每天约 24 GiB·小时，11-07、11-08 两个实例同时开着约 48。11-06 至 11-13 共约 235 GiB·小时内存、939 GB·小时磁盘、22,198 秒 CPU；按 Cloudflare 定价页扣除 Workers Paid 免费额度后估约 $2.1，不处理每月约 $7。原因：只靠 `sleepAfter`（到期只发 SIGTERM 并续期），而 `sh -c` 当 1 号进程不转发信号。查询只能回看约 32 天，10-13 之前的用量查不到；10-13 至 11-05 没有编排容器用量。
+- 修复：FastAPI 进程空闲 60 秒自己退出、运行满 10 分钟（等在途请求最多 60 秒）退出（`orchestrator/app/lifecycle.py`）；Dockerfile 改 `exec uvicorn`；`sleepAfter` 降到 2 分钟兜底。本地镜像实测空闲后 12 秒退出码 0 退出（`IDLE_EXIT_SECONDS=10`），7 个编排测试在 Python 3.12 通过。
+- 新镜像不会替换已在跑的实例：新增运维接口 `POST /admin/stop`（独立密钥 `STOP_TOKEN`，wrangler secret；本地不留副本，需要时重新 `wrangler secret put`），销毁 `instance-0`、`instance-1`。调用后两个实例均为 stopped，活跃实例 0。
+- 冷启动：之后每次空闲后的第一个请求要重新拉起容器（几秒）；动画 Workflow 原有的 503 重试和回退路径照旧兜底。部署编排 Worker 用 `npx wrangler@4.161.0 deploy --config orchestrator/wrangler.jsonc`（需先启动 colima）。
+
 ### 2026-11-12（第二次）— 开邮箱验证；首页"从实验到视频"和流程文章改成模板出片（07:51 UTC 上线，`949acc8`，Worker `132f67cd`）
 
 - 邮箱注册用户拿不到免费预览的原因是没开邮箱验证，而没开是因为生产上没配发信服务。现在验证信和找回密码邮件走 Cloudflare Email Service：Worker 加 `send_email` 绑定 `EMAIL`（`wrangler.jsonc` 不进 git，`wrangler.example.jsonc` 同步），`config` 写 `email_provider=cloudflare`、发件人 `CurvG <hello@curvg.com>`、`email_verification_enabled=true`。线上用临时邮箱走完注册、收信、点链接、拿到 3 个免费预览，测试号已删。
