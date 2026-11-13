@@ -3,12 +3,17 @@ import { Container, getRandom } from '@cloudflare/containers';
 interface Env {
   ORCHESTRATOR_CONTAINER: DurableObjectNamespace<OrchestratorContainer>;
   ORCHESTRATOR_TOKEN: string;
+  /** Operator-only token for POST /admin/stop (wrangler secret STOP_TOKEN). */
+  STOP_TOKEN?: string;
 }
+
+const INSTANCE_COUNT = 2;
 
 const allowedRoutes = new Map([
   ['/health', 'GET'],
   ['/v1/prepare', 'POST'],
   ['/v1/validate-code', 'POST'],
+  ['/admin/stop', 'POST'],
 ]);
 
 function jsonError(status: number, message: string): Response {
@@ -66,12 +71,38 @@ export default {
     if (request.method !== expectedMethod) {
       return jsonError(405, 'Method not allowed');
     }
+    // Deploying a new image does not replace a running instance, and an old
+    // one can run (and bill) forever: destroy every instance on demand.
+    if (url.pathname === '/admin/stop') {
+      if (!env.STOP_TOKEN || !hasBearerToken(request, env.STOP_TOKEN)) {
+        return jsonError(401, 'Unauthorized');
+      }
+      const results: Record<string, string> = {};
+      for (let index = 0; index < INSTANCE_COUNT; index += 1) {
+        const name = `instance-${index}`;
+        try {
+          const stub = env.ORCHESTRATOR_CONTAINER.get(
+            env.ORCHESTRATOR_CONTAINER.idFromName(name)
+          );
+          await stub.destroy();
+          results[name] = 'destroyed';
+        } catch (error) {
+          results[name] =
+            error instanceof Error ? error.message.slice(0, 120) : 'failed';
+        }
+      }
+      return Response.json({ results });
+    }
+
     if (!hasBearerToken(request, env.ORCHESTRATOR_TOKEN)) {
       return jsonError(401, 'Unauthorized');
     }
 
     try {
-      const container = await getRandom(env.ORCHESTRATOR_CONTAINER, 2);
+      const container = await getRandom(
+        env.ORCHESTRATOR_CONTAINER,
+        INSTANCE_COUNT
+      );
       return await container.fetch(request);
     } catch (error) {
       console.error('[orchestrator-worker] container unavailable', error);
