@@ -13,6 +13,7 @@ from .models import (
     ValidateCodeRequest,
     ValidateCodeResponse,
 )
+from .lifecycle import Activity, start_watchdog
 from .service import prepare_animation, validate_animation_code
 
 
@@ -25,6 +26,24 @@ app = FastAPI(
 )
 
 MAX_REQUEST_BYTES = 1_000_000
+
+activity = Activity()
+
+
+@app.on_event("startup")
+def stop_when_idle() -> None:
+    # Containers bill while the process runs; see app/lifecycle.py.
+    if os.environ.get("DISABLE_IDLE_EXIT") != "1":
+        start_watchdog(activity)
+
+
+@app.middleware("http")
+async def track_activity(request, call_next):
+    activity.begin()
+    try:
+        return await call_next(request)
+    finally:
+        activity.end()
 
 
 @app.middleware("http")

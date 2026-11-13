@@ -16,4 +16,5 @@ USER curvg
 
 EXPOSE 8080
 
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+# exec: uvicorn must be PID 1 to receive SIGTERM (sh as PID 1 ignores it).
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]

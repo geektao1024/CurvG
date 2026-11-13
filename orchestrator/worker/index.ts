@@ -32,7 +32,9 @@ function hasBearerToken(request: Request, expected: string): boolean {
 
 export class OrchestratorContainer extends Container<Env> {
   defaultPort = 8080;
-  sleepAfter = '10m';
+  // Backup only: the process exits by itself after 60 s idle
+  // (orchestrator/app/lifecycle.py); sleepAfter alone never stopped it.
+  sleepAfter = '2m';
 
   constructor(ctx: DurableObjectState<{}>, env: Env) {
     super(ctx, env, {
